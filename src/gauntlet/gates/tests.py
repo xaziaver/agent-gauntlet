@@ -1,4 +1,5 @@
 """Tests gate: the suite must pass. Also produces the coverage artifact in one run."""
+
 from __future__ import annotations
 
 import sys

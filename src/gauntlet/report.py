@@ -1,4 +1,5 @@
 """Renders a list of GateResults as human text or machine-readable JSON."""
+
 from __future__ import annotations
 
 import json
@@ -32,10 +33,11 @@ def _render_diagnostic(diagnostic: Diagnostic) -> str:
 
 def _render_result(result: GateResult, max_diags: int) -> list[str]:
     mark = PASS if result.passed else FAIL
-    lines = [
+    header = (
         f"{mark} {result.gate:<12} threshold={result.threshold} "
         f"actual={result.actual} ({result.duration}s)"
-    ]
+    )
+    lines = [header]
     if result.error:
         lines.append(f"    ERROR: {result.error}")
     lines.extend(_render_diagnostic(d) for d in result.diagnostics[:max_diags])

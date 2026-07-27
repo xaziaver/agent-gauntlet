@@ -1,4 +1,5 @@
 """Loads and validates gauntlet.toml."""
+
 from __future__ import annotations
 
 import tomllib

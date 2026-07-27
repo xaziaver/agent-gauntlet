@@ -1,7 +1,9 @@
 """Coverage gate: reads the artifact produced by the tests gate. Runs no subprocess."""
+
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any
 
 from gauntlet.gates.base import Diagnostic, GateContext, GateResult, timed
@@ -11,11 +13,30 @@ name = "coverage"
 MISSING_LINES_SHOWN = 10
 
 
+class _ArtifactError(Exception):
+    """The coverage artifact is missing or unreadable."""
+
+
+def _load_artifact(root: Path) -> dict[str, Any]:
+    path = root / ".gauntlet" / "coverage.json"
+    if not path.exists():
+        raise _ArtifactError(
+            "No .gauntlet/coverage.json — the tests gate must run before the "
+            "coverage gate (check gate order / --gates selection)."
+        )
+    try:
+        parsed: dict[str, Any] = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError) as exc:
+        raise _ArtifactError(f"coverage.json unreadable: {exc}") from exc
+    return parsed
+
+
 def _branch_percent(totals: dict[str, Any]) -> float | None:
-    total = totals.get("num_branches", 0)
+    total = int(totals.get("num_branches", 0))
     if not total:
         return None
-    return round(100.0 * totals.get("covered_branches", 0) / total, 2)
+    covered = int(totals.get("covered_branches", 0))
+    return round(100.0 * covered / total, 2)
 
 
 def _percent(item: tuple[str, dict[str, Any]]) -> float:
@@ -77,29 +98,10 @@ def run(ctx: GateContext, config: dict[str, Any]) -> GateResult:
     branch_min = float(config["branch"]) if "branch" in config else None
     threshold = {"line": line_min, "branch": branch_min}
 
-    path = ctx.project_root / ".gauntlet" / "coverage.json"
-    if not path.exists():
-        return GateResult(
-            gate=name,
-            passed=False,
-            threshold=threshold,
-            actual=None,
-            error=(
-                "No .gauntlet/coverage.json — the tests gate must run before the "
-                "coverage gate (check gate order / --gates selection)."
-            ),
-        )
-
     try:
-        data = json.loads(path.read_text())
-    except json.JSONDecodeError as exc:
-        return GateResult(
-            gate=name,
-            passed=False,
-            threshold=threshold,
-            actual=None,
-            error=f"coverage.json unparsable: {exc}",
-        )
+        data = _load_artifact(ctx.project_root)
+    except _ArtifactError as exc:
+        return GateResult(gate=name, passed=False, threshold=threshold, actual=None, error=str(exc))
 
     passed, actual, diagnostics = judge(data, line_min, branch_min)
     return GateResult(

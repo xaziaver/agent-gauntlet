@@ -44,8 +44,9 @@ def test_absent_branch_data_does_not_fail_the_gate() -> None:
 def test_missing_line_list_is_truncated_with_a_count() -> None:
     data = {
         "totals": {"percent_covered": 10.0},
-        "files": {"src/c.py": {"summary": {"percent_covered": 10.0},
-                               "missing_lines": list(range(1, 16))}},
+        "files": {
+            "src/c.py": {"summary": {"percent_covered": 10.0}, "missing_lines": list(range(1, 16))}
+        },
     }
     _, _, diagnostics = judge(data, line_min=80.0, branch_min=None)
     assert "(+5 more)" in diagnostics[0].message

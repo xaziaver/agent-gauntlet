@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from gauntlet.gates.tests import _counts, parse_junit
+from gauntlet.gates.tests import parse_junit
 
 PASSING = """<?xml version="1.0" encoding="utf-8"?>
 <testsuites>

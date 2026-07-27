@@ -19,17 +19,15 @@ def test_ruff_empty_output_is_clean() -> None:
     assert parse_ruff("") == []
 
 
+MYPY_OUTPUT = """\
+Some banner text that is not JSON
+{"file": "src/a.py", "line": 12, "code": "no-untyped-def", "message": "Function is missing a type annotation", "severity": "error"}
+{"file": "src/a.py", "line": 12, "code": null, "message": "See https://mypy.rtfd.io", "severity": "note"}
+"""
+
+
 def test_mypy_notes_and_non_json_lines_are_ignored() -> None:
-    payload = "\n".join(
-        [
-            'Some banner text that is not JSON',
-            '{"file": "src/a.py", "line": 12, "code": "no-untyped-def",'
-            ' "message": "Function is missing a type annotation", "severity": "error"}',
-            '{"file": "src/a.py", "line": 12, "code": null,'
-            ' "message": "See https://mypy.rtfd.io", "severity": "note"}',
-        ]
-    )
-    diagnostics = parse_mypy(payload)
+    diagnostics = parse_mypy(MYPY_OUTPUT)
     assert len(diagnostics) == 1
     assert diagnostics[0].symbol == "no-untyped-def"
     assert diagnostics[0].line == 12

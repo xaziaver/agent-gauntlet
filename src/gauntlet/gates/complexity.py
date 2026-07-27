@@ -52,12 +52,18 @@ def run(ctx: GateContext, config: dict[str, Any]) -> GateResult:
     proc = run_cmd(["radon", "cc", "--json", *targets], cwd=ctx.project_root)
     if not proc.stdout.strip():
         return GateResult(
-            gate=name, passed=False, threshold=ceiling, actual=None,
+            gate=name,
+            passed=False,
+            threshold=ceiling,
+            actual=None,
             error=f"radon produced no output: {proc.stderr.strip()[:500]}",
         )
 
     worst, diagnostics = judge(json.loads(proc.stdout), ceiling)
     return GateResult(
-        gate=name, passed=not diagnostics, threshold=ceiling,
-        actual=worst, diagnostics=diagnostics,
+        gate=name,
+        passed=not diagnostics,
+        threshold=ceiling,
+        actual=worst,
+        diagnostics=diagnostics,
     )

@@ -5,6 +5,7 @@ Exit codes are the agent contract:
     1  gauntlet could not run (bad config, unknown gate)
     2  gates failed  <- Claude Code's "block and show stderr" convention
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -13,16 +14,14 @@ from typing import NoReturn
 
 import typer
 
-from gauntlet import __version__
+from gauntlet import __version__, report
 from gauntlet import config as config_mod
-from gauntlet import report
 from gauntlet.gates import base, complexity, coverage, size, static, tests
 
 EXIT_OK, EXIT_CONFIG_ERROR, EXIT_GATE_FAILURE = 0, 1, 2
 
 REGISTRY: dict[str, base.Gate] = {
-    module.name: module  # type: ignore[misc]
-    for module in (static, size, complexity, tests, coverage)
+    module.name: module for module in (static, size, complexity, tests, coverage)
 }
 
 app = typer.Typer(no_args_is_help=True, pretty_exceptions_enable=False)
@@ -44,9 +43,17 @@ def _porcelain_path(root: Path, line: str) -> Path:
 
 
 def _changed_python_files(root: Path) -> list[Path]:
-    """Files changed vs HEAD: staged, unstaged, and untracked."""
+    """Files changed vs HEAD: staged, unstaged, and untracked.
+
+    -uall matters: without it git collapses untracked directories to a single
+    entry ("?? src/"), so newly created files would never be analyzed.
+    """
     proc = subprocess.run(
-        ["git", "status", "--porcelain"], cwd=root, capture_output=True, text=True, check=False
+        ["git", "status", "--porcelain", "-uall"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=False,
     )
     if proc.returncode != 0:
         return []

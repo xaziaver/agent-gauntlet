@@ -1,4 +1,5 @@
 """Core gate contract. Every gate consumes a config + context and returns a GateResult."""
+
 from __future__ import annotations
 
 import functools
