@@ -1,0 +1,22 @@
+[project]
+language = "python"
+src = "src/"
+tests = "tests/"
+
+[output]
+max_diagnostics_per_gate = 10
+
+[gates.static]
+
+[gates.size]
+max_function_lines = 25
+max_module_lines = 300
+
+[gates.complexity]
+max = 6
+
+[gates.tests]
+
+[gates.coverage]
+line = 80
+branch = 70

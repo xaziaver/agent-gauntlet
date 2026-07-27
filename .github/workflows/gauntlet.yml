@@ -1,0 +1,35 @@
+name: gauntlet
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:   # adds a manual "Run workflow" button in the Actions tab
+
+jobs:
+  gauntlet:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install Python (from .python-version)
+        run: uv python install
+
+      - name: Install the project and dev dependencies
+        run: uv sync --dev
+
+      - name: Run the gauntlet on itself
+        run: uv run gauntlet check --json
+
+      - name: Upload gauntlet report
+        if: always()          # keep the artifact even when the gates fail
+        uses: actions/upload-artifact@v4
+        with:
+          name: gauntlet-report
+          path: .gauntlet/
+          if-no-files-found: ignore
