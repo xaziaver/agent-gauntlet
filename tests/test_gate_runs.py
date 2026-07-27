@@ -5,11 +5,13 @@ These exercise the subprocess plumbing that the pure-function tests skip.
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 import pytest
 
-from gauntlet.gates import base, complexity, coverage, size, static
+from gauntlet import artifacts
+from gauntlet.gates import base, complexity, coverage, crap, size, static
 from gauntlet.gates import tests as tests_gate
 
 CLEAN = "def add(a: int, b: int) -> int:\n    return a + b\n"
@@ -145,3 +147,63 @@ def test_coverage_gate_reads_the_artifact(project: Path) -> None:
     result = coverage.run(ctx_for(project), {"line": 80})
     assert result.passed is True
     assert result.actual == {"line": 91.0}
+
+
+def test_crap_gate_errors_without_the_coverage_artifact(project: Path) -> None:
+    (project / "src" / "a.py").write_text(CLEAN)
+    result = crap.run(ctx_for(project), {"max": 15})
+    assert result.passed is False
+    assert "tests gate must run" in (result.error or "")
+
+
+def test_crap_gate_flags_an_untested_complex_function(project: Path) -> None:
+    (project / "src" / "a.py").write_text(BRANCHY)
+    (project / "tests" / "test_nothing.py").write_text("def test_nothing():\n    assert True\n")
+    tests_gate.run(ctx_for(project, enabled=["tests", "coverage"]), {})
+    result = crap.run(ctx_for(project), {"max": 15})
+    assert result.passed is False
+    assert "CRAP" in result.diagnostics[0].message
+
+
+def _proc(stdout: str = "", stderr: str = "") -> subprocess.CompletedProcess[str]:
+    return subprocess.CompletedProcess(args=["x"], returncode=0, stdout=stdout, stderr=stderr)
+
+
+def test_complexity_gate_surfaces_a_tool_failure_as_error_not_a_pass(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(artifacts, "run_cmd", lambda *a, **k: _proc(stderr="radon exploded"))
+    result = complexity.run(ctx_for(project), {"max": 6})
+    assert result.passed is False
+    assert "no output" in (result.error or "")
+
+
+def test_crap_gate_surfaces_a_radon_failure(project: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    (project / ".gauntlet").mkdir()
+    (project / ".gauntlet" / "coverage.json").write_text('{"files": {}}')
+    monkeypatch.setattr(artifacts, "run_cmd", lambda *a, **k: _proc(stdout="{not json"))
+    result = crap.run(ctx_for(project), {"max": 15})
+    assert result.passed is False
+    assert "unparsable" in (result.error or "")
+
+
+def test_crap_gate_passes_on_a_well_tested_project(project: Path) -> None:
+    (project / "src" / "a.py").write_text(CLEAN)
+    (project / "tests" / "test_a.py").write_text(
+        "import sys\n"
+        "sys.path.insert(0, 'src')\n"
+        "from a import add\n\n"
+        "def test_add():\n    assert add(1, 2) == 3\n"
+    )
+    tests_gate.run(ctx_for(project, enabled=["tests", "coverage"]), {})
+    assert crap.run(ctx_for(project), {"max": 15}).passed is True
+
+
+def test_static_gate_reports_unparsable_ruff_output(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (project / "src" / "a.py").write_text(CLEAN)
+    monkeypatch.setattr(static, "run_cmd", lambda *a, **k: _proc(stdout="{not json", stderr="boom"))
+    result = static.run(ctx_for(project), {})
+    assert result.passed is False
+    assert "ruff output unparsable" in (result.error or "")

@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from gauntlet import artifacts
 from gauntlet.gates.base import Diagnostic, GateContext, GateResult, timed
 
 name = "coverage"
@@ -99,8 +100,8 @@ def run(ctx: GateContext, config: dict[str, Any]) -> GateResult:
     threshold = {"line": line_min, "branch": branch_min}
 
     try:
-        data = _load_artifact(ctx.project_root)
-    except _ArtifactError as exc:
+        data = artifacts.load_coverage(ctx.project_root)
+    except artifacts.ArtifactError as exc:
         return GateResult(gate=name, passed=False, threshold=threshold, actual=None, error=str(exc))
 
     passed, actual, diagnostics = judge(data, line_min, branch_min)

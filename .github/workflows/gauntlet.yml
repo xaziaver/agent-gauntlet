@@ -23,6 +23,14 @@ jobs:
       - name: Install the project and dev dependencies
         run: uv sync --dev
 
+      - name: Install Node (for jscpd)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install jscpd
+        run: npm install -g jscpd
+
       - name: Run the gauntlet on itself
         run: uv run gauntlet check --json
 

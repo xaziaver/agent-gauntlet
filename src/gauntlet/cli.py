@@ -16,12 +16,12 @@ import typer
 
 from gauntlet import __version__, report
 from gauntlet import config as config_mod
-from gauntlet.gates import base, complexity, coverage, size, static, tests
+from gauntlet.gates import base, complexity, coverage, crap, duplication, size, static, tests
 
 EXIT_OK, EXIT_CONFIG_ERROR, EXIT_GATE_FAILURE = 0, 1, 2
 
 REGISTRY: dict[str, base.Gate] = {
-    module.name: module for module in (static, size, complexity, tests, coverage)
+    module.name: module for module in (static, size, complexity, tests, coverage, crap, duplication)
 }
 
 app = typer.Typer(no_args_is_help=True, pretty_exceptions_enable=False)

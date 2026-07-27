@@ -13,7 +13,7 @@ REQUIRED_PROJECT_KEYS = ("language", "src", "tests")
 # Execution order: cheap and structural first, so an agent fixes syntax and shape
 # before it is ever shown a coverage number. Later phases append "crap",
 # "duplication", "mutation", "acceptance" to the end.
-DEFAULT_GATE_ORDER = ["static", "size", "complexity", "tests", "coverage"]
+DEFAULT_GATE_ORDER = ["static", "size", "complexity", "tests", "coverage", "crap", "duplication"]
 
 
 class ConfigError(Exception):

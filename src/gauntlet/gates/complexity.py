@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import json
 from typing import Any
 
-from gauntlet.gates.base import Diagnostic, GateContext, GateResult, run_cmd, timed
+from gauntlet import artifacts
+from gauntlet.gates.base import Diagnostic, GateContext, GateResult, timed
 
 name = "complexity"
 
@@ -14,7 +14,7 @@ def _symbol(block: dict[str, Any]) -> str:
 
 
 def _diagnostic(file: str, block: dict[str, Any], ceiling: int) -> Diagnostic:
-    symbol = _symbol(block)
+    symbol = artifacts.radon_symbol(block)
     score = block["complexity"]
     return Diagnostic(
         file=file,
@@ -45,25 +45,12 @@ def judge(data: dict[str, Any], ceiling: int) -> tuple[int, list[Diagnostic]]:
 @timed
 def run(ctx: GateContext, config: dict[str, Any]) -> GateResult:
     ceiling = int(config.get("max", 6))
-    targets = ctx.tool_targets()
-    if not targets:
-        return GateResult(gate=name, passed=True, threshold=ceiling, actual=0)
+    try:
+        data = artifacts.radon_blocks(ctx)
+    except artifacts.ArtifactError as exc:
+        return GateResult(gate=name, passed=False, threshold=ceiling, actual=None, error=str(exc))
 
-    proc = run_cmd(["radon", "cc", "--json", *targets], cwd=ctx.project_root)
-    if not proc.stdout.strip():
-        return GateResult(
-            gate=name,
-            passed=False,
-            threshold=ceiling,
-            actual=None,
-            error=f"radon produced no output: {proc.stderr.strip()[:500]}",
-        )
-
-    worst, diagnostics = judge(json.loads(proc.stdout), ceiling)
+    worst, diagnostics = judge(data, ceiling)
     return GateResult(
-        gate=name,
-        passed=not diagnostics,
-        threshold=ceiling,
-        actual=worst,
-        diagnostics=diagnostics,
+        gate=name, passed=not diagnostics, threshold=ceiling, actual=worst, diagnostics=diagnostics
     )
