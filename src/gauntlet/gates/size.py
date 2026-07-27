@@ -29,8 +29,8 @@ class _FunctionVisitor(ast.NodeVisitor):
         self.found.append((qualname, node.lineno, length))
         self._descend(node, node.name)
 
-    visit_FunctionDef = _visit_func
-    visit_AsyncFunctionDef = _visit_func
+    visit_FunctionDef = _visit_func  # noqa: N815
+    visit_AsyncFunctionDef = _visit_func  # noqa: N815
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
         self._descend(node, node.name)

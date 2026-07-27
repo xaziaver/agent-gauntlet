@@ -11,27 +11,31 @@ name = "agent-gauntlet"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "coverage" },
+    { name = "pytest" },
+    { name = "pytest-cov" },
+    { name = "radon" },
     { name = "typer" },
 ]
 
 [package.dev-dependencies]
 dev = [
     { name = "mypy" },
-    { name = "pytest" },
-    { name = "pytest-cov" },
-    { name = "radon" },
     { name = "ruff" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "typer", specifier = ">=0.12" }]
+requires-dist = [
+    { name = "coverage", specifier = ">=7" },
+    { name = "pytest", specifier = ">=8" },
+    { name = "pytest-cov", specifier = ">=5" },
+    { name = "radon", specifier = ">=6" },
+    { name = "typer", specifier = ">=0.12" },
+]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "mypy", specifier = ">=1.11" },
-    { name = "pytest", specifier = ">=8" },
-    { name = "pytest-cov", specifier = ">=5" },
-    { name = "radon", specifier = ">=6" },
     { name = "ruff", specifier = ">=0.6" },
 ]
 

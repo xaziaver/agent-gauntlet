@@ -207,3 +207,10 @@ def test_static_gate_reports_unparsable_ruff_output(
     result = static.run(ctx_for(project), {})
     assert result.passed is False
     assert "ruff output unparsable" in (result.error or "")
+
+
+def test_coverage_artifact_is_written_for_the_crap_gate_too(project: Path) -> None:
+    (project / "src" / "a.py").write_text(CLEAN)
+    (project / "tests" / "test_ok.py").write_text("def test_ok():\n    assert True\n")
+    tests_gate.run(ctx_for(project, enabled=["tests", "crap"]), {})
+    assert (project / ".gauntlet" / "coverage.json").exists()

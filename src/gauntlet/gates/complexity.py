@@ -1,3 +1,10 @@
+"""Complexity gate: cyclomatic complexity ceiling, per function and method.
+
+Measures branching, not size or nesting depth. A flat function with six guard
+clauses scores the same as deeply nested branching. The comparison is strictly
+greater-than, so a function exactly at the ceiling passes.
+"""
+
 from __future__ import annotations
 
 from typing import Any
@@ -7,10 +14,7 @@ from gauntlet.gates.base import Diagnostic, GateContext, GateResult, timed
 
 name = "complexity"
 
-
-def _symbol(block: dict[str, Any]) -> str:
-    classname = block.get("classname")
-    return f"{classname}.{block['name']}" if classname else str(block["name"])
+DEFAULT_CEILING = 6
 
 
 def _diagnostic(file: str, block: dict[str, Any], ceiling: int) -> Diagnostic:
@@ -44,7 +48,7 @@ def judge(data: dict[str, Any], ceiling: int) -> tuple[int, list[Diagnostic]]:
 
 @timed
 def run(ctx: GateContext, config: dict[str, Any]) -> GateResult:
-    ceiling = int(config.get("max", 6))
+    ceiling = int(config.get("max", DEFAULT_CEILING))
     try:
         data = artifacts.radon_blocks(ctx)
     except artifacts.ArtifactError as exc:
@@ -52,5 +56,9 @@ def run(ctx: GateContext, config: dict[str, Any]) -> GateResult:
 
     worst, diagnostics = judge(data, ceiling)
     return GateResult(
-        gate=name, passed=not diagnostics, threshold=ceiling, actual=worst, diagnostics=diagnostics
+        gate=name,
+        passed=not diagnostics,
+        threshold=ceiling,
+        actual=worst,
+        diagnostics=diagnostics,
     )

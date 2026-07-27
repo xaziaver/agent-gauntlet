@@ -11,9 +11,24 @@ CONFIG_FILENAME = "gauntlet.toml"
 REQUIRED_PROJECT_KEYS = ("language", "src", "tests")
 
 # Execution order: cheap and structural first, so an agent fixes syntax and shape
-# before it is ever shown a coverage number. Later phases append "crap",
-# "duplication", "mutation", "acceptance" to the end.
-DEFAULT_GATE_ORDER = ["static", "size", "complexity", "tests", "coverage", "crap", "duplication"]
+# before it is ever shown a coverage number.
+DEFAULT_GATE_ORDER = [
+    "static",
+    "size",
+    "complexity",
+    "tests",
+    "coverage",
+    "crap",
+    "duplication",
+]
+
+# Files that define what the gates require. An agent must not edit these.
+DEFAULT_PROTECTED_PATHS = (
+    "gauntlet.toml",
+    ".gauntlet/",
+    ".claude/settings.json",
+    "specs/approved.json",
+)
 
 
 class ConfigError(Exception):
@@ -27,6 +42,7 @@ class Config:
     tests: Path
     gates: dict[str, dict[str, Any]]
     output: dict[str, Any]
+    protect: dict[str, Any]
 
     @property
     def enabled_gates(self) -> list[str]:
@@ -35,6 +51,10 @@ class Config:
     @property
     def max_diagnostics(self) -> int:
         return int(self.output.get("max_diagnostics_per_gate", 10))
+
+    @property
+    def protected_paths(self) -> list[str]:
+        return [str(p) for p in self.protect.get("paths", DEFAULT_PROTECTED_PATHS)]
 
 
 def find_root(start: Path | None = None) -> Path:
@@ -86,4 +106,5 @@ def load(project_root: Path) -> Config:
         tests=(project_root / project["tests"]).resolve(),
         gates=raw.get("gates", {}),
         output=raw.get("output", {}),
+        protect=raw.get("protect", {}),
     )

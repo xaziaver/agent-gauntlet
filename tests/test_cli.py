@@ -130,3 +130,33 @@ def test_find_root_lets_check_run_from_a_subdirectory(
     monkeypatch.chdir(project / "src")
     result = runner.invoke(app, ["check", "--gates", "size"])
     assert result.exit_code == EXIT_GATE_FAILURE
+
+
+def test_guard_allows_an_ordinary_edit(project: Path) -> None:
+    payload = json.dumps(
+        {"tool_name": "Edit", "tool_input": {"file_path": str(project / "src" / "a.py")}}
+    )
+    result = runner.invoke(app, ["guard"], input=payload)
+    assert result.exit_code == EXIT_OK
+
+
+def test_guard_blocks_a_threshold_edit_with_exit_two(project: Path) -> None:
+    payload = json.dumps(
+        {"tool_name": "Write", "tool_input": {"file_path": str(project / "gauntlet.toml")}}
+    )
+    result = runner.invoke(app, ["guard"], input=payload)
+    assert result.exit_code == EXIT_GATE_FAILURE
+    assert "protected Gauntlet file" in _text(result)
+
+
+def test_guard_fails_open_on_a_malformed_payload(project: Path) -> None:
+    """Exit 1 is non-blocking in Claude Code: a broken payload must not wedge the agent."""
+    result = runner.invoke(app, ["guard"], input="not json")
+    assert result.exit_code == EXIT_CONFIG_ERROR
+
+
+def test_guard_fails_open_without_a_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    payload = json.dumps({"tool_name": "Edit", "tool_input": {"file_path": "gauntlet.toml"}})
+    result = runner.invoke(app, ["guard"], input=payload)
+    assert result.exit_code == EXIT_CONFIG_ERROR

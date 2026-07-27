@@ -1,3 +1,5 @@
+"""Static gate: lint and type checking. Says nothing about behavior."""
+
 from __future__ import annotations
 
 import json
@@ -7,6 +9,12 @@ from typing import Any
 from gauntlet.gates.base import Diagnostic, GateContext, GateResult, run_cmd, timed
 
 name = "static"
+
+RUFF_OK_CODES = (0, 1)  # 0 = clean, 1 = findings; anything else is a tool failure
+
+
+class _ToolError(Exception):
+    """A static-analysis tool produced output we cannot parse."""
 
 
 def _ruff_diagnostic(item: dict[str, Any]) -> Diagnostic:
@@ -49,12 +57,13 @@ def parse_mypy(payload: str) -> list[Diagnostic]:
     return diagnostics
 
 
-class _ToolError(Exception):
-    """A static-analysis tool produced output we cannot parse."""
-
-
 def _ruff_diagnostics(ctx: GateContext, targets: list[str]) -> list[Diagnostic]:
     proc = run_cmd(["ruff", "check", "--output-format", "json", *targets], cwd=ctx.project_root)
+    if proc.returncode not in RUFF_OK_CODES:
+        # A crashed tool must not read as a clean bill of health.
+        raise _ToolError(
+            f"ruff exited {proc.returncode}: {(proc.stderr or proc.stdout).strip()[:500]}"
+        )
     try:
         return parse_ruff(proc.stdout)
     except json.JSONDecodeError as exc:
@@ -70,7 +79,8 @@ def _mypy_diagnostics(ctx: GateContext, targets: list[str]) -> list[Diagnostic]:
 
 
 @timed
-def run(ctx: GateContext, config: dict[str, Any]) -> GateResult:
+def run(ctx: GateContext, config: dict[str, Any]) -> GateResult:  # noqa: ARG001
+    # `config` is unused but required by the Gate protocol's uniform signature.
     targets = ctx.tool_targets()
     if not targets:
         return GateResult(gate=name, passed=True, threshold="clean", actual="no files")

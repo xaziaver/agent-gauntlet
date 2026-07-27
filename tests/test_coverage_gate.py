@@ -10,7 +10,7 @@ DATA = {
 
 
 def test_aggregate_below_threshold_fails_and_flags_worst_file_first() -> None:
-    passed, actual, diagnostics = judge(DATA, line_min=80.0, branch_min=None)
+    passed, actual, diagnostics = judge(DATA, line_min=80.0, branch_min=None, file_min=80.0)
     assert passed is False
     assert actual == {"line": 72.0, "branch": 60.0}
     assert [d.file for d in diagnostics] == ["src/b.py"]
@@ -48,5 +48,17 @@ def test_missing_line_list_is_truncated_with_a_count() -> None:
             "src/c.py": {"summary": {"percent_covered": 10.0}, "missing_lines": list(range(1, 16))}
         },
     }
-    _, _, diagnostics = judge(data, line_min=80.0, branch_min=None)
+    _, _, diagnostics = judge(data, line_min=80.0, branch_min=None, file_min=80.0)
     assert "(+5 more)" in diagnostics[0].message
+
+
+def test_per_file_min_unset_emits_no_file_diagnostics() -> None:
+    passed, _, diagnostics = judge(DATA, line_min=70.0, branch_min=None)
+    assert passed is True
+    assert diagnostics == []
+
+
+def test_per_file_min_fails_the_gate_even_when_the_aggregate_passes() -> None:
+    passed, _, diagnostics = judge(DATA, line_min=70.0, branch_min=None, file_min=80.0)
+    assert passed is False
+    assert [d.file for d in diagnostics] == ["src/b.py"]

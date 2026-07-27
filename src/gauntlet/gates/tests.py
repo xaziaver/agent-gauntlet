@@ -15,6 +15,7 @@ TRACEBACK_TAIL_LINES = 25
 COUNT_KEYS = ("tests", "failures", "errors", "skipped")
 THRESHOLD = "all passing"
 NO_TESTS_COLLECTED = 5
+COVERAGE_CONSUMERS = frozenset({"coverage", "crap"})
 
 
 def _failure_node(case: ET.Element) -> ET.Element | None:
@@ -67,9 +68,8 @@ def parse_junit(junit_path: Path) -> tuple[dict[str, int], list[Diagnostic]]:
 
 def _pytest_command(ctx: GateContext, junit: Path) -> list[str]:
     cmd = [sys.executable, "-m", "pytest", str(ctx.tests), "-q", f"--junitxml={junit}"]
-    if "coverage" in ctx.enabled_gates:
-        # One suite run, two artifacts — the coverage gate reads the JSON, it never
-        # re-runs pytest itself.
+    if COVERAGE_CONSUMERS & set(ctx.enabled_gates):
+        # One suite run, all artifacts — the coverage and crap gates read the JSON.
         cmd += [
             f"--cov={ctx.src}",
             "--cov-branch",
@@ -108,7 +108,8 @@ def _result(counts: dict[str, int], diagnostics: list[Diagnostic], returncode: i
 
 
 @timed
-def run(ctx: GateContext, config: dict[str, Any]) -> GateResult:
+def run(ctx: GateContext, config: dict[str, Any]) -> GateResult:  # noqa: ARG001
+    # `config` is unused but required by the Gate protocol's uniform signature.
     artifacts = ctx.project_root / ".gauntlet"
     artifacts.mkdir(exist_ok=True)
     junit = artifacts / "junit.xml"

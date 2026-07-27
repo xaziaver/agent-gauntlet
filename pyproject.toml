@@ -4,13 +4,19 @@ version = "0.1.0"
 description = "Quality-gate harness for AI coding agents"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = ["typer>=0.12"]
+dependencies = [
+  "typer>=0.12",
+  "radon>=6",
+  "coverage>=7",
+  "pytest>=8",
+  "pytest-cov>=5",
+]
 
 [project.scripts]
 gauntlet = "gauntlet.cli:app"
 
 [dependency-groups]
-dev = ["pytest>=8", "pytest-cov>=5", "ruff>=0.6", "mypy>=1.11", "radon>=6"]
+dev = ["ruff>=0.6", "mypy>=1.11"]
 
 [build-system]
 requires = ["hatchling"]
@@ -21,6 +27,12 @@ packages = ["src/gauntlet"]
 
 [tool.ruff]
 line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "SIM", "C4", "PTH", "RET", "ARG"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["ARG"]   # pytest fixtures arrive as unused-looking arguments
 
 [tool.mypy]
 strict = true

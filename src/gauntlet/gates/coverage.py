@@ -62,9 +62,11 @@ def _file_diagnostic(path: str, info: dict[str, Any], line_min: float) -> Diagno
     )
 
 
-def _file_diagnostics(files: dict[str, Any], line_min: float) -> list[Diagnostic]:
+def _file_diagnostics(files: dict[str, Any], file_min: float | None) -> list[Diagnostic]:
+    if file_min is None:
+        return []
     candidates = (
-        _file_diagnostic(path, info, line_min) for path, info in sorted(files.items(), key=_percent)
+        _file_diagnostic(path, info, file_min) for path, info in sorted(files.items(), key=_percent)
     )
     return [d for d in candidates if d is not None]
 
@@ -76,12 +78,14 @@ def _branch_ok(branch_pct: float | None, branch_min: float | None) -> bool:
 
 
 def judge(
-    data: dict[str, Any], line_min: float, branch_min: float | None
+    data: dict[str, Any], line_min: float, branch_min: float | None, file_min: float | None = None
 ) -> tuple[bool, dict[str, Any], list[Diagnostic]]:
     """coverage.json -> (passed, actual summary, per-file diagnostics).
 
-    Pass/fail is the AGGREGATE comparison; per-file diagnostics tell the agent
-    where to aim, they are not themselves the verdict.
+    Every diagnostic corresponds to a rule that is actually enforced: with
+    per_file_min unset the gate judges the aggregate only and stays silent about
+    individual files, so a passing gate never emits guidance an agent might
+    mistake for a failure.
     """
     totals = data.get("totals", {})
     line_pct = round(float(totals.get("percent_covered", 0.0)), 2)
@@ -89,22 +93,25 @@ def judge(
     actual: dict[str, Any] = {"line": line_pct}
     if branch_pct is not None:
         actual["branch"] = branch_pct
-    passed = line_pct >= line_min and _branch_ok(branch_pct, branch_min)
-    return passed, actual, _file_diagnostics(data.get("files", {}), line_min)
+
+    diagnostics = _file_diagnostics(data.get("files", {}), file_min)
+    passed = line_pct >= line_min and _branch_ok(branch_pct, branch_min) and not diagnostics
+    return passed, actual, diagnostics
 
 
 @timed
 def run(ctx: GateContext, config: dict[str, Any]) -> GateResult:
     line_min = float(config.get("line", 90))
     branch_min = float(config["branch"]) if "branch" in config else None
-    threshold = {"line": line_min, "branch": branch_min}
+    file_min = float(config["per_file_min"]) if "per_file_min" in config else None
+    threshold = {"line": line_min, "branch": branch_min, "per_file": file_min}
 
     try:
         data = artifacts.load_coverage(ctx.project_root)
     except artifacts.ArtifactError as exc:
         return GateResult(gate=name, passed=False, threshold=threshold, actual=None, error=str(exc))
 
-    passed, actual, diagnostics = judge(data, line_min, branch_min)
+    passed, actual, diagnostics = judge(data, line_min, branch_min, file_min)
     return GateResult(
         gate=name, passed=passed, threshold=threshold, actual=actual, diagnostics=diagnostics
     )

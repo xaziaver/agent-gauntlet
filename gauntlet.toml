@@ -20,9 +20,13 @@ max = 6
 [gates.coverage]
 line = 95
 branch = 90
+per_file_min = 80
 
 [gates.crap]
 max = 15
 
 [gates.duplication]
 max_duplicate_blocks = 0
+
+[protect]
+paths = ["gauntlet.toml", ".gauntlet/", ".claude/settings.json", "specs/approved.json"]

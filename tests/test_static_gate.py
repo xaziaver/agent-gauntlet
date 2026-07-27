@@ -1,3 +1,4 @@
+# ruff: noqa: E501  (verbatim tool output fixtures must not be reflowed)
 from gauntlet.gates.static import parse_mypy, parse_ruff
 
 

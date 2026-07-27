@@ -9,6 +9,7 @@ Exit codes are the agent contract:
 from __future__ import annotations
 
 import subprocess
+import sys
 from pathlib import Path
 from typing import NoReturn
 
@@ -16,6 +17,7 @@ import typer
 
 from gauntlet import __version__, report
 from gauntlet import config as config_mod
+from gauntlet import guard as guard_mod
 from gauntlet.gates import base, complexity, coverage, crap, duplication, size, static, tests
 
 EXIT_OK, EXIT_CONFIG_ERROR, EXIT_GATE_FAILURE = 0, 1, 2
@@ -120,6 +122,34 @@ def check(
         enabled_gates=selected,
     )
     _emit(_run_gates(ctx, cfg, selected, fail_fast), cfg.max_diagnostics, json_out)
+
+
+@app.command()
+def guard() -> None:
+    """PreToolUse hook: block edits to protected paths. Reads hook JSON on stdin.
+
+    Exit 2 blocks the tool call and shows the message to the agent. Exit 1 is a
+    non-blocking error in Claude Code, so a broken config means the guard simply
+    does not apply rather than wedging the agent.
+    """
+    try:
+        root = config_mod.find_root()
+        cfg = config_mod.load(root)
+    except config_mod.ConfigError as exc:
+        typer.echo(f"guard: {exc}", err=True)
+        raise typer.Exit(code=EXIT_CONFIG_ERROR) from None
+
+    try:
+        payload = guard_mod.parse_payload(sys.stdin.read())
+    except guard_mod.PayloadError as exc:
+        typer.echo(f"guard: {exc}", err=True)
+        raise typer.Exit(code=EXIT_CONFIG_ERROR) from None
+
+    message = guard_mod.decide(payload, root, cfg.protected_paths)
+    if message is None:
+        raise typer.Exit(code=EXIT_OK)
+    typer.echo(message, err=True)
+    raise typer.Exit(code=EXIT_GATE_FAILURE)
 
 
 @app.command()

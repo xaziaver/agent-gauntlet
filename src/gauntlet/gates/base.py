@@ -12,6 +12,7 @@ from typing import Any, Protocol
 
 # Editor scratch files: Emacs lock (.#x.py) and autosave (#x.py#), backups (x.py~).
 IGNORED_NAME_PREFIXES = (".#", "#")
+TIMEOUT_RETURNCODE = 124  # conventional shell timeout code
 
 
 @dataclass(frozen=True)
@@ -80,10 +81,22 @@ class Gate(Protocol):
 
 
 def run_cmd(args: list[str], cwd: Path, timeout: int = 600) -> subprocess.CompletedProcess[str]:
-    """Uniform subprocess wrapper: captured text output, no exception on nonzero exit."""
-    return subprocess.run(
-        args, cwd=cwd, capture_output=True, text=True, timeout=timeout, check=False
-    )
+    """Uniform subprocess wrapper: captured text output, no exception on nonzero exit.
+
+    A timeout is returned as a normal result (code 124) rather than raised, so a
+    hung tool becomes a gate error instead of a traceback in an agent hook.
+    """
+    try:
+        return subprocess.run(
+            args, cwd=cwd, capture_output=True, text=True, timeout=timeout, check=False
+        )
+    except subprocess.TimeoutExpired:
+        return subprocess.CompletedProcess(
+            args=args,
+            returncode=TIMEOUT_RETURNCODE,
+            stdout="",
+            stderr=f"timed out after {timeout}s: {' '.join(args[:3])}",
+        )
 
 
 def timed(fn: GateFn) -> GateFn:

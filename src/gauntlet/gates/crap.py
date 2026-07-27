@@ -49,15 +49,20 @@ def required_coverage(complexity: int, ceiling: float) -> float | None:
 
 
 def normalize(path_str: str, root: Path) -> str:
-    """Key the join on root-relative strings: radon reports absolute paths, coverage relative."""
+    """Key the join on root-relative POSIX strings.
+
+    radon reports paths as invoked (often absolute), coverage.py reports them
+    relative. POSIX separators keep these keys comparable with guard.py's on
+    every platform.
+    """
     path = Path(path_str)
     if not path.is_absolute():
         path = root / path
     resolved = path.resolve()
     try:
-        return str(resolved.relative_to(root.resolve()))
+        return resolved.relative_to(root.resolve()).as_posix()
     except ValueError:
-        return str(resolved)
+        return resolved.as_posix()
 
 
 def span_coverage(block: dict[str, Any], executed: set[int], missing: set[int]) -> float:
@@ -108,10 +113,11 @@ def crap_scores(
     by_path = {normalize(p, root): info for p, info in coverage_files.items()}
     scores: list[FunctionCrap] = []
     for raw_path, blocks in cc_blocks.items():
-        info = by_path.get(normalize(raw_path, root))
+        path = normalize(raw_path, root)
+        info = by_path.get(path)
         if info is None or not isinstance(blocks, list):
             continue
-        scores.extend(_file_scores(normalize(raw_path, root), blocks, info))
+        scores.extend(_file_scores(path, blocks, info))
     return scores
 
 
