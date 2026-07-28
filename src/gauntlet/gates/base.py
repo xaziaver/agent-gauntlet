@@ -58,6 +58,7 @@ class GateContext:
     tests: Path
     changed_files: list[Path] | None = None  # None = full run
     enabled_gates: list[str] = field(default_factory=list)
+    verified_paths: list[str] = field(default_factory=list)
 
     def python_files(self) -> list[Path]:
         """Analyzable Python files under src/, narrowed to changed files with --changed."""

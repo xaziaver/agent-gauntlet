@@ -14,6 +14,7 @@ REQUIRED_PROJECT_KEYS = ("language", "src", "tests")
 # Execution order: cheap and structural first, so an agent fixes syntax and shape
 # before it is ever shown a coverage number.
 DEFAULT_GATE_ORDER = [
+    "protect",
     "static",
     "size",
     "complexity",

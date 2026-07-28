@@ -29,6 +29,8 @@ max = 6
 
 LONG_FUNCTION = "def big():\n" + "    x = 1\n" * 30
 
+STOP_PAYLOAD = json.dumps({"hook_event_name": "Stop", "session_id": "s1"})
+
 
 def _text(result: Any) -> str:
     """CliRunner output. Recent click merges stderr into .output; older versions don't."""
@@ -194,3 +196,86 @@ def test_verify_rejects_a_corrupt_lock_file(project: Path) -> None:
     (project / "gauntlet.lock.json").write_text("{not json")
     result = runner.invoke(app, ["verify"])
     assert result.exit_code == EXIT_CONFIG_ERROR
+
+
+def test_protect_gate_runs_first_in_the_report(project: Path) -> None:
+    (project / "gauntlet.toml").write_text(CONFIG + "\n[gates.protect]\n")
+    result = runner.invoke(app, ["check", "--json"])
+    payload = json.loads(_text(result))
+    assert payload["gates"][0]["gate"] == "protect"
+
+
+def test_stop_check_exits_zero_when_the_gates_pass(project: Path) -> None:
+    (project / "src" / "a.py").write_text("def add(a, b):\n    return a + b\n")
+    result = runner.invoke(app, ["stop-check"], input=STOP_PAYLOAD)
+    assert result.exit_code == EXIT_OK
+
+
+def test_stop_check_bounces_the_agent_while_under_the_cap(project: Path) -> None:
+    (project / "src" / "a.py").write_text(LONG_FUNCTION)
+    result = runner.invoke(app, ["stop-check", "--max-attempts", "3"], input=STOP_PAYLOAD)
+    assert result.exit_code == EXIT_GATE_FAILURE
+    assert "GAUNTLET FAILED" in _text(result)
+
+
+def test_stop_check_escalates_to_the_human_at_the_cap(project: Path) -> None:
+    (project / "src" / "a.py").write_text(LONG_FUNCTION)
+    for _ in range(2):
+        runner.invoke(app, ["stop-check", "--max-attempts", "3"], input=STOP_PAYLOAD)
+    result = runner.invoke(app, ["stop-check", "--max-attempts", "3"], input=STOP_PAYLOAD)
+    assert result.exit_code == EXIT_OK
+    assert "systemMessage" in _text(result)
+    assert "3 attempts" in _text(result)
+
+
+def test_a_passing_run_resets_the_attempt_count(project: Path) -> None:
+    (project / "src" / "a.py").write_text(LONG_FUNCTION)
+    runner.invoke(app, ["stop-check", "--max-attempts", "2"], input=STOP_PAYLOAD)
+    (project / "src" / "a.py").write_text("def add(a, b):\n    return a + b\n")
+    runner.invoke(app, ["stop-check", "--max-attempts", "2"], input=STOP_PAYLOAD)
+    (project / "src" / "a.py").write_text(LONG_FUNCTION)
+    result = runner.invoke(app, ["stop-check", "--max-attempts", "2"], input=STOP_PAYLOAD)
+    assert result.exit_code == EXIT_GATE_FAILURE  # back to attempt 1, not escalating
+
+
+def test_init_writes_claude_code_integration(project: Path) -> None:
+    result = runner.invoke(app, ["init"])
+    assert result.exit_code == EXIT_OK
+    assert (project / ".claude" / "settings.json").exists()
+    assert (project / "CLAUDE.md").exists()
+    assert "gauntlet lock" in _text(result)
+
+
+def test_init_is_idempotent(project: Path) -> None:
+    runner.invoke(app, ["init"])
+    first = (project / ".claude" / "settings.json").read_text()
+    result = runner.invoke(app, ["init"])
+    assert (project / ".claude" / "settings.json").read_text() == first
+    assert "unchanged" in _text(result)
+
+
+def test_init_dry_run_writes_nothing(project: Path) -> None:
+    result = runner.invoke(app, ["init", "--dry-run"])
+    assert result.exit_code == EXIT_OK
+    assert not (project / ".claude").exists()
+    assert "would write" in _text(result)
+
+
+def test_init_generic_writes_ci_integration(project: Path) -> None:
+    runner.invoke(app, ["init", "--agent", "generic"])
+    assert (project / ".pre-commit-config.yaml").exists()
+    assert (project / ".github" / "workflows" / "gauntlet.yml").exists()
+
+
+def test_init_rejects_an_unknown_agent(project: Path) -> None:
+    result = runner.invoke(app, ["init", "--agent", "nope"])
+    assert result.exit_code == EXIT_CONFIG_ERROR
+
+
+def test_generated_settings_are_unapproved_until_locked(project: Path) -> None:
+    """init must not self-approve: a human signs off on what it generated."""
+    runner.invoke(app, ["lock"])
+    runner.invoke(app, ["init"])
+    result = runner.invoke(app, ["verify"])
+    assert result.exit_code == EXIT_GATE_FAILURE
+    assert "not approved" in _text(result)

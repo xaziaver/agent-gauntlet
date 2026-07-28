@@ -1,0 +1,54 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "gauntlet",
+            "args": [
+              "guard"
+            ],
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "gauntlet",
+            "args": [
+              "check",
+              "--gates",
+              "static,size,complexity",
+              "--changed",
+              "--json"
+            ],
+            "timeout": 60,
+            "statusMessage": "Gauntlet: fast gates"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "gauntlet",
+            "args": [
+              "stop-check"
+            ],
+            "timeout": 600,
+            "statusMessage": "Gauntlet: full run"
+          }
+        ]
+      }
+    ]
+  }
+}
