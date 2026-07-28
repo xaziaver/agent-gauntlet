@@ -15,7 +15,7 @@ from typing import NoReturn
 
 import typer
 
-from gauntlet import __version__, report
+from gauntlet import __version__, locking, registry, report
 from gauntlet import config as config_mod
 from gauntlet import guard as guard_mod
 from gauntlet.gates import base, complexity, coverage, crap, duplication, size, static, tests
@@ -104,6 +104,22 @@ def _emit(results: list[base.GateResult], max_diags: int, json_out: bool) -> NoR
     raise typer.Exit(code=EXIT_OK if ok else EXIT_GATE_FAILURE)
 
 
+def _load_registry(path: Path) -> registry.Registry:
+    try:
+        return registry.load(path)
+    except registry.RegistryError as exc:
+        _fail(str(exc))
+
+
+def _emit_findings(findings: list[registry.Finding], total: int, lock_name: str) -> NoReturn:
+    if not findings:
+        typer.echo(f"verified {total} path(s) against {lock_name}")
+        raise typer.Exit(code=EXIT_OK)
+    for finding in findings:
+        typer.echo(registry.describe(finding), err=True)
+    raise typer.Exit(code=EXIT_GATE_FAILURE)
+
+
 @app.command()
 def check(
     gates: str = typer.Option("", help="Comma-separated subset, e.g. static,size"),
@@ -150,6 +166,44 @@ def guard() -> None:
         raise typer.Exit(code=EXIT_OK)
     typer.echo(message, err=True)
     raise typer.Exit(code=EXIT_GATE_FAILURE)
+
+
+@app.command()
+def lock() -> None:
+    """Approve the current content of the verified paths.
+
+    This is the deliberate human action the whole mechanism rests on: it records
+    what the thresholds and configuration are *supposed* to be.
+    """
+    root, cfg = _resolve_config()
+    try:
+        updated, skipped = locking.approve_all(root, cfg.verified_paths)
+        registry.save(updated, locking.lock_path(root))
+    except registry.RegistryError as exc:
+        _fail(str(exc))
+
+    for key in sorted(updated.entries):
+        typer.echo(f"approved  {key}")
+    for key in skipped:
+        typer.echo(f"skipped   {key} (does not exist)")
+
+
+@app.command()
+def verify() -> None:
+    """Check verified paths against their approved hashes.
+
+    Route-independent: it catches a change made through Bash, an editor, or a
+    subagent, all of which bypass the PreToolUse guard.
+    """
+    root, cfg = _resolve_config()
+    path = locking.lock_path(root)
+    if not path.exists():
+        typer.echo(f"not locked — run `gauntlet lock` to record approvals in {path.name}")
+        raise typer.Exit(code=EXIT_OK)
+
+    subjects = locking.read_subjects(root, cfg.verified_paths)
+    findings = locking.failures(registry.verify_all(_load_registry(path), subjects))
+    _emit_findings(findings, len(subjects), path.name)
 
 
 @app.command()

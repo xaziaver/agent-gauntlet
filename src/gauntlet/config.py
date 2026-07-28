@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 CONFIG_FILENAME = "gauntlet.toml"
+LOCK_FILENAME = "gauntlet.lock.json"
 REQUIRED_PROJECT_KEYS = ("language", "src", "tests")
 
 # Execution order: cheap and structural first, so an agent fixes syntax and shape
@@ -27,7 +28,15 @@ DEFAULT_PROTECTED_PATHS = (
     "gauntlet.toml",
     ".gauntlet/",
     ".claude/settings.json",
+    LOCK_FILENAME,
     "specs/approved.json",
+)
+
+# Content-verified rather than blocked.
+DEFAULT_VERIFIED_PATHS = (
+    "gauntlet.toml",
+    "pyproject.toml",
+    ".claude/settings.json",
 )
 
 
@@ -55,6 +64,10 @@ class Config:
     @property
     def protected_paths(self) -> list[str]:
         return [str(p) for p in self.protect.get("paths", DEFAULT_PROTECTED_PATHS)]
+
+    @property
+    def verified_paths(self) -> list[str]:
+        return [str(p) for p in self.protect.get("verify", DEFAULT_VERIFIED_PATHS)]
 
 
 def find_root(start: Path | None = None) -> Path:

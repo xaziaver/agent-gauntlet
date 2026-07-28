@@ -160,3 +160,37 @@ def test_guard_fails_open_without_a_config(tmp_path: Path, monkeypatch: pytest.M
     payload = json.dumps({"tool_name": "Edit", "tool_input": {"file_path": "gauntlet.toml"}})
     result = runner.invoke(app, ["guard"], input=payload)
     assert result.exit_code == EXIT_CONFIG_ERROR
+
+
+def test_lock_writes_the_registry(project: Path) -> None:
+    result = runner.invoke(app, ["lock"])
+    assert result.exit_code == EXIT_OK
+    assert (project / "gauntlet.lock.json").exists()
+    assert "approved  gauntlet.toml" in _text(result)
+
+
+def test_verify_without_a_lock_file_passes_with_a_nudge(project: Path) -> None:
+    result = runner.invoke(app, ["verify"])
+    assert result.exit_code == EXIT_OK
+    assert "not locked" in _text(result)
+
+
+def test_verify_passes_immediately_after_lock(project: Path) -> None:
+    runner.invoke(app, ["lock"])
+    result = runner.invoke(app, ["verify"])
+    assert result.exit_code == EXIT_OK
+
+
+def test_verify_catches_a_threshold_weakened_outside_the_guard(project: Path) -> None:
+    """The Bash-bypass case: the guard never fired, verification still catches it."""
+    runner.invoke(app, ["lock"])
+    (project / "gauntlet.toml").write_text(CONFIG.replace("max = 6", "max = 99"))
+    result = runner.invoke(app, ["verify"])
+    assert result.exit_code == EXIT_GATE_FAILURE
+    assert "changed since it was approved" in _text(result)
+
+
+def test_verify_rejects_a_corrupt_lock_file(project: Path) -> None:
+    (project / "gauntlet.lock.json").write_text("{not json")
+    result = runner.invoke(app, ["verify"])
+    assert result.exit_code == EXIT_CONFIG_ERROR

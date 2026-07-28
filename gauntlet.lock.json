@@ -1,0 +1,13 @@
+{
+  "entries": {
+    "gauntlet.toml": {
+      "approved_at": "2026-07-28T09:56:50+00:00",
+      "digest": "sha256:6728e1cbff87fe6ea12fa3083fa51462df9318764524b7c96bd265fd03a274fb"
+    },
+    "pyproject.toml": {
+      "approved_at": "2026-07-28T09:56:50+00:00",
+      "digest": "sha256:c6fa4388c0d5d72571b0c0595d5fb79d34044bc5b80664f02f457e95986c38a6"
+    }
+  },
+  "version": 1
+}
