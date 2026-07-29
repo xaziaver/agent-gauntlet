@@ -13,6 +13,7 @@ from typing import Any, Protocol
 # Editor scratch files: Emacs lock (.#x.py) and autosave (#x.py#), backups (x.py~).
 IGNORED_NAME_PREFIXES = (".#", "#")
 TIMEOUT_RETURNCODE = 124  # conventional shell timeout code
+MISSING_TOOL_RETURNCODE = 127  # conventional shell "command not found"
 
 
 @dataclass(frozen=True)
@@ -84,8 +85,8 @@ class Gate(Protocol):
 def run_cmd(args: list[str], cwd: Path, timeout: int = 600) -> subprocess.CompletedProcess[str]:
     """Uniform subprocess wrapper: captured text output, no exception on nonzero exit.
 
-    A timeout is returned as a normal result (code 124) rather than raised, so a
-    hung tool becomes a gate error instead of a traceback in an agent hook.
+    A timeout or missing executable is returned as a normal result (code 124/127) rather
+    than raised, so a hung tool becomes a gate error instead of a traceback in an agent hook.
     """
     try:
         return subprocess.run(
@@ -97,6 +98,13 @@ def run_cmd(args: list[str], cwd: Path, timeout: int = 600) -> subprocess.Comple
             returncode=TIMEOUT_RETURNCODE,
             stdout="",
             stderr=f"timed out after {timeout}s: {' '.join(args[:3])}",
+        )
+    except (FileNotFoundError, PermissionError) as exc:
+        return subprocess.CompletedProcess(
+            args=args,
+            returncode=MISSING_TOOL_RETURNCODE,
+            stdout="",
+            stderr=f"could not run {args[0]!r}: {exc}. Is it installed and on PATH?",
         )
 
 

@@ -10,13 +10,15 @@ dependencies = [
   "coverage>=7",
   "pytest>=8",
   "pytest-cov>=5",
+  "ruff>=0.6",
+  "mypy>=1.11",
 ]
 
 [project.scripts]
 gauntlet = "gauntlet.cli:app"
 
 [dependency-groups]
-dev = ["ruff>=0.6", "mypy>=1.11"]
+dev = []
 
 [build-system]
 requires = ["hatchling"]

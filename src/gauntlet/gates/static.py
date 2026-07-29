@@ -11,6 +11,7 @@ from gauntlet.gates.base import Diagnostic, GateContext, GateResult, run_cmd, ti
 name = "static"
 
 RUFF_OK_CODES = (0, 1)  # 0 = clean, 1 = findings; anything else is a tool failure
+MYPY_OK_CODES = (0, 1)
 
 
 class _ToolError(Exception):
@@ -75,6 +76,12 @@ def _mypy_diagnostics(ctx: GateContext, targets: list[str]) -> list[Diagnostic]:
         [sys.executable, "-m", "mypy", "--output", "json", "--no-error-summary", *targets],
         cwd=ctx.project_root,
     )
+    if proc.returncode not in MYPY_OK_CODES or (proc.returncode == 1 and not proc.stdout.strip()):
+        # mypy exits 1 both for "errors found" (with output) and "no module named
+        # mypy" (without). Silence plus a nonzero code is a broken tool, not a pass.
+        raise _ToolError(
+            f"mypy exited {proc.returncode}: {(proc.stderr or proc.stdout).strip()[:500]}"
+        )
     return parse_mypy(proc.stdout)
 
 

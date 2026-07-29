@@ -93,3 +93,10 @@ def test_timed_records_a_duration_on_a_frozen_result(tmp_path: Path) -> None:
     result = gate(_ctx(tmp_path), {})
     assert result.gate == "x"
     assert result.duration >= 0.0
+
+
+def test_run_cmd_reports_a_missing_executable_instead_of_raising(tmp_path: Path) -> None:
+    """An uncaught exception in a hook exits 1 and silently disables enforcement."""
+    proc = base.run_cmd(["definitely-not-a-real-binary-xyz"], cwd=tmp_path)
+    assert proc.returncode == base.MISSING_TOOL_RETURNCODE
+    assert "on PATH" in proc.stderr

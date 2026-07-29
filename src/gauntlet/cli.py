@@ -17,6 +17,7 @@ import typer
 
 from gauntlet import __version__, locking, registry, report, runner, scaffold
 from gauntlet import config as config_mod
+from gauntlet import doctor as doctor_mod
 from gauntlet import guard as guard_mod
 from gauntlet import stop as stop_mod
 from gauntlet.gates import base
@@ -230,6 +231,20 @@ def verify() -> None:
     _emit_findings(findings, len(subjects), path.name)
 
 
+@app.command()
+def doctor() -> None:
+    """Check that every enabled gate's tooling is present in THIS environment.
+
+    Run it with the same command your hooks use (bare `gauntlet doctor`, not
+    `uv run gauntlet doctor`) — a broken hook environment fails open silently,
+    and this is how you find out.
+    """
+    _, cfg = _resolve_config()
+    checks = doctor_mod.run_checks(cfg.enabled_gates)
+    typer.echo(doctor_mod.render(checks))
+    raise typer.Exit(code=EXIT_OK if doctor_mod.healthy(checks) else EXIT_CONFIG_ERROR)    
+
+    
 @app.command()
 def version() -> None:
     """Print the gauntlet version."""

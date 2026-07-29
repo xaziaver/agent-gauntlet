@@ -279,3 +279,9 @@ def test_generated_settings_are_unapproved_until_locked(project: Path) -> None:
     result = runner.invoke(app, ["verify"])
     assert result.exit_code == EXIT_GATE_FAILURE
     assert "not approved" in _text(result)
+
+
+def test_doctor_reports_and_exits_by_health(project: Path) -> None:
+    result = runner.invoke(app, ["doctor"])
+    assert result.exit_code in (EXIT_OK, EXIT_CONFIG_ERROR)
+    assert "needed by" in _text(result)
