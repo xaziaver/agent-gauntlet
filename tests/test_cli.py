@@ -285,3 +285,13 @@ def test_doctor_reports_and_exits_by_health(project: Path) -> None:
     result = runner.invoke(app, ["doctor"])
     assert result.exit_code in (EXIT_OK, EXIT_CONFIG_ERROR)
     assert "needed by" in _text(result)
+
+
+def test_init_bootstraps_a_project_from_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    result = runner.invoke(app, ["init"])
+    assert result.exit_code == EXIT_OK
+    assert (tmp_path / "gauntlet.toml").exists()
+    assert (tmp_path / ".claude" / "settings.json").exists()

@@ -19,6 +19,7 @@ from gauntlet import __version__, locking, registry, report, runner, scaffold
 from gauntlet import config as config_mod
 from gauntlet import doctor as doctor_mod
 from gauntlet import guard as guard_mod
+from gauntlet import loop as loop_mod
 from gauntlet import stop as stop_mod
 from gauntlet.gates import base
 
@@ -103,6 +104,42 @@ def _escalate_or_bounce(count: int, max_attempts: int, lines: str) -> NoReturn:
     raise typer.Exit(code=EXIT_GATE_FAILURE)
 
 
+def _loop_settings(
+    cmd: str, task: str, task_file: Path | None, max_iterations: int, timeout: int
+) -> loop_mod.LoopSettings:
+    return loop_mod.LoopSettings(
+        command=cmd,
+        task=loop_mod.read_task(task, task_file),  # may raise LoopError; caller catches
+        max_iterations=max_iterations,
+        timeout=timeout,
+    )
+
+
+@app.command()
+def loop(
+    cmd: str = typer.Option(
+        ..., "--cmd", help='Agent command reading a prompt on stdin, e.g. "claude -p"'
+    ),
+    task: str = typer.Option("", help="The task prompt"),
+    task_file: Path | None = typer.Option(None, help="Read the task prompt from a file"),
+    max_iterations: int = typer.Option(loop_mod.DEFAULT_MAX_ITERATIONS),
+    agent_timeout: int = typer.Option(loop_mod.DEFAULT_AGENT_TIMEOUT),
+) -> None:
+    """Drive an un-hookable agent: run it, run the gates, feed failures back."""
+    root, cfg = _resolve_config()
+    try:
+        settings = _loop_settings(cmd, task, task_file, max_iterations, agent_timeout)
+        passed, last_report = loop_mod.drive(
+            root, cfg, _select_gates("", cfg), settings, typer.echo
+        )
+    except loop_mod.LoopError as exc:
+        _fail(str(exc))
+    if passed:
+        raise typer.Exit(code=EXIT_OK)
+    typer.echo(last_report, err=True)
+    raise typer.Exit(code=EXIT_GATE_FAILURE)
+
+
 @app.command()
 def check(
     gates: str = typer.Option("", help="Comma-separated subset, e.g. static,size"),
@@ -151,10 +188,13 @@ def init(
     fast_gates: str = typer.Option(scaffold.FAST_GATES, help="Gates for the edit-time hook"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Print what would change, write nothing"),
 ) -> None:
-    """Generate agent hooks or CI integration for this project."""
+    """Generate config, agent hooks, or CI integration for this project."""
     if agent not in AGENTS:
         _fail(f"unknown agent {agent!r}. Available: {list(AGENTS)}")
-    root, _ = _resolve_config()
+    try:
+        root = config_mod.find_root()
+    except config_mod.ConfigError:
+        root = Path.cwd()  # a brand-new project: gauntlet.toml is about to be created
 
     for path, content in scaffold.plan(root, agent, fast_gates):
         if dry_run:
@@ -163,7 +203,7 @@ def init(
         typer.echo(f"{scaffold.write(root, path, content).value:<10} {path}")
 
     if not dry_run:
-        typer.echo("\nRun `gauntlet lock` to approve the generated configuration.")
+        typer.echo("\nReview gauntlet.toml, then run `gauntlet lock` to approve it.")
 
 
 @app.command()

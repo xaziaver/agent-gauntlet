@@ -122,11 +122,13 @@ def test_upsert_is_idempotent() -> None:
 
 
 def test_plan_for_claude_code(tmp_path: Path) -> None:
+    (tmp_path / "gauntlet.toml").write_text("[project]\n")
     paths = [p for p, _ in scaffold.plan(tmp_path, "claude-code")]
     assert paths == [scaffold.SETTINGS_PATH, scaffold.CLAUDE_MD]
 
 
 def test_plan_for_generic(tmp_path: Path) -> None:
+    (tmp_path / "gauntlet.toml").write_text("[project]\n")
     paths = [p for p, _ in scaffold.plan(tmp_path, "generic")]
     assert paths == [scaffold.PRECOMMIT_PATH, scaffold.WORKFLOW_PATH]
 
@@ -136,3 +138,14 @@ def test_write_reports_created_then_unchanged(tmp_path: Path) -> None:
     assert scaffold.write(tmp_path, path, "{}\n") is Action.CREATED
     assert scaffold.write(tmp_path, path, "{}\n") is Action.UNCHANGED
     assert scaffold.write(tmp_path, path, '{"a": 1}\n') is Action.UPDATED
+
+
+def test_plan_creates_a_config_when_none_exists(tmp_path: Path) -> None:
+    paths = [p for p, _ in scaffold.plan(tmp_path, "claude-code")]
+    assert scaffold.CONFIG_PATH in paths
+
+
+def test_plan_never_overwrites_an_existing_config(tmp_path: Path) -> None:
+    (tmp_path / "gauntlet.toml").write_text("[project]\n")
+    paths = [p for p, _ in scaffold.plan(tmp_path, "claude-code")]
+    assert scaffold.CONFIG_PATH not in paths

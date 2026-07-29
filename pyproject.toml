@@ -36,5 +36,8 @@ select = ["E", "F", "W", "I", "N", "UP", "B", "SIM", "C4", "PTH", "RET", "ARG"]
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["ARG"]   # pytest fixtures arrive as unused-looking arguments
 
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["typer.Option", "typer.Argument"]
+
 [tool.mypy]
 strict = true

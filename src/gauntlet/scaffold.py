@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 COMMAND = "gauntlet"
+CONFIG_PATH = Path("gauntlet.toml")
 
 # Exact-match tool list: only letters and `|`, so Claude Code compares it as a
 # set of exact names rather than a regular expression.
@@ -71,6 +72,44 @@ jobs:
           name: gauntlet-report
           path: .gauntlet/
           if-no-files-found: ignore
+"""
+
+GAUNTLET_TOML_TEMPLATE = """\
+# Gauntlet quality gates. This file is the human's artifact: edit it, then run
+# `gauntlet lock` to approve it. Agents are blocked from changing it.
+
+[project]
+language = "python"
+src = "src/"
+tests = "tests/"
+
+[output]
+max_diagnostics_per_gate = 10
+
+[gates.protect]
+# require_lock = true   # enable once you have run `gauntlet lock`
+
+[gates.static]
+
+[gates.size]
+max_function_lines = 25
+max_module_lines = 300
+
+[gates.complexity]
+max = 6
+
+[gates.tests]
+
+[gates.coverage]
+line = 90
+branch = 80
+
+[gates.crap]
+max = 15
+
+# Requires jscpd (npm install -g jscpd); enable when installed.
+# [gates.duplication]
+# max_duplicate_blocks = 0
 """
 
 
@@ -193,21 +232,26 @@ def upsert_block(existing_text: str | None, block: str) -> str:
 
 
 def plan(root: Path, agent: str, fast_gates: str = FAST_GATES) -> list[tuple[Path, str]]:
-    """(path, new content) for each file this agent target needs."""
+    """(path, new content) for each file this agent target needs.
+
+    A starter gauntlet.toml is included only when none exists — plan never
+    overwrites the human's thresholds.
+    """
 
     def read(path: Path) -> str | None:
         full = root / path
         return full.read_text(encoding="utf-8") if full.is_file() else None
 
+    entries: list[tuple[Path, str]] = []
+    if read(CONFIG_PATH) is None:
+        entries.append((CONFIG_PATH, GAUNTLET_TOML_TEMPLATE))
     if agent == "claude-code":
-        return [
-            (SETTINGS_PATH, settings_json(read(SETTINGS_PATH), fast_gates)),
-            (CLAUDE_MD, upsert_block(read(CLAUDE_MD), guidance_block())),
-        ]
-    return [
-        (PRECOMMIT_PATH, PRECOMMIT_CONFIG),
-        (WORKFLOW_PATH, GITHUB_WORKFLOW),
-    ]
+        entries.append((SETTINGS_PATH, settings_json(read(SETTINGS_PATH), fast_gates)))
+        entries.append((CLAUDE_MD, upsert_block(read(CLAUDE_MD), guidance_block())))
+    else:
+        entries.append((PRECOMMIT_PATH, PRECOMMIT_CONFIG))
+        entries.append((WORKFLOW_PATH, GITHUB_WORKFLOW))
+    return entries
 
 
 def write(root: Path, path: Path, content: str) -> Action:
