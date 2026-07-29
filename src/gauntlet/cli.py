@@ -242,9 +242,9 @@ def doctor() -> None:
     _, cfg = _resolve_config()
     checks = doctor_mod.run_checks(cfg.enabled_gates)
     typer.echo(doctor_mod.render(checks))
-    raise typer.Exit(code=EXIT_OK if doctor_mod.healthy(checks) else EXIT_CONFIG_ERROR)    
+    raise typer.Exit(code=EXIT_OK if doctor_mod.healthy(checks) else EXIT_CONFIG_ERROR)
 
-    
+
 @app.command()
 def version() -> None:
     """Print the gauntlet version."""

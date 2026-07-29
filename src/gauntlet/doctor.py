@@ -41,7 +41,7 @@ class Check:
 
 def _on_path(executable: str) -> Check:
     found = shutil.which(executable)
-    detail = found or f"not on PATH — gates depending on it will error, not pass"
+    detail = found or "not on PATH — gates depending on it will error, not pass"
     return Check(tool=executable, ok=found is not None, detail=detail)
 
 
@@ -49,8 +49,10 @@ def _importable(tool: str) -> Check:
     """Tools invoked as `python -m` must be importable by THIS interpreter."""
     module = MODULES[tool]
     found = importlib.util.find_spec(module) is not None
-    detail = f"importable by {sys.executable}" if found else (
-        f"module {module!r} not importable by {sys.executable}"
+    detail = (
+        f"importable by {sys.executable}"
+        if found
+        else (f"module {module!r} not importable by {sys.executable}")
     )
     return Check(tool=tool, ok=found, detail=detail)
 
