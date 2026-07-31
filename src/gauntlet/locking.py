@@ -9,6 +9,8 @@ from gauntlet.config import LOCK_FILENAME
 
 FAILING = frozenset({registry.Status.MODIFIED, registry.Status.MISSING, registry.Status.UNAPPROVED})
 
+CONFIG_NAMESPACE = "config"
+
 
 def lock_path(root: Path) -> Path:
     return root / LOCK_FILENAME
@@ -24,15 +26,26 @@ def read_subjects(root: Path, patterns: list[str]) -> dict[str, bytes | None]:
 
 
 def approve_all(root: Path, patterns: list[str]) -> tuple[registry.Registry, list[str]]:
-    """Approve every verified path that exists. Returns the registry and skipped keys."""
-    current = registry.load(lock_path(root))
+    """Approve every verified path that exists, replacing the config namespace.
+
+    Replacing rather than merging means dropping a path from verified_paths also
+    drops its approval, instead of leaving a stale entry behind forever.
+    """
+    current = registry.without_namespace(registry.load(lock_path(root)), CONFIG_NAMESPACE)
     skipped: list[str] = []
     for key, content in read_subjects(root, patterns).items():
         if content is None:
             skipped.append(key)
             continue
-        current = registry.approve(current, key, content)
+        current = registry.approve(current, registry.namespaced(CONFIG_NAMESPACE, key), content)
     return current, skipped
+
+
+def verify_config(
+    root: Path, patterns: list[str], approved: registry.Registry
+) -> list[registry.Finding]:
+    subjects = read_subjects(root, patterns)
+    return failures(registry.verify_namespace(approved, CONFIG_NAMESPACE, subjects))
 
 
 def failures(findings: list[registry.Finding]) -> list[registry.Finding]:

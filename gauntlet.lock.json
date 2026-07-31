@@ -1,16 +1,16 @@
 {
   "entries": {
-    ".claude/settings.json": {
-      "approved_at": "2026-07-29T12:07:32+00:00",
+    "config:.claude/settings.json": {
+      "approved_at": "2026-07-31T11:02:42+00:00",
       "digest": "sha256:bce5a043a7ff06608318ecbafc3c3c2b63dccd5e3cf8a21710fef713b9513122"
     },
-    "gauntlet.toml": {
-      "approved_at": "2026-07-29T12:07:32+00:00",
+    "config:gauntlet.toml": {
+      "approved_at": "2026-07-31T11:02:42+00:00",
       "digest": "sha256:be7e0ba8d5f38aa9ed5c635d47cf223258b5c1193ed9a05cb5219093d514deb8"
     },
-    "pyproject.toml": {
-      "approved_at": "2026-07-29T12:07:32+00:00",
-      "digest": "sha256:635cd450eb72336878213ac7b044a36d75ff8553c8bf2ebc5b094cd274688766"
+    "config:pyproject.toml": {
+      "approved_at": "2026-07-31T11:02:42+00:00",
+      "digest": "sha256:7fad5b3e8e7125879cfc6e5c5d434954f9d8e56dca904641120872e7617d2306"
     }
   },
   "version": 1

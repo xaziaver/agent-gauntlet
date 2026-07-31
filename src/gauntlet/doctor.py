@@ -12,7 +12,7 @@ import shutil
 import sys
 from dataclasses import dataclass
 
-CHECK_ORDER = ("git", "ruff", "mypy", "radon", "pytest", "pytest-cov", "jscpd")
+CHECK_ORDER = ("git", "ruff", "mypy", "radon", "pytest", "pytest-cov", "pytest-bdd", "jscpd")
 
 # Which gates need which tool. Gates absent here need only the standard library.
 GATES_BY_TOOL = {
@@ -22,10 +22,16 @@ GATES_BY_TOOL = {
     "radon": ("complexity", "crap"),
     "pytest": ("tests",),
     "pytest-cov": ("coverage", "crap"),
+    "pytest-bdd": ("acceptance",),
     "jscpd": ("duplication",),
 }
 
-MODULES = {"mypy": "mypy", "pytest": "pytest", "pytest-cov": "pytest_cov"}
+MODULES = {
+    "mypy": "mypy",
+    "pytest": "pytest",
+    "pytest-cov": "pytest_cov",
+    "pytest-bdd": "pytest_bdd",
+}
 
 
 @dataclass(frozen=True)

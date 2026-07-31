@@ -26,6 +26,43 @@ from typing import Any
 SCHEMA_VERSION = 1
 DIGEST_PREFIX = "sha256:"
 
+NAMESPACE_SEPARATOR = ":"
+
+
+def namespaced(namespace: str, key: str) -> str:
+    """`config` + `gauntlet.toml` -> `config:gauntlet.toml`.
+
+    One ledger holds every kind of human approval — configuration today, specs
+    and equivalent mutants next — so keys carry the kind they belong to. One
+    file to protect, one diff to review, one thing for a future dashboard to
+    render as the approval state of the project.
+    """
+    return f"{namespace}{NAMESPACE_SEPARATOR}{key}"
+
+
+def bare(key: str) -> str:
+    """The key without its namespace, for human-facing messages."""
+    _, _, rest = key.partition(NAMESPACE_SEPARATOR)
+    return rest or key
+
+
+def in_namespace(registry: Registry, namespace: str) -> Registry:
+    prefix = namespace + NAMESPACE_SEPARATOR
+    return Registry(entries={k: v for k, v in registry.entries.items() if k.startswith(prefix)})
+
+
+def without_namespace(registry: Registry, namespace: str) -> Registry:
+    prefix = namespace + NAMESPACE_SEPARATOR
+    return Registry(entries={k: v for k, v in registry.entries.items() if not k.startswith(prefix)})
+
+
+def verify_namespace(
+    registry: Registry, namespace: str, subjects: Mapping[str, bytes | None]
+) -> list[Finding]:
+    """Verify one namespace only, so config checks never report specs as missing."""
+    keyed = {namespaced(namespace, key): value for key, value in subjects.items()}
+    return verify_all(in_namespace(registry, namespace), keyed)
+
 
 class RegistryError(Exception):
     """The registry file is malformed. Maps to exit code 1, never 2."""
@@ -163,16 +200,16 @@ def describe(finding: Finding, noun: str = "file") -> str:
     """Prescriptive message for a failing finding. Never called for UNCHANGED."""
     if finding.status is Status.MODIFIED:
         return (
-            f"{finding.key} changed since it was approved. This {noun} is the human's "
+            f"{bare(finding.key)} changed since it was approved. This {noun} is the human's "
             f"artifact, not yours: revert the change, or explain why it should change "
             f"and let the human re-approve it with `gauntlet lock`."
         )
     if finding.status is Status.MISSING:
         return (
-            f"{finding.key} was approved but no longer exists. Restore it, or ask the "
+            f"{bare(finding.key)} was approved but no longer exists. Restore it, or ask the "
             f"human to remove its approval."
         )
     return (
-        f"{finding.key} is not approved. A human must review it and run `gauntlet lock` "
+        f"{bare(finding.key)} is not approved. A human must review it and run `gauntlet lock` "
         f"before it can be relied on."
     )

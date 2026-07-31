@@ -221,9 +221,9 @@ def lock() -> None:
         _fail(str(exc))
 
     for key in sorted(updated.entries):
-        typer.echo(f"approved  {key}")
+        typer.echo(f"approved  {registry.bare(key)}")
     for key in skipped:
-        typer.echo(f"skipped   {key} (does not exist)")
+        typer.echo(f"skipped   {registry.bare(key)} (does not exist)")
 
 
 @app.command(name="stop-check")
@@ -266,9 +266,8 @@ def verify() -> None:
         typer.echo(f"not locked — run `gauntlet lock` to record approvals in {path.name}")
         raise typer.Exit(code=EXIT_OK)
 
-    subjects = locking.read_subjects(root, cfg.verified_paths)
-    findings = locking.failures(registry.verify_all(_load_registry(path), subjects))
-    _emit_findings(findings, len(subjects), path.name)
+    findings = locking.verify_config(root, cfg.verified_paths, _load_registry(path))
+    _emit_findings(findings, len(cfg.verified_paths), path.name)
 
 
 @app.command()

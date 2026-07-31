@@ -110,6 +110,15 @@ max = 15
 # Requires jscpd (npm install -g jscpd); enable when installed.
 # [gates.duplication]
 # max_duplicate_blocks = 0
+
+# Acceptance specs are the human's artifact: the agent drafts them, you approve
+# them with `gauntlet spec approve`, and an agent editing an approved spec fails
+# this gate. Requires pytest-bdd.
+# [gates.acceptance]
+# features = "features/"
+# require_approved = true
+# mutate_examples = true
+# api_boundary = "tests/api"
 """
 
 

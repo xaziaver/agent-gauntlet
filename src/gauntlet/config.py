@@ -22,6 +22,7 @@ DEFAULT_GATE_ORDER = [
     "coverage",
     "crap",
     "duplication",
+    "acceptance",
 ]
 
 # Files that define what the gates require. An agent must not edit these.
@@ -30,7 +31,6 @@ DEFAULT_PROTECTED_PATHS = (
     ".gauntlet/",
     ".claude/settings.json",
     LOCK_FILENAME,
-    "specs/approved.json",
 )
 
 # Content-verified rather than blocked.

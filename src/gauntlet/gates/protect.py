@@ -20,7 +20,9 @@ THRESHOLD = "approved and unchanged"
 
 def _diagnostic(finding: registry.Finding) -> Diagnostic:
     return Diagnostic(
-        file=finding.key, symbol=finding.status.value, message=registry.describe(finding)
+        file=registry.bare(finding.key),
+        symbol=finding.status.value,
+        message=registry.describe(finding),
     )
 
 
@@ -77,5 +79,5 @@ def run(ctx: GateContext, config: dict[str, Any]) -> GateResult:
     except registry.RegistryError as exc:
         return GateResult(gate=name, passed=False, threshold=THRESHOLD, actual=None, error=str(exc))
 
-    subjects = locking.read_subjects(ctx.project_root, ctx.verified_paths)
-    return _result(locking.failures(registry.verify_all(approved, subjects)), len(subjects))
+    findings = locking.verify_config(ctx.project_root, ctx.verified_paths, approved)
+    return _result(findings, len(ctx.verified_paths))
