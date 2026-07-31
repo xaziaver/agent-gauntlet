@@ -11,6 +11,7 @@ from pathlib import Path
 
 from gauntlet import config as config_mod
 from gauntlet.gates import (
+    acceptance,
     base,
     complexity,
     coverage,
@@ -24,7 +25,17 @@ from gauntlet.gates import (
 
 REGISTRY: dict[str, base.Gate] = {
     module.name: module
-    for module in (protect, static, size, complexity, tests, coverage, crap, duplication)
+    for module in (
+        protect,
+        static,
+        size,
+        complexity,
+        tests,
+        coverage,
+        crap,
+        duplication,
+        acceptance,
+    )
 }
 
 

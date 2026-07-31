@@ -32,4 +32,11 @@ max = 15
 max_duplicate_blocks = 0
 
 [protect]
-paths = ["gauntlet.toml", ".gauntlet/", ".claude/settings.json", "specs/approved.json"]
+paths = ["gauntlet.toml", "gauntlet.lock.json", ".gauntlet/", ".claude/settings.json"]
+
+[gates.acceptance]
+features = "features/"
+require_approved = true
+mutate_examples = true
+mutation_sample = 0
+api_boundary = "tests/api"

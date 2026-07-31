@@ -1,6 +1,7 @@
 """Gauntlet CLI.
 
-Exit codes are the agent contract:
+Command definitions only. Shared plumbing lives in cli_support; the spec
+sub-app lives in cli_specs. Exit codes are the agent contract:
     0  all selected gates passed
     1  gauntlet could not run (bad config, unknown gate)
     2  gates failed  <- Claude Code's "block and show stderr" convention
@@ -21,32 +22,24 @@ from gauntlet import doctor as doctor_mod
 from gauntlet import guard as guard_mod
 from gauntlet import loop as loop_mod
 from gauntlet import stop as stop_mod
+from gauntlet.cli_specs import spec_app
+from gauntlet.cli_support import EXIT_CONFIG_ERROR, EXIT_GATE_FAILURE, EXIT_OK
+from gauntlet.cli_support import emit_findings as _emit_findings
+from gauntlet.cli_support import fail as _fail
+from gauntlet.cli_support import load_registry as _load_registry
+from gauntlet.cli_support import resolve_config as _resolve_config
 from gauntlet.gates import base
 
 AGENTS = ("claude-code", "generic")
 
-EXIT_OK, EXIT_CONFIG_ERROR, EXIT_GATE_FAILURE = 0, 1, 2
-
 
 app = typer.Typer(no_args_is_help=True, pretty_exceptions_enable=False)
+app.add_typer(spec_app, name="spec")
 
 
 @app.callback()
 def main() -> None:
     """Gauntlet — deterministic quality gates for AI coding agents."""
-
-
-def _fail(message: str) -> NoReturn:
-    typer.echo(f"config error: {message}", err=True)
-    raise typer.Exit(code=EXIT_CONFIG_ERROR)
-
-
-def _resolve_config() -> tuple[Path, config_mod.Config]:
-    try:
-        root = config_mod.find_root()
-        return root, config_mod.load(root)
-    except config_mod.ConfigError as exc:
-        _fail(str(exc))
 
 
 def _read_stop_payload() -> dict[str, Any]:
@@ -78,22 +71,6 @@ def _emit(results: list[base.GateResult], max_diags: int, json_out: bool) -> NoR
     # Failures go to stderr: agent hooks feed stderr back into the model's context.
     typer.echo(render(results, max_diags), err=not ok)
     raise typer.Exit(code=EXIT_OK if ok else EXIT_GATE_FAILURE)
-
-
-def _load_registry(path: Path) -> registry.Registry:
-    try:
-        return registry.load(path)
-    except registry.RegistryError as exc:
-        _fail(str(exc))
-
-
-def _emit_findings(findings: list[registry.Finding], total: int, lock_name: str) -> NoReturn:
-    if not findings:
-        typer.echo(f"verified {total} path(s) against {lock_name}")
-        raise typer.Exit(code=EXIT_OK)
-    for finding in findings:
-        typer.echo(registry.describe(finding), err=True)
-    raise typer.Exit(code=EXIT_GATE_FAILURE)
 
 
 def _escalate_or_bounce(count: int, max_attempts: int, lines: str) -> NoReturn:
@@ -129,9 +106,8 @@ def loop(
     root, cfg = _resolve_config()
     try:
         settings = _loop_settings(cmd, task, task_file, max_iterations, agent_timeout)
-        passed, last_report = loop_mod.drive(
-            root, cfg, _select_gates("", cfg), settings, typer.echo
-        )
+        passed, last_report = loop_mod.drive
+        (root, cfg, _select_gates("", cfg), settings, typer.echo)
     except loop_mod.LoopError as exc:
         _fail(str(exc))
     if passed:
