@@ -10,6 +10,7 @@ import subprocess
 from pathlib import Path
 
 from gauntlet import config as config_mod
+from gauntlet.adapters import python as python_adapter
 from gauntlet.gates import (
     acceptance,
     base,
@@ -73,6 +74,7 @@ def build_context(
         changed_files=changed_python_files(root) if changed else None,
         enabled_gates=selected,
         verified_paths=cfg.verified_paths,
+        python=python_adapter.interpreter(root, cfg.python),
     )
 
 

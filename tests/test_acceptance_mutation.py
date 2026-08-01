@@ -123,3 +123,46 @@ def test_sample_of_zero_or_more_than_available_returns_everything() -> None:
     found = _mutants()
     assert mutation.sample(found, 0) == found
     assert mutation.sample(found, 999) == found
+
+
+def test_locator_is_structural_not_line_based() -> None:
+    """Inserting a scenario above must not lapse every approval below it."""
+    original = _mutants()
+    shifted = mutation.mutants(
+        gherkin.parse(
+            FEATURE.replace(
+                "Feature: Premium rating\n",
+                "Feature: Premium rating\n\n  Scenario: filler\n    Given x\n",
+            )
+        )
+    )
+    assert {m.locator for m in original} <= {m.locator for m in shifted}
+
+
+def test_locator_distinguishes_cells_in_the_same_row() -> None:
+    row_mutants = [m for m in _mutants() if m.kind == mutation.KIND_EXAMPLE and m.line == 15]
+    assert len({m.locator for m in row_mutants}) == len(row_mutants)
+
+
+def test_changing_a_cell_freshens_only_that_row_s_locators() -> None:
+    """A different example case deserves a fresh judgment — but only that case.
+
+    Approvals for untouched rows must survive an edit elsewhere in the table,
+    or every table edit would lapse every judgment in the feature.
+    """
+    before = {m.locator for m in _mutants()}
+    after = {
+        m.locator
+        for m in mutation.mutants(
+            gherkin.parse(FEATURE.replace("| 1200    | pro_rata", "| 9999    | pro_rata"))
+        )
+    }
+    edited = {loc for loc in before if "1200|pro_rata" in loc}
+    assert edited  # the row had mutants to begin with
+    assert not edited & after  # none of its judgments carry over
+    assert (before - edited) <= after  # every other row keeps its identity
+
+
+def test_signature_describes_the_mutation() -> None:
+    mutant = next(m for m in _mutants() if m.original == "596.72")
+    assert mutant.signature == "596.72->597.72"

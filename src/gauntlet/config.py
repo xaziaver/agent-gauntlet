@@ -53,6 +53,7 @@ class Config:
     gates: dict[str, dict[str, Any]]
     output: dict[str, Any]
     protect: dict[str, Any]
+    python: str | None = None
 
     @property
     def enabled_gates(self) -> list[str]:
@@ -118,6 +119,7 @@ def load(project_root: Path) -> Config:
         language=project["language"],
         src=(project_root / project["src"]).resolve(),
         tests=(project_root / project["tests"]).resolve(),
+        python=project.get("python"),
         gates=raw.get("gates", {}),
         output=raw.get("output", {}),
         protect=raw.get("protect", {}),

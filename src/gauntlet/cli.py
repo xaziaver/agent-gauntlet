@@ -22,6 +22,8 @@ from gauntlet import doctor as doctor_mod
 from gauntlet import guard as guard_mod
 from gauntlet import loop as loop_mod
 from gauntlet import stop as stop_mod
+from gauntlet.adapters import python as python_adapter
+from gauntlet.cli_mutants import mutant_app
 from gauntlet.cli_specs import spec_app
 from gauntlet.cli_support import EXIT_CONFIG_ERROR, EXIT_GATE_FAILURE, EXIT_OK
 from gauntlet.cli_support import emit_findings as _emit_findings
@@ -35,6 +37,7 @@ AGENTS = ("claude-code", "generic")
 
 app = typer.Typer(no_args_is_help=True, pretty_exceptions_enable=False)
 app.add_typer(spec_app, name="spec")
+app.add_typer(mutant_app, name="mutant")
 
 
 @app.callback()
@@ -106,8 +109,10 @@ def loop(
     root, cfg = _resolve_config()
     try:
         settings = _loop_settings(cmd, task, task_file, max_iterations, agent_timeout)
-        passed, last_report = loop_mod.drive
-        (root, cfg, _select_gates("", cfg), settings, typer.echo)
+        passed, last_report = loop_mod.drive(
+            root, cfg, _select_gates("", cfg), settings, typer.echo
+        )
+
     except loop_mod.LoopError as exc:
         _fail(str(exc))
     if passed:
@@ -254,9 +259,10 @@ def doctor() -> None:
     `uv run gauntlet doctor`) — a broken hook environment fails open silently,
     and this is how you find out.
     """
-    _, cfg = _resolve_config()
-    checks = doctor_mod.run_checks(cfg.enabled_gates)
-    typer.echo(doctor_mod.render(checks))
+    root, cfg = _resolve_config()
+    project_python = python_adapter.interpreter(root, cfg.python)
+    checks = doctor_mod.run_checks(cfg.enabled_gates, project_python)
+    typer.echo(doctor_mod.render(checks, project_python))
     raise typer.Exit(code=EXIT_OK if doctor_mod.healthy(checks) else EXIT_CONFIG_ERROR)
 
 

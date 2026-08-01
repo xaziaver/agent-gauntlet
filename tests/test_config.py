@@ -78,3 +78,7 @@ def test_find_root_searches_upward(tmp_path: Path) -> None:
 def test_find_root_raises_when_no_config_anywhere(tmp_path: Path) -> None:
     with pytest.raises(config_mod.ConfigError, match="or any parent"):
         config_mod.find_root(tmp_path)
+
+
+def test_python_is_optional(tmp_path: Path) -> None:
+    assert config_mod.load(_project(tmp_path)).python is None

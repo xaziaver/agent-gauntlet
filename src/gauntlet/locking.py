@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from gauntlet import config as config_mod
 from gauntlet import registry
-from gauntlet.config import LOCK_FILENAME
 
 FAILING = frozenset({registry.Status.MODIFIED, registry.Status.MISSING, registry.Status.UNAPPROVED})
 
@@ -13,7 +13,7 @@ CONFIG_NAMESPACE = "config"
 
 
 def lock_path(root: Path) -> Path:
-    return root / LOCK_FILENAME
+    return root / config_mod.LOCK_FILENAME
 
 
 def read_subjects(root: Path, patterns: list[str]) -> dict[str, bytes | None]:

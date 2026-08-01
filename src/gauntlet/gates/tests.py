@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
@@ -67,7 +66,7 @@ def parse_junit(junit_path: Path) -> tuple[dict[str, int], list[Diagnostic]]:
 
 
 def _pytest_command(ctx: GateContext, junit: Path) -> list[str]:
-    cmd = [sys.executable, "-m", "pytest", str(ctx.tests), "-q", f"--junitxml={junit}"]
+    cmd = [ctx.python, "-m", "pytest", str(ctx.tests), "-q", f"--junitxml={junit}"]
     if COVERAGE_CONSUMERS & set(ctx.enabled_gates):
         # One suite run, all artifacts — the coverage and crap gates read the JSON.
         cmd += [

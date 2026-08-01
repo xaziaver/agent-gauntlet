@@ -142,7 +142,9 @@ def test_decorative_scenarios_are_caught_by_mutation(project: Path) -> None:
     result = acceptance.run(_ctx(project), CONFIG)
     assert result.passed is False
     assert "surviving mutant" in str(result.actual)
-    assert "still passes with this value changed" in result.diagnostics[0].message
+    message = result.diagnostics[0].message
+    assert "->" in message  # names the actual mutation
+    assert "gauntlet mutant approve" in message  # offers the equivalence route
 
 
 def test_mutation_restores_the_feature_file(project: Path) -> None:

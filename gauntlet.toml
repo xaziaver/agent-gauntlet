@@ -2,6 +2,7 @@
 language = "python"
 src = "src/"
 tests = "tests/"
+python = ".venv/bin/python"
 
 [output]
 max_diagnostics_per_gate = 10

@@ -46,10 +46,26 @@ class Mutant:
     original: str
     mutated: str
     kind: str
+    context: str = ""
 
     @property
     def description(self) -> str:
         return f"line {self.line}: {self.original} -> {self.mutated} (scenario: {self.scenario})"
+
+    @property
+    def locator(self) -> str:
+        """Stable identity for the ledger.
+
+        Deliberately not line-based: inserting a scenario above would shift every
+        line and silently lapse every approval. Structural identity survives
+        unrelated edits and changes only when the surrounding case really changes.
+        """
+        return f"{self.scenario}|{self.kind}|{self.context}"
+
+    @property
+    def signature(self) -> str:
+        """The mutation itself — the content whose hash an approval records."""
+        return f"{self.original}->{self.mutated}"
 
 
 def _as_int(value: str) -> int | None:
@@ -107,6 +123,7 @@ def _column_values(table: ExampleTable, column: int) -> list[str]:
 
 def _column_mutants(scenario: str, table: ExampleTable, column: int) -> list[Mutant]:
     alternatives = _column_values(table, column)
+    header = table.headers[column] if column < len(table.headers) else str(column)
     mutants: list[Mutant] = []
     for row in table.rows:
         if column >= len(row.cells):
@@ -123,6 +140,9 @@ def _column_mutants(scenario: str, table: ExampleTable, column: int) -> list[Mut
                 original=cell.value,
                 mutated=mutated,
                 kind=KIND_EXAMPLE,
+                # The whole row: if any other value in this case changes, the case
+                # is different and an earlier judgment about it should be revisited.
+                context=f"{header}|{'|'.join(row.values)}",
             )
         )
     return mutants
@@ -154,6 +174,7 @@ def _step_mutants(scenario: str, step: Step) -> list[Mutant]:
                 original=original,
                 mutated=mutated,
                 kind=KIND_LITERAL,
+                context=f"{step.keyword} {step.text}",
             )
         )
     return mutants

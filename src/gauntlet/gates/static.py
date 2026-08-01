@@ -73,7 +73,17 @@ def _ruff_diagnostics(ctx: GateContext, targets: list[str]) -> list[Diagnostic]:
 
 def _mypy_diagnostics(ctx: GateContext, targets: list[str]) -> list[Diagnostic]:
     proc = run_cmd(
-        [sys.executable, "-m", "mypy", "--output", "json", "--no-error-summary", *targets],
+        [
+            sys.executable,
+            "-m",
+            "mypy",
+            "--python-executable",
+            ctx.python,
+            "--output",
+            "json",
+            "--no-error-summary",
+            *targets,
+        ],
         cwd=ctx.project_root,
     )
     if proc.returncode not in MYPY_OK_CODES or (proc.returncode == 1 and not proc.stdout.strip()):

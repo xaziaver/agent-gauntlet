@@ -83,6 +83,8 @@ class Entry:
     key: str
     digest: str
     approved_at: str
+    reason: str = ""
+    reviewer: str = ""
 
 
 @dataclass(frozen=True)
@@ -118,6 +120,8 @@ def _parse_entry(key: str, value: Any, path: Path) -> Entry:
         key=key,
         digest=str(value["digest"]),
         approved_at=str(value.get("approved_at", "")),
+        reason=str(value.get("reason", "")),
+        reviewer=str(value.get("reviewer", "")),
     )
 
 
@@ -144,6 +148,34 @@ def load(path: Path) -> Registry:
     return Registry(entries=_parse(raw, path))
 
 
+def approve(
+    registry: Registry,
+    key: str,
+    content: bytes,
+    when: str | None = None,
+    reason: str = "",
+    reviewer: str = "",
+) -> Registry:
+    """A new registry with `key` approved at its current content."""
+    entry = Entry(
+        key=key,
+        digest=digest(content),
+        approved_at=when or _now(),
+        reason=reason,
+        reviewer=reviewer,
+    )
+    return Registry(entries={**registry.entries, key: entry})
+
+
+def _entry_payload(entry: Entry) -> dict[str, str]:
+    payload = {"digest": entry.digest, "approved_at": entry.approved_at}
+    if entry.reason:
+        payload["reason"] = entry.reason
+    if entry.reviewer:
+        payload["reviewer"] = entry.reviewer
+    return payload
+
+
 def save(registry: Registry, path: Path) -> None:
     """Write deterministically: sorted keys, stable indent, trailing newline.
 
@@ -151,19 +183,10 @@ def save(registry: Registry, path: Path) -> None:
     """
     payload = {
         "version": SCHEMA_VERSION,
-        "entries": {
-            key: {"digest": entry.digest, "approved_at": entry.approved_at}
-            for key, entry in sorted(registry.entries.items())
-        },
+        "entries": {key: _entry_payload(entry) for key, entry in sorted(registry.entries.items())},
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-
-
-def approve(registry: Registry, key: str, content: bytes, when: str | None = None) -> Registry:
-    """A new registry with `key` approved at its current content."""
-    entry = Entry(key=key, digest=digest(content), approved_at=when or _now())
-    return Registry(entries={**registry.entries, key: entry})
 
 
 def revoke(registry: Registry, key: str) -> Registry:

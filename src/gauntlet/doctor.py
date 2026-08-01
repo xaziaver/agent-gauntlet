@@ -7,8 +7,8 @@ command that makes that state visible.
 
 from __future__ import annotations
 
-import importlib.util
 import shutil
+import subprocess
 import sys
 from dataclasses import dataclass
 
@@ -26,12 +26,9 @@ GATES_BY_TOOL = {
     "jscpd": ("duplication",),
 }
 
-MODULES = {
-    "mypy": "mypy",
-    "pytest": "pytest",
-    "pytest-cov": "pytest_cov",
-    "pytest-bdd": "pytest_bdd",
-}
+PROJECT_MODULES = {"pytest": "pytest", "pytest-cov": "pytest_cov", "pytest-bdd": "pytest_bdd"}
+
+OWN_MODULES = {"mypy": "mypy"}
 
 
 @dataclass(frozen=True)
@@ -51,31 +48,42 @@ def _on_path(executable: str) -> Check:
     return Check(tool=executable, ok=found is not None, detail=detail)
 
 
-def _importable(tool: str) -> Check:
-    """Tools invoked as `python -m` must be importable by THIS interpreter."""
-    module = MODULES[tool]
-    found = importlib.util.find_spec(module) is not None
-    detail = (
-        f"importable by {sys.executable}"
-        if found
-        else (f"module {module!r} not importable by {sys.executable}")
+def _importable_by(tool: str, module: str, python: str) -> Check:
+    proc = subprocess.run(
+        [python, "-c", f"import {module}"], capture_output=True, text=True, check=False
     )
-    return Check(tool=tool, ok=found, detail=detail)
+    detail = (
+        f"importable by {python}"
+        if proc.returncode == 0
+        else (f"module {module!r} not importable by {python}")
+    )
+    return Check(tool=tool, ok=proc.returncode == 0, detail=detail)
 
 
-def run_checks(enabled_gates: list[str]) -> list[Check]:
+def _check_for(tool: str, python: str) -> Check:
+    if tool in PROJECT_MODULES:
+        return _importable_by(tool, PROJECT_MODULES[tool], python)
+    if tool in OWN_MODULES:
+        return _importable_by(tool, OWN_MODULES[tool], sys.executable)
+    return _on_path(tool)
+
+
+def run_checks(enabled_gates: list[str], python: str | None = None) -> list[Check]:
     """One check per tool any enabled gate (or --changed) depends on."""
+    resolved = python or sys.executable
     relevant = set(enabled_gates) | {"--changed"}
-    checks: list[Check] = []
-    for tool in CHECK_ORDER:
-        if not relevant & set(GATES_BY_TOOL[tool]):
-            continue
-        checks.append(_importable(tool) if tool in MODULES else _on_path(tool))
-    return checks
+    return [
+        _check_for(tool, resolved) for tool in CHECK_ORDER if relevant & set(GATES_BY_TOOL[tool])
+    ]
 
 
-def render(checks: list[Check]) -> str:
-    lines = [f"gauntlet: {sys.argv[0]}", f"python:   {sys.executable}", ""]
+def render(checks: list[Check], python: str | None = None) -> str:
+    lines = [
+        f"gauntlet: {sys.argv[0]}",
+        f"gauntlet python: {sys.executable}",
+        f"project python:  {python or sys.executable}",
+        "",
+    ]
     for check in checks:
         mark = "ok " if check.ok else "MISSING"
         lines.append(f"{mark:<8} {check.tool:<11} needed by {', '.join(check.gates)}")

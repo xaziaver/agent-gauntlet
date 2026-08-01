@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import functools
 import subprocess
+import sys
 import time
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
@@ -60,6 +61,7 @@ class GateContext:
     changed_files: list[Path] | None = None  # None = full run
     enabled_gates: list[str] = field(default_factory=list)
     verified_paths: list[str] = field(default_factory=list)
+    python: str = field(default_factory=lambda: sys.executable)
 
     def python_files(self) -> list[Path]:
         """Analyzable Python files under src/, narrowed to changed files with --changed."""
