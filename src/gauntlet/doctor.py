@@ -11,6 +11,7 @@ import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
+from pathlib import Path
 
 CHECK_ORDER = (
     "git",
@@ -93,20 +94,53 @@ def run_checks(enabled_gates: list[str], python: str | None = None) -> list[Chec
     ]
 
 
-def render(checks: list[Check], python: str | None = None) -> str:
-    lines = [
+def _check_lines(check: Check) -> list[str]:
+    mark = "ok " if check.ok else "MISSING"
+    lines = [f"{mark:<8} {check.tool:<11} needed by {', '.join(check.gates)}"]
+    if not check.ok:
+        lines.append(f"         {check.detail}")
+    return lines
+
+
+def _header(python: str | None) -> list[str]:
+    return [
         f"gauntlet: {sys.argv[0]}",
         f"gauntlet python: {sys.executable}",
         f"project python:  {python or sys.executable}",
         "",
     ]
+
+
+def render(
+    checks: list[Check], python: str | None = None, warnings: list[str] | None = None
+) -> str:
+    lines = _header(python)
     for check in checks:
-        mark = "ok " if check.ok else "MISSING"
-        lines.append(f"{mark:<8} {check.tool:<11} needed by {', '.join(check.gates)}")
-        if not check.ok:
-            lines.append(f"         {check.detail}")
+        lines.extend(_check_lines(check))
+    lines.extend(f"\nWARNING  {warning}" for warning in warnings or [])
     return "\n".join(lines)
 
 
 def healthy(checks: list[Check]) -> bool:
     return all(check.ok for check in checks)
+
+
+def mutants_dir_warning(root: Path, enabled_gates: list[str]) -> str | None:
+    """mutmut's ./mutants copy collides with the project's own test collection."""
+    if "mutation" not in enabled_gates or not (root / "mutants").is_dir():
+        return None
+    config = root / "pyproject.toml"
+    text = config.read_text(encoding="utf-8") if config.is_file() else ""
+    if "--ignore=mutants" in text or "--ignore ./mutants" in text:
+        return None
+    return (
+        "./mutants exists (created by mutmut) and pytest is not ignoring it. "
+        'Add addopts = "--ignore=mutants" under [tool.pytest.ini_options], '
+        "and put mutants/ in .gitignore."
+    )
+
+
+def warnings_for(root: Path, enabled_gates: list[str]) -> list[str]:
+    """Advisory environment problems: real, but not a missing tool."""
+    found = [mutants_dir_warning(root, enabled_gates)]
+    return [w for w in found if w is not None]

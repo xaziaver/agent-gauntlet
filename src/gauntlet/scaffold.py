@@ -125,6 +125,10 @@ max = 15
 #     [tool.mutmut]
 #     source_paths = ["src/"]
 #     pytest_add_cli_args_test_selection = ["tests/"]
+# mutmut copies the project into ./mutants, so also add:
+#     [tool.pytest.ini_options]
+#     addopts = "--ignore=mutants"
+# and put `mutants/` and `.mutmut-cache` in .gitignore.
 # [gates.mutation]
 # min_score = 90
 # scope = "changed"      # changed | full

@@ -91,6 +91,20 @@ def _place(result: Classification[M], finding: registry.Finding, mutant: M | Non
         bucket.append(mutant)
 
 
+def _subject_scope(approved: registry.Registry, subject_key: str) -> registry.Registry:
+    """Only approvals belonging to this subject.
+
+    The mutant namespace holds acceptance and code approvals together. Without
+    scoping, a code-mutant run reports every acceptance approval as stale — and
+    `prune-code` would delete them.
+    """
+    prefix = f"{subject_key}#"
+    scoped = registry.in_namespace(approved, MUTANT_NAMESPACE)
+    return registry.Registry(
+        entries={k: v for k, v in scoped.entries.items() if registry.bare(k).startswith(prefix)}
+    )
+
+
 def classify(
     approved: registry.Registry, subject_key: str, survivors: list[M]
 ) -> Classification[M]:
@@ -101,7 +115,7 @@ def classify(
     """
     by_key = {key_for(subject_key, m): m for m in survivors}
     findings = registry.verify_namespace(
-        approved, MUTANT_NAMESPACE, subjects(subject_key, survivors)
+        _subject_scope(approved, subject_key), MUTANT_NAMESPACE, subjects(subject_key, survivors)
     )
     result: Classification[M] = Classification()
     for finding in findings:

@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import re
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from gauntlet.adapters.base import RunResult
@@ -17,6 +17,7 @@ VENV_CANDIDATES = (Path(".venv") / "bin" / "python", Path(".venv") / "Scripts" /
 MUTMUT_RESULT_LINE = re.compile(r"^\s*(?P<name>[\w.]+):\s*(?P<status>\w+)\s*$")
 SURVIVED = "survived"
 MUTANT_SUFFIX = re.compile(r"__mutmut_\d+$")
+MUTMUT_PROGRESS = re.compile(r"(?:^|\s)(\d+)/(\d+)(?:\s|$)")
 
 
 def interpreter(root: Path, configured: str | None = None) -> str:
@@ -157,13 +158,39 @@ def module_filter(src: Path, changed: list[Path]) -> list[str]:
     return sorted({name for name in names if name is not None})
 
 
-def run_mutmut(root: Path, python: str, filters: list[str], timeout: int) -> RunResult:
-    """Run mutmut, then collect results. Its exit code reflects survivors, not failure."""
+@dataclass(frozen=True)
+class MutationRun:
+    ok: bool
+    total: int = 0
+    survivors: list[str] = field(default_factory=list)
+    error: str = ""
+
+
+def parse_total(payload: str) -> int:
+    """Total mutants, from mutmut's `N/M` progress fraction.
+
+    Only the fraction is read, never the emoji counters beside it: those are for
+    humans and will break the day an emoji changes.
+    """
+    return max((int(m.group(2)) for m in MUTMUT_PROGRESS.finditer(payload)), default=0)
+
+
+def run_mutmut(root: Path, python: str, filters: list[str], timeout: int) -> MutationRun:
+    """Run mutmut and collect survivors.
+
+    `mutmut results` lists only unkilled mutants, so the killed count is derived
+    from the run total rather than by counting status lines.
+    """
     proc = run_cmd([python, "-m", "mutmut", "run", *filters], cwd=root, timeout=timeout)
     if proc.returncode == MISSING_TOOL_RETURNCODE:
-        return RunResult(passed=False, output=proc.stderr)
+        return MutationRun(ok=False, error=proc.stderr)
+    total = parse_total(proc.stdout + proc.stderr)
+    if total == 0:
+        return MutationRun(ok=False, error=(proc.stderr or proc.stdout).strip()[:800])
     results = run_cmd([python, "-m", "mutmut", "results"], cwd=root, timeout=timeout)
-    return RunResult(passed=True, output=results.stdout)
+    return MutationRun(
+        ok=True, total=total, survivors=parse_results(results.stdout).get(SURVIVED, [])
+    )
 
 
 def show_mutant(root: Path, python: str, name: str, timeout: int = 60) -> tuple[str, str]:

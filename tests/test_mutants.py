@@ -63,3 +63,10 @@ def test_approving_one_mutant_leaves_other_namespaces_alone(tmp_path: Path) -> N
     registry.save(seeded, locking.lock_path(tmp_path))
     approved = mutants.approve(tmp_path, FEATURE_KEY, [_mutant()], reason="x")
     assert "spec:features/triage.feature" in approved.entries
+
+
+def test_one_subject_never_reports_another_subject_s_approvals_as_stale(tmp_path: Path) -> None:
+    """prune-code would otherwise delete every acceptance approval."""
+    approved = mutants.approve(tmp_path, "features/a.feature", [_mutant()], reason="x")
+    result = mutants.classify(approved, "code", [])
+    assert result.stale == []

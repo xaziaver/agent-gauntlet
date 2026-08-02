@@ -17,6 +17,43 @@ ALL_GATES = [
 ]
 
 
+def _project(tmp_path: Path, pyproject: str = "") -> Path:
+    (tmp_path / "mutants").mkdir()
+    if pyproject:
+        (tmp_path / "pyproject.toml").write_text(pyproject)
+    return tmp_path
+
+
+def test_no_warning_when_the_mutation_gate_is_off(tmp_path: Path) -> None:
+    assert doctor.warnings_for(_project(tmp_path), ["tests"]) == []
+
+
+def test_no_warning_without_a_mutants_directory(tmp_path: Path) -> None:
+    assert doctor.warnings_for(tmp_path, ["mutation"]) == []
+
+
+def test_a_mutants_directory_without_the_pytest_ignore_warns(tmp_path: Path) -> None:
+    """Otherwise a bare `pytest` fails with an opaque import-file-mismatch error."""
+    warnings = doctor.warnings_for(_project(tmp_path), ["mutation"])
+    assert len(warnings) == 1
+    assert "--ignore=mutants" in warnings[0]
+
+
+def test_the_configured_ignore_silences_the_warning(tmp_path: Path) -> None:
+    pyproject = '[tool.pytest.ini_options]\naddopts = "--ignore=mutants"\n'
+    assert doctor.warnings_for(_project(tmp_path, pyproject), ["mutation"]) == []
+
+
+def test_render_shows_warnings(tmp_path: Path) -> None:
+    text = doctor.render(doctor.run_checks(["static"]), None, ["something is off"])
+    assert "WARNING  something is off" in text
+
+
+def test_warnings_do_not_make_the_environment_unhealthy() -> None:
+    """A warning is advisory: the gates pass pytest an explicit path and are unaffected."""
+    assert doctor.healthy(doctor.run_checks(["static"])) is True
+
+
 def test_checks_cover_only_the_enabled_gates() -> None:
     tools = [c.tool for c in doctor.run_checks(["size"])]
     assert tools == ["git"]  # only the --changed dependency remains

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 import pytest
 
 from gauntlet.adapters import python as adapter
+from gauntlet.gates.base import MISSING_TOOL_RETURNCODE
 
 RESULTS = """\
 survived
@@ -92,3 +94,83 @@ def test_module_filter_skips_files_outside_the_source_tree(tmp_path: Path) -> No
     src = tmp_path / "src"
     src.mkdir()
     assert adapter.module_filter(src, [tmp_path / "setup.py"]) == []
+
+
+def test_parse_total_reads_the_progress_fraction() -> None:
+    assert adapter.parse_total("⠏ 62/62  🎉 55 🫥 0  ⏰ 0  🙁 7  🔇 0\n") == 62
+
+
+def test_parse_total_takes_the_largest_fraction_seen() -> None:
+    payload = "⠇ 0/62  🎉 0\n⠏ 62/62  🎉 55\n"
+    assert adapter.parse_total(payload) == 62
+
+
+def test_parse_total_of_empty_output_is_zero() -> None:
+    assert adapter.parse_total("") == 0
+
+
+RUN_OUTPUT = "⠏ 62/62  🎉 55 🫥 0  ⏰ 0  🙁 7  🔇 0\n"
+RESULTS_OUTPUT = "    policy.x__is_high__mutmut_2: survived\n"
+
+
+def _proc(stdout: str = "", stderr: str = "", code: int = 0) -> subprocess.CompletedProcess[str]:
+    return subprocess.CompletedProcess(
+        args=["mutmut"], returncode=code, stdout=stdout, stderr=stderr
+    )
+
+
+def _fake_run_cmd(outputs: list[subprocess.CompletedProcess[str]]):
+    """Returns each canned result in turn: `mutmut run`, then `mutmut results`."""
+    calls = iter(outputs)
+
+    def fake(args: list[str], cwd: Path, timeout: int = 600) -> subprocess.CompletedProcess[str]:
+        return next(calls)
+
+    return fake
+
+
+def test_run_mutmut_reports_total_and_survivors(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        adapter, "run_cmd", _fake_run_cmd([_proc(RUN_OUTPUT), _proc(RESULTS_OUTPUT)])
+    )
+    outcome = adapter.run_mutmut(tmp_path, "python", [], 60)
+    assert outcome.ok is True
+    assert outcome.total == 62
+    assert outcome.survivors == ["policy.x__is_high__mutmut_2"]
+
+
+def test_run_mutmut_reports_a_missing_tool(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        adapter,
+        "run_cmd",
+        _fake_run_cmd([_proc(stderr="could not run 'mutmut'", code=MISSING_TOOL_RETURNCODE)]),
+    )
+    outcome = adapter.run_mutmut(tmp_path, "python", [], 60)
+    assert outcome.ok is False
+    assert "mutmut" in outcome.error
+
+
+def test_a_run_that_produces_no_mutants_is_an_error_not_a_perfect_score(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No progress fraction means mutmut never ran; scoring that as 100% would lie."""
+    monkeypatch.setattr(
+        adapter, "run_cmd", _fake_run_cmd([_proc(stderr="no [tool.mutmut] section")])
+    )
+    outcome = adapter.run_mutmut(tmp_path, "python", [], 60)
+    assert outcome.ok is False
+    assert "tool.mutmut" in outcome.error
+
+
+def test_filters_are_passed_through(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: list[list[str]] = []
+
+    def fake(args: list[str], cwd: Path, timeout: int = 600) -> subprocess.CompletedProcess[str]:
+        seen.append(args)
+        return _proc(RUN_OUTPUT) if "run" in args else _proc(RESULTS_OUTPUT)
+
+    monkeypatch.setattr(adapter, "run_cmd", fake)
+    adapter.run_mutmut(tmp_path, "python", ["pkg.rating*"], 60)
+    assert "pkg.rating*" in seen[0]

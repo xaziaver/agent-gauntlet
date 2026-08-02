@@ -5,18 +5,12 @@ from pathlib import Path
 import pytest
 
 from gauntlet.adapters import python as python_adapter
-from gauntlet.adapters.base import RunResult
+from gauntlet.adapters.python import MutationRun
 from gauntlet.gates import mutation
 from gauntlet.gates.base import GateContext
 
-RESULTS = """\
-    m.x_f__mutmut_1: killed
-    m.x_f__mutmut_2: survived
-    m.x_g__mutmut_3: killed
-    m.x_g__mutmut_4: killed
-"""
-
-DIFF = "--- m.py\n+++ m.py\n-    return a > b\n+    return a >= b\n"
+SURVIVORS = ["m.x_f__mutmut_2"]
+TOTAL = 4  # 3 killed, 1 survived
 
 
 @pytest.fixture
@@ -35,7 +29,9 @@ def _ctx(root: Path, changed: list[Path] | None = None) -> GateContext:
 @pytest.fixture
 def fake_mutmut(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        python_adapter, "run_mutmut", lambda *a, **k: RunResult(passed=True, output=RESULTS)
+        python_adapter,
+        "run_mutmut",
+        lambda *a, **k: MutationRun(ok=True, total=TOTAL, survivors=SURVIVORS),
     )
     monkeypatch.setattr(
         python_adapter, "show_mutant", lambda *a, **k: ("return a > b", "return a >= b")
@@ -55,7 +51,7 @@ def test_score_counts_reviewed_equivalents_as_killed(
 def test_a_surviving_mutant_below_the_threshold_fails(project: Path, fake_mutmut: None) -> None:
     result = mutation.run(_ctx(project), {"min_score": 90, "scope": "full"})
     assert result.passed is False
-    assert "75.0%" in str(result.actual)
+    assert "75.0%" in str(result.actual)  # 3 of 4 killed
 
 
 def test_the_same_run_passes_under_a_lower_threshold(project: Path, fake_mutmut: None) -> None:
@@ -90,13 +86,14 @@ def test_a_mutmut_failure_is_an_error_not_a_pass(
     monkeypatch.setattr(
         python_adapter,
         "run_mutmut",
-        lambda *a, **k: RunResult(passed=False, output="could not run 'mutmut'"),
+        lambda *a, **k: MutationRun(ok=False, error="could not run 'mutmut'"),
     )
     result = mutation.run(_ctx(project), {"scope": "full"})
     assert result.passed is False
     assert "mutmut" in (result.error or "")
 
 
-def test_timeouts_count_as_killed() -> None:
-    buckets = python_adapter.parse_results("    m.x_f__mutmut_1: timeout\n")
-    assert mutation._killed_count(buckets) == 1
+def test_killed_is_derived_from_the_run_total(project: Path, fake_mutmut: None) -> None:
+    """`mutmut results` lists only unkilled mutants — counting its lines gave 0 killed."""
+    result = mutation.run(_ctx(project), {"min_score": 0, "scope": "full"})
+    assert "3 killed" in str(result.actual)

@@ -201,7 +201,7 @@ def lock() -> None:
     except registry.RegistryError as exc:
         _fail(str(exc))
 
-    for key in sorted(updated.entries):
+    for key in sorted(registry.in_namespace(updated, locking.CONFIG_NAMESPACE).entries):
         typer.echo(f"approved  {registry.bare(key)}")
     for key in skipped:
         typer.echo(f"skipped   {registry.bare(key)} (does not exist)")
@@ -262,7 +262,8 @@ def doctor() -> None:
     root, cfg = _resolve_config()
     project_python = python_adapter.interpreter(root, cfg.python)
     checks = doctor_mod.run_checks(cfg.enabled_gates, project_python)
-    typer.echo(doctor_mod.render(checks, project_python))
+    warnings = doctor_mod.warnings_for(root, cfg.enabled_gates)
+    typer.echo(doctor_mod.render(checks, project_python, warnings))
     raise typer.Exit(code=EXIT_OK if doctor_mod.healthy(checks) else EXIT_CONFIG_ERROR)
 
 

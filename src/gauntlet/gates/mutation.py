@@ -30,8 +30,6 @@ SUBJECT = "code"
 
 DEFAULT_MIN_SCORE = 90.0
 SURVIVED = "survived"
-# A mutant that hangs the suite was detected by it, so a timeout counts as killed.
-KILLED_BUCKETS = ("killed", "timeout")
 SKIPPED_BUCKETS = ("skipped", "suspicious")
 MAX_SURVIVORS_INSPECTED = 40
 
@@ -44,10 +42,6 @@ def score(killed: int, equivalent: int, unresolved: int) -> float:
     if total == 0:
         return 100.0
     return round(100.0 * (killed + equivalent) / total, 2)
-
-
-def _killed_count(buckets: dict[str, list[str]]) -> int:
-    return sum(len(buckets.get(bucket, [])) for bucket in KILLED_BUCKETS)
 
 
 def _filters(ctx: GateContext, config: dict[str, Any]) -> list[str] | None:
@@ -81,16 +75,11 @@ class MutmutError(Exception):
 
 
 def survivors_for(root: Path, python: str, filters: list[str], timeout: int) -> list[CodeMutant]:
-    """Run mutmut and return the survivors, fully described.
-
-    The single entry point for "what survived": the gate and the CLI must never
-    disagree about that, and only one of them should know how mutmut is invoked.
-    """
+    """Run mutmut and return the survivors, fully described."""
     outcome = python_adapter.run_mutmut(root, python, filters, timeout)
-    if not outcome.passed:
-        raise MutmutError(outcome.output)
-    buckets = python_adapter.parse_results(outcome.output)
-    return collect(root, python, buckets.get(SURVIVED, []), timeout=SHOW_TIMEOUT)
+    if not outcome.ok:
+        raise MutmutError(outcome.error)
+    return collect(root, python, outcome.survivors, SHOW_TIMEOUT)
 
 
 def _diagnostic(mutant: CodeMutant) -> Diagnostic:
@@ -160,13 +149,12 @@ def run(ctx: GateContext, config: dict[str, Any]) -> GateResult:
 
     timeout = int(config.get("timeout", 1800))
     outcome = python_adapter.run_mutmut(ctx.project_root, ctx.python, filters, timeout)
-    if not outcome.passed:
+    if not outcome.ok:
         return GateResult(
-            gate=name, passed=False, threshold=threshold, actual=None, error=outcome.output[:800]
+            gate=name, passed=False, threshold=threshold, actual=None, error=outcome.error[:800]
         )
 
-    buckets = python_adapter.parse_results(outcome.output)
-    survivors = collect(ctx.project_root, ctx.python, buckets.get(SURVIVED, []), SHOW_TIMEOUT)
+    survivors = collect(ctx.project_root, ctx.python, outcome.survivors, SHOW_TIMEOUT)
     approved = registry.load(locking.lock_path(ctx.project_root))
     verdict = mutants_mod.classify(approved, SUBJECT, survivors)
-    return _judge(verdict, _killed_count(buckets), min_score, require_review)
+    return _judge(verdict, outcome.total - len(outcome.survivors), min_score, require_review)
