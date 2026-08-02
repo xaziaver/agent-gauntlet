@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from gauntlet import config as config_mod
-from gauntlet import report, runner
+from gauntlet import events, report, runner
 
 DEFAULT_MAX_ITERATIONS = 5
 DEFAULT_AGENT_TIMEOUT = 1800
@@ -121,14 +121,16 @@ def drive(
     selected: list[str],
     settings: LoopSettings,
     echo: Callable[..., None],
+    log: events.Log | None = None,
 ) -> tuple[bool, str]:
-    """The whole loop: agent -> gates -> feed the report back. -> (passed, last report)."""
+    sink = log or events.disabled()
     prompt = first_prompt(settings.task)
     last_report = ""
     for iteration in range(1, settings.max_iterations + 1):
+        sink.emit(events.AGENT_ITERATION, iteration=iteration, max=settings.max_iterations)
         echo(f"=== gauntlet loop: iteration {iteration}/{settings.max_iterations} ===")
         _turn(settings.command, prompt, root, settings.timeout, echo)
-        results = runner.run_full_gauntlet(root, cfg, selected)
+        results = runner.run_full_gauntlet(root, cfg, selected, sink)
         if report.passed(results):
             echo(f"GAUNTLET PASSED after {iteration} iteration(s)")
             return True, ""

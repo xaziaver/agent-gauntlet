@@ -16,28 +16,33 @@ from typing import Any, NoReturn
 
 import typer
 
-from gauntlet import __version__, locking, registry, report, runner, scaffold
+from gauntlet import __version__, events, report, runner, scaffold
 from gauntlet import config as config_mod
 from gauntlet import doctor as doctor_mod
 from gauntlet import guard as guard_mod
-from gauntlet import loop as loop_mod
 from gauntlet import stop as stop_mod
 from gauntlet.adapters import python as python_adapter
+from gauntlet.cli_approvals import lock, verify
+from gauntlet.cli_events import events_app
+from gauntlet.cli_loop import loop_app
 from gauntlet.cli_mutants import mutant_app
 from gauntlet.cli_specs import spec_app
 from gauntlet.cli_support import EXIT_CONFIG_ERROR, EXIT_GATE_FAILURE, EXIT_OK
-from gauntlet.cli_support import emit_findings as _emit_findings
 from gauntlet.cli_support import fail as _fail
-from gauntlet.cli_support import load_registry as _load_registry
 from gauntlet.cli_support import resolve_config as _resolve_config
+from gauntlet.cli_support import select_gates as _select_gates
 from gauntlet.gates import base
 
 AGENTS = ("claude-code", "generic")
 
 
 app = typer.Typer(no_args_is_help=True, pretty_exceptions_enable=False)
+app.command("lock")(lock)
+app.command("verify")(verify)
+app.add_typer(loop_app, name="loop")
 app.add_typer(spec_app, name="spec")
 app.add_typer(mutant_app, name="mutant")
+app.add_typer(events_app, name="events")
 
 
 @app.callback()
@@ -54,20 +59,6 @@ def _read_stop_payload() -> dict[str, Any]:
     return payload if isinstance(payload, dict) else {}
 
 
-def _parse_gate_list(requested: str) -> list[str]:
-    return [g.strip() for g in requested.split(",") if g.strip()]
-
-
-def _select_gates(requested: str, cfg: config_mod.Config) -> list[str]:
-    selected = _parse_gate_list(requested) or cfg.enabled_gates
-    if not selected:
-        _fail("no gates enabled — add [gates.*] tables to gauntlet.toml.")
-    unknown = sorted(set(selected) - set(runner.REGISTRY))
-    if unknown:
-        _fail(f"unknown gate(s) {unknown}. Available: {sorted(runner.REGISTRY)}")
-    return selected
-
-
 def _emit(results: list[base.GateResult], max_diags: int, json_out: bool) -> NoReturn:
     ok = report.passed(results)
     render = report.to_json if json_out else report.to_human
@@ -76,49 +67,42 @@ def _emit(results: list[base.GateResult], max_diags: int, json_out: bool) -> NoR
     raise typer.Exit(code=EXIT_OK if ok else EXIT_GATE_FAILURE)
 
 
-def _escalate_or_bounce(count: int, max_attempts: int, lines: str) -> NoReturn:
+def _stop_outcome(root: Path, session: str, passed: bool) -> int:
+    """Update this session's attempt count. Returns the new count; 0 when passing."""
+    attempts_file = stop_mod.attempts_path(root)
+    state = stop_mod.load_attempts(attempts_file)
+    if passed:
+        stop_mod.save_attempts(stop_mod.clear_session(state, session), attempts_file)
+        return 0
+    state, count = stop_mod.record_failure(state, session)
+    stop_mod.save_attempts(state, attempts_file)
+    return count
+
+
+def _escalate_or_bounce(
+    count: int, max_attempts: int, lines: str, log: events.Log, session: str
+) -> NoReturn:
     if stop_mod.should_escalate(count, max_attempts):
+        log.emit(events.AGENT_ESCALATED, session=session, attempts=count)
         typer.echo(json.dumps({"systemMessage": stop_mod.escalation_message(count, lines)}))
         raise typer.Exit(code=EXIT_OK)
     typer.echo(lines, err=True)
     raise typer.Exit(code=EXIT_GATE_FAILURE)
 
 
-def _loop_settings(
-    cmd: str, task: str, task_file: Path | None, max_iterations: int, timeout: int
-) -> loop_mod.LoopSettings:
-    return loop_mod.LoopSettings(
-        command=cmd,
-        task=loop_mod.read_task(task, task_file),  # may raise LoopError; caller catches
-        max_iterations=max_iterations,
-        timeout=timeout,
-    )
-
-
-@app.command()
-def loop(
-    cmd: str = typer.Option(
-        ..., "--cmd", help='Agent command reading a prompt on stdin, e.g. "claude -p"'
-    ),
-    task: str = typer.Option("", help="The task prompt"),
-    task_file: Path | None = typer.Option(None, help="Read the task prompt from a file"),
-    max_iterations: int = typer.Option(loop_mod.DEFAULT_MAX_ITERATIONS),
-    agent_timeout: int = typer.Option(loop_mod.DEFAULT_AGENT_TIMEOUT),
-) -> None:
-    """Drive an un-hookable agent: run it, run the gates, feed failures back."""
-    root, cfg = _resolve_config()
-    try:
-        settings = _loop_settings(cmd, task, task_file, max_iterations, agent_timeout)
-        passed, last_report = loop_mod.drive(
-            root, cfg, _select_gates("", cfg), settings, typer.echo
-        )
-
-    except loop_mod.LoopError as exc:
-        _fail(str(exc))
-    if passed:
-        raise typer.Exit(code=EXIT_OK)
-    typer.echo(last_report, err=True)
-    raise typer.Exit(code=EXIT_GATE_FAILURE)
+def _emit_approval_needed(log: events.Log, results: list[base.GateResult]) -> None:
+    """The dashboard inbox: findings only a human can clear."""
+    for result in results:
+        if result.gate not in ("protect", "acceptance") or result.passed:
+            continue
+        for diagnostic in result.diagnostics:
+            if diagnostic.symbol in ("unapproved", "modified", "missing"):
+                log.emit(
+                    events.APPROVAL_NEEDED,
+                    gate=result.gate,
+                    subject=diagnostic.file,
+                    status=diagnostic.symbol,
+                )
 
 
 @app.command()
@@ -131,8 +115,34 @@ def check(
     """Run the configured gates and report."""
     root, cfg = _resolve_config()
     selected = _select_gates(gates, cfg)
+    log = events.Log(root)
+    log.emit(events.RUN_STARTED, command="check", gates=selected, changed=changed)
     ctx = runner.build_context(root, cfg, selected, changed)
-    _emit(runner.run_gates(ctx, cfg, selected, fail_fast), cfg.max_diagnostics, json_out)
+    results = runner.run_gates(ctx, cfg, selected, fail_fast, log)
+    _emit_approval_needed(log, results)
+    log.emit(
+        events.RUN_FINISHED,
+        command="check",
+        passed=report.passed(results),
+        failed=[r.gate for r in results if not r.passed],
+    )
+    _emit(results, cfg.max_diagnostics, json_out)
+
+
+def _guard_context() -> tuple[Path, config_mod.Config, dict[str, Any]]:
+    """Root, config, and hook payload — or exit 1, which Claude Code ignores."""
+    try:
+        root = config_mod.find_root()
+        cfg = config_mod.load(root)
+    except config_mod.ConfigError as exc:
+        typer.echo(f"guard: {exc}", err=True)
+        raise typer.Exit(code=EXIT_CONFIG_ERROR) from None
+    try:
+        payload = guard_mod.parse_payload(sys.stdin.read())
+    except guard_mod.PayloadError as exc:
+        typer.echo(f"guard: {exc}", err=True)
+        raise typer.Exit(code=EXIT_CONFIG_ERROR) from None
+    return root, cfg, payload
 
 
 @app.command()
@@ -143,22 +153,16 @@ def guard() -> None:
     non-blocking error in Claude Code, so a broken config means the guard simply
     does not apply rather than wedging the agent.
     """
-    try:
-        root = config_mod.find_root()
-        cfg = config_mod.load(root)
-    except config_mod.ConfigError as exc:
-        typer.echo(f"guard: {exc}", err=True)
-        raise typer.Exit(code=EXIT_CONFIG_ERROR) from None
-
-    try:
-        payload = guard_mod.parse_payload(sys.stdin.read())
-    except guard_mod.PayloadError as exc:
-        typer.echo(f"guard: {exc}", err=True)
-        raise typer.Exit(code=EXIT_CONFIG_ERROR) from None
-
+    root, cfg, payload = _guard_context()
     message = guard_mod.decide(payload, root, cfg.protected_paths)
     if message is None:
         raise typer.Exit(code=EXIT_OK)
+    events.Log(root).emit(
+        events.AGENT_BLOCKED,
+        path=guard_mod.target_path(payload),
+        tool=payload.get("tool_name"),
+        session=payload.get("session_id"),
+    )
     typer.echo(message, err=True)
     raise typer.Exit(code=EXIT_GATE_FAILURE)
 
@@ -187,26 +191,6 @@ def init(
         typer.echo("\nReview gauntlet.toml, then run `gauntlet lock` to approve it.")
 
 
-@app.command()
-def lock() -> None:
-    """Approve the current content of the verified paths.
-
-    This is the deliberate human action the whole mechanism rests on: it records
-    what the thresholds and configuration are *supposed* to be.
-    """
-    root, cfg = _resolve_config()
-    try:
-        updated, skipped = locking.approve_all(root, cfg.verified_paths)
-        registry.save(updated, locking.lock_path(root))
-    except registry.RegistryError as exc:
-        _fail(str(exc))
-
-    for key in sorted(registry.in_namespace(updated, locking.CONFIG_NAMESPACE).entries):
-        typer.echo(f"approved  {registry.bare(key)}")
-    for key in skipped:
-        typer.echo(f"skipped   {registry.bare(key)} (does not exist)")
-
-
 @app.command(name="stop-check")
 def stop_check(
     max_attempts: int = typer.Option(
@@ -221,34 +205,13 @@ def stop_check(
     """
     root, cfg = _resolve_config()
     session = stop_mod.session_id(_read_stop_payload())
-    attempts_file = stop_mod.attempts_path(root)
-    state = stop_mod.load_attempts(attempts_file)
-
-    results = runner.run_full_gauntlet(root, cfg, _select_gates("", cfg))
-    if report.passed(results):
-        stop_mod.save_attempts(stop_mod.clear_session(state, session), attempts_file)
+    log = events.Log(root)
+    results = runner.run_full_gauntlet(root, cfg, _select_gates("", cfg), log)
+    count = _stop_outcome(root, session, report.passed(results))
+    if count == 0:
         raise typer.Exit(code=EXIT_OK)
-
-    state, count = stop_mod.record_failure(state, session)
-    stop_mod.save_attempts(state, attempts_file)
-    _escalate_or_bounce(count, max_attempts, report.to_human(results, cfg.max_diagnostics))
-
-
-@app.command()
-def verify() -> None:
-    """Check verified paths against their approved hashes.
-
-    Route-independent: it catches a change made through Bash, an editor, or a
-    subagent, all of which bypass the PreToolUse guard.
-    """
-    root, cfg = _resolve_config()
-    path = locking.lock_path(root)
-    if not path.exists():
-        typer.echo(f"not locked — run `gauntlet lock` to record approvals in {path.name}")
-        raise typer.Exit(code=EXIT_OK)
-
-    findings = locking.verify_config(root, cfg.verified_paths, _load_registry(path))
-    _emit_findings(findings, len(cfg.verified_paths), path.name)
+    report_text = report.to_human(results, cfg.max_diagnostics)
+    _escalate_or_bounce(count, max_attempts, report_text, log, session)
 
 
 @app.command()

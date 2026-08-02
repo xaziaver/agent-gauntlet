@@ -14,7 +14,7 @@ from typing import NoReturn
 import typer
 
 from gauntlet import config as config_mod
-from gauntlet import registry
+from gauntlet import registry, runner
 
 EXIT_OK, EXIT_CONFIG_ERROR, EXIT_GATE_FAILURE = 0, 1, 2
 
@@ -46,3 +46,17 @@ def emit_findings(findings: list[registry.Finding], total: int, lock_name: str) 
     for finding in findings:
         typer.echo(registry.describe(finding), err=True)
     raise typer.Exit(code=EXIT_GATE_FAILURE)
+
+
+def parse_gate_list(requested: str) -> list[str]:
+    return [g.strip() for g in requested.split(",") if g.strip()]
+
+
+def select_gates(requested: str, cfg: config_mod.Config) -> list[str]:
+    selected = parse_gate_list(requested) or cfg.enabled_gates
+    if not selected:
+        fail("no gates enabled — add [gates.*] tables to gauntlet.toml.")
+    unknown = sorted(set(selected) - set(runner.REGISTRY))
+    if unknown:
+        fail(f"unknown gate(s) {unknown}. Available: {sorted(runner.REGISTRY)}")
+    return selected

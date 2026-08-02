@@ -10,6 +10,7 @@ from typing import Any
 import pytest
 from typer.testing import CliRunner
 
+from gauntlet import events
 from gauntlet.cli import EXIT_CONFIG_ERROR, EXIT_GATE_FAILURE, EXIT_OK, app
 
 runner = CliRunner()
@@ -295,3 +296,29 @@ def test_init_bootstraps_a_project_from_nothing(
     assert result.exit_code == EXIT_OK
     assert (tmp_path / "gauntlet.toml").exists()
     assert (tmp_path / ".claude" / "settings.json").exists()
+
+
+def test_check_records_a_run_in_the_event_log(project: Path) -> None:
+    (project / "src" / "a.py").write_text(LONG_FUNCTION)
+    runner.invoke(app, ["check", "--gates", "size"])
+    kinds = [i["kind"] for i in events.read(events.events_path(project))]
+    assert events.RUN_STARTED in kinds
+    assert events.GATE_FINISHED in kinds
+    assert events.RUN_FINISHED in kinds
+
+
+def test_the_events_command_shows_recent_activity(project: Path) -> None:
+    (project / "src" / "a.py").write_text(LONG_FUNCTION)
+    runner.invoke(app, ["check", "--gates", "size"])
+    result = runner.invoke(app, ["events", "--limit", "5"])
+    assert result.exit_code == EXIT_OK
+    assert "gate.finished" in _text(result)
+
+
+def test_a_guard_block_is_recorded(project: Path) -> None:
+    payload = json.dumps(
+        {"tool_name": "Edit", "tool_input": {"file_path": str(project / "gauntlet.toml")}}
+    )
+    runner.invoke(app, ["guard"], input=payload)
+    kinds = [i["kind"] for i in events.read(events.events_path(project))]
+    assert events.AGENT_BLOCKED in kinds
