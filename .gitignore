@@ -1,4 +1,6 @@
 .gauntlet/
+mutants/
+.mutmut-cache
 .coverage
 coverage.json
 .pytest_cache/

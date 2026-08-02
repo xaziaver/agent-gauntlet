@@ -119,6 +119,16 @@ max = 15
 # require_approved = true
 # mutate_examples = true
 # api_boundary = "tests/api"
+
+# Mutation testing of the unit tests. Requires mutmut in the project
+# environment, plus a [tool.mutmut] section in pyproject.toml:
+#     [tool.mutmut]
+#     source_paths = ["src/"]
+#     pytest_add_cli_args_test_selection = ["tests/"]
+# [gates.mutation]
+# min_score = 90
+# scope = "changed"      # changed | full
+# require_review = false
 """
 
 

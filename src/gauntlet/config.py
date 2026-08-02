@@ -22,6 +22,7 @@ DEFAULT_GATE_ORDER = [
     "coverage",
     "crap",
     "duplication",
+    "mutation",
     "acceptance",
 ]
 

@@ -18,6 +18,7 @@ from gauntlet.gates import (
     coverage,
     crap,
     duplication,
+    mutation,
     protect,
     size,
     static,
@@ -35,6 +36,7 @@ REGISTRY: dict[str, base.Gate] = {
         coverage,
         crap,
         duplication,
+        mutation,
         acceptance,
     )
 }

@@ -10,30 +10,51 @@ ignore survivors. So they are classified once by a human, recorded with a
 reason, and thereafter treated as reviewed. The four registry statuses map
 exactly onto the four things that can happen to a survivor, so this module is
 mostly naming, not machinery.
+
+Generic over the kind of mutant: acceptance mutants perturb specification
+values, code mutants perturb the implementation, and both need exactly this
+lifecycle.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Generic, Protocol, TypeVar
 
 from gauntlet import locking, registry
-from gauntlet.acceptance.mutation import Mutant
 
 MUTANT_NAMESPACE = "mutant"
 
 
+class MutantLike(Protocol):
+    @property
+    def locator(self) -> str:
+        """Stable structural identity — never line-based."""
+
+    @property
+    def signature(self) -> str:
+        """The mutation itself; its hash is what an approval records."""
+
+    @property
+    def description(self) -> str:
+        """One human-readable line, for approval output."""
+
+
+M = TypeVar("M", bound=MutantLike)
+
+
 @dataclass(frozen=True)
-class Classification:
+class Classification(Generic[M]):
     """Survivors split by what the human has already said about them."""
 
-    unreviewed: list[Mutant] = field(default_factory=list)  # never judged -> fail
-    changed: list[Mutant] = field(default_factory=list)  # judgment lapsed -> fail
-    equivalent: list[Mutant] = field(default_factory=list)  # judged equivalent -> pass
+    unreviewed: list[M] = field(default_factory=list)  # never judged -> fail
+    changed: list[M] = field(default_factory=list)  # judgment lapsed -> fail
+    equivalent: list[M] = field(default_factory=list)  # judged equivalent -> pass
     stale: list[str] = field(default_factory=list)  # approved, no longer survives
 
     @property
-    def failing(self) -> list[Mutant]:
+    def failing(self) -> list[M]:
         return [*self.unreviewed, *self.changed]
 
     @property
@@ -41,26 +62,27 @@ class Classification:
         return not self.failing
 
 
-def key_for(feature_key: str, mutant: Mutant) -> str:
-    """Ledger key: the feature it lives in, plus the mutant's structural locator."""
-    return f"{feature_key}#{mutant.locator}"
+def key_for(subject_key: str, mutant: MutantLike) -> str:
+    """Ledger key: the subject it lives in (feature file or module), plus the locator."""
+    return f"{subject_key}#{mutant.locator}"
 
 
-def subjects(feature_key: str, survivors: list[Mutant]) -> dict[str, bytes]:
-    return {key_for(feature_key, m): m.signature.encode("utf-8") for m in survivors}
+def subjects(subject_key: str, survivors: list[M]) -> dict[str, bytes]:
+    return {key_for(subject_key, m): m.signature.encode("utf-8") for m in survivors}
 
 
-def _bucket_for(result: Classification, status: registry.Status) -> list[Mutant] | None:
+def _bucket_for(result: Classification[M], status: registry.Status) -> list[M] | None:
     """Which list a finding lands in. MISSING is handled separately: it names a
     stale entry, not a mutant we just saw."""
-    return {
+    buckets: dict[registry.Status, list[M]] = {
         registry.Status.UNCHANGED: result.equivalent,
         registry.Status.MODIFIED: result.changed,
         registry.Status.UNAPPROVED: result.unreviewed,
-    }.get(status)
+    }
+    return buckets.get(status)
 
 
-def _place(result: Classification, finding: registry.Finding, mutant: Mutant | None) -> None:
+def _place(result: Classification[M], finding: registry.Finding, mutant: M | None) -> None:
     if finding.status is registry.Status.MISSING:
         result.stale.append(registry.bare(finding.key))
         return
@@ -70,33 +92,32 @@ def _place(result: Classification, finding: registry.Finding, mutant: Mutant | N
 
 
 def classify(
-    approved: registry.Registry, feature_key: str, survivors: list[Mutant]
-) -> Classification:
+    approved: registry.Registry, subject_key: str, survivors: list[M]
+) -> Classification[M]:
     """Split survivors against the ledger.
-
     MISSING means an approved equivalent no longer survives — the assertion got
     sharper, so the judgment is stale and the entry should be pruned. That is
     the self-invalidation requirement, and it comes free from verify_all.
     """
-    by_key = {key_for(feature_key, m): m for m in survivors}
+    by_key = {key_for(subject_key, m): m for m in survivors}
     findings = registry.verify_namespace(
-        approved, MUTANT_NAMESPACE, subjects(feature_key, survivors)
+        approved, MUTANT_NAMESPACE, subjects(subject_key, survivors)
     )
-    result = Classification()
+    result: Classification[M] = Classification()
     for finding in findings:
         _place(result, finding, by_key.get(registry.bare(finding.key)))
     return result
 
 
 def approve(
-    root: Path, feature_key: str, survivors: list[Mutant], reason: str, reviewer: str = ""
+    root: Path, subject_key: str, survivors: list[M], reason: str, reviewer: str = ""
 ) -> registry.Registry:
     """Record a human judgment that these survivors cannot change behavior."""
     current = registry.load(locking.lock_path(root))
     for mutant in survivors:
         current = registry.approve(
             current,
-            registry.namespaced(MUTANT_NAMESPACE, key_for(feature_key, mutant)),
+            registry.namespaced(MUTANT_NAMESPACE, key_for(subject_key, mutant)),
             mutant.signature.encode("utf-8"),
             reason=reason,
             reviewer=reviewer,

@@ -12,7 +12,17 @@ import subprocess
 import sys
 from dataclasses import dataclass
 
-CHECK_ORDER = ("git", "ruff", "mypy", "radon", "pytest", "pytest-cov", "pytest-bdd", "jscpd")
+CHECK_ORDER = (
+    "git",
+    "ruff",
+    "mypy",
+    "radon",
+    "pytest",
+    "pytest-cov",
+    "pytest-bdd",
+    "mutmut",
+    "jscpd",
+)
 
 # Which gates need which tool. Gates absent here need only the standard library.
 GATES_BY_TOOL = {
@@ -23,10 +33,16 @@ GATES_BY_TOOL = {
     "pytest": ("tests",),
     "pytest-cov": ("coverage", "crap"),
     "pytest-bdd": ("acceptance",),
+    "mutmut": ("mutation",),
     "jscpd": ("duplication",),
 }
 
-PROJECT_MODULES = {"pytest": "pytest", "pytest-cov": "pytest_cov", "pytest-bdd": "pytest_bdd"}
+PROJECT_MODULES = {
+    "pytest": "pytest",
+    "pytest-cov": "pytest_cov",
+    "pytest-bdd": "pytest_bdd",
+    "mutmut": "mutmut",
+}
 
 OWN_MODULES = {"mypy": "mypy"}
 

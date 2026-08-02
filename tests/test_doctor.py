@@ -5,7 +5,16 @@ from pathlib import Path
 
 from gauntlet import doctor
 
-ALL_GATES = ["static", "complexity", "tests", "coverage", "crap", "duplication", "acceptance"]
+ALL_GATES = [
+    "static",
+    "complexity",
+    "tests",
+    "coverage",
+    "crap",
+    "duplication",
+    "mutation",
+    "acceptance",
+]
 
 
 def test_checks_cover_only_the_enabled_gates() -> None:

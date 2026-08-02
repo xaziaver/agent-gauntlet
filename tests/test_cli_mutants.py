@@ -8,10 +8,12 @@ from typing import Any
 import pytest
 from typer.testing import CliRunner
 
-from gauntlet import locking, registry, specs
+from gauntlet import cli_mutants, locking, registry, specs
 from gauntlet import mutants as mutants_mod
+from gauntlet.adapters.python import CodeMutant
 from gauntlet.cli import app
 from gauntlet.cli_support import EXIT_CONFIG_ERROR, EXIT_OK
+from gauntlet.gates.mutation import SUBJECT, MutmutError
 
 runner = CliRunner()
 
@@ -62,6 +64,14 @@ def _amount(amount: int) -> int:
 def _check(amount: int, expected: str) -> None:
     assert tier(amount) == expected
 """
+
+CODE_MUTANT = CodeMutant(
+    name="m.x_f__mutmut_2",
+    module="pkg.rating",
+    function="tier",
+    removed="return a > b",
+    added="return a >= b",
+)
 
 
 def _text(result: Any) -> str:
@@ -184,3 +194,66 @@ def test_prune_removes_only_the_approval_that_no_longer_survives(project: Path) 
     assert len(remaining) == 1
     assert not any("75000" in key for key in remaining)
     assert any("100|standard" in key for key in remaining)
+
+
+@pytest.fixture
+def fake_code_survivors(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(cli_mutants, "survivors_for", lambda *a, **k: [CODE_MUTANT])
+
+
+def test_approve_code_records_the_survivor(project: Path, fake_code_survivors: None) -> None:
+    result = runner.invoke(
+        app, ["mutant", "approve-code", "--reason", "unreachable guard", "--reviewer", "x"]
+    )
+    assert result.exit_code == EXIT_OK
+    assert any("pkg.rating" in key for key in _mutant_keys(project))
+
+
+def test_approve_code_with_nothing_surviving_is_a_no_op(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(cli_mutants, "survivors_for", lambda *a, **k: [])
+    result = runner.invoke(app, ["mutant", "approve-code", "--reason", "x"])
+    assert result.exit_code == EXIT_OK
+    assert "no surviving mutants" in _text(result)
+
+
+def test_a_mutmut_failure_exits_one(project: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def boom(*args: object, **kwargs: object) -> list[CodeMutant]:
+        raise MutmutError("could not run 'mutmut'")
+
+    monkeypatch.setattr(cli_mutants, "survivors_for", boom)
+    result = runner.invoke(app, ["mutant", "approve-code", "--reason", "x"])
+    assert result.exit_code == EXIT_CONFIG_ERROR
+
+
+def test_code_and_acceptance_approvals_share_one_ledger(
+    project: Path, fake_code_survivors: None
+) -> None:
+    """One ledger, several namespaces — and code keys must not collide with specs."""
+    runner.invoke(app, ["mutant", "approve", "features/tiering.feature", "--reason", "a"])
+    runner.invoke(app, ["mutant", "approve-code", "--reason", "b"])
+    keys = _mutant_keys(project)
+    assert any(key.startswith(f"mutant:{SUBJECT}#") for key in keys)
+    assert any("tiering.feature#" in key for key in keys)
+
+
+def test_prune_code_removes_an_approval_that_is_gone(
+    project: Path, fake_code_survivors: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runner.invoke(app, ["mutant", "approve-code", "--reason", "x"])
+    assert _mutant_keys(project)
+    monkeypatch.setattr(cli_mutants, "survivors_for", lambda *a, **k: [])
+    runner.invoke(app, ["mutant", "prune-code"])
+    assert not _mutant_keys(project)
+
+
+def test_prune_code_with_nothing_stale_says_so(project: Path, fake_code_survivors: None) -> None:
+    runner.invoke(app, ["mutant", "approve-code", "--reason", "x"])
+    result = runner.invoke(app, ["mutant", "prune-code"])
+    assert "no stale approvals" in _text(result)
+
+
+def test_list_shows_code_mutants_too(project: Path, fake_code_survivors: None) -> None:
+    runner.invoke(app, ["mutant", "approve-code", "--reason", "provably unreachable"])
+    assert "provably unreachable" in _text(runner.invoke(app, ["mutant", "list"]))
