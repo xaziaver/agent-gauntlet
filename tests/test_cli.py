@@ -322,3 +322,18 @@ def test_a_guard_block_is_recorded(project: Path) -> None:
     runner.invoke(app, ["guard"], input=payload)
     kinds = [i["kind"] for i in events.read(events.events_path(project))]
     assert events.AGENT_BLOCKED in kinds
+
+
+def test_status_always_exits_zero_even_when_gates_fail(project: Path) -> None:
+    """A report, not a gate."""
+    (project / "src" / "a.py").write_text(LONG_FUNCTION)
+    result = runner.invoke(app, ["status", "--run"])
+    assert result.exit_code == EXIT_OK
+    assert "GATES     FAILING" in _text(result)
+
+
+def test_status_json_is_parsable(project: Path) -> None:
+    result = runner.invoke(app, ["status", "--json"])
+    payload = json.loads(_text(result))
+    assert "pending" in payload
+    assert "gates" in payload

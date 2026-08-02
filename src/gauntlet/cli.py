@@ -26,7 +26,9 @@ from gauntlet.cli_approvals import lock, verify
 from gauntlet.cli_events import events_app
 from gauntlet.cli_loop import loop_app
 from gauntlet.cli_mutants import mutant_app
+from gauntlet.cli_review import review_app
 from gauntlet.cli_specs import spec_app
+from gauntlet.cli_status import status_app
 from gauntlet.cli_support import EXIT_CONFIG_ERROR, EXIT_GATE_FAILURE, EXIT_OK
 from gauntlet.cli_support import fail as _fail
 from gauntlet.cli_support import resolve_config as _resolve_config
@@ -43,6 +45,8 @@ app.add_typer(loop_app, name="loop")
 app.add_typer(spec_app, name="spec")
 app.add_typer(mutant_app, name="mutant")
 app.add_typer(events_app, name="events")
+app.add_typer(status_app, name="status")
+app.add_typer(review_app, name="review")
 
 
 @app.callback()
@@ -225,7 +229,7 @@ def doctor() -> None:
     root, cfg = _resolve_config()
     project_python = python_adapter.interpreter(root, cfg.python)
     checks = doctor_mod.run_checks(cfg.enabled_gates, project_python)
-    warnings = doctor_mod.warnings_for(root, cfg.enabled_gates)
+    warnings = doctor_mod.warnings_for(root, cfg.src, cfg.enabled_gates)
     typer.echo(doctor_mod.render(checks, project_python, warnings))
     raise typer.Exit(code=EXIT_OK if doctor_mod.healthy(checks) else EXIT_CONFIG_ERROR)
 

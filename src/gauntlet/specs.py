@@ -30,14 +30,20 @@ def read_subjects(root: Path, paths: list[Path]) -> dict[str, bytes | None]:
     return {key_for(root, p): (p.read_bytes() if p.is_file() else None) for p in paths}
 
 
-def approve(root: Path, paths: list[Path]) -> registry.Registry:
+def approve(
+    root: Path, paths: list[Path], reason: str = "", reviewer: str = ""
+) -> registry.Registry:
     """Approve specific specs, leaving other namespaces and other specs untouched."""
     current = registry.load(locking.lock_path(root))
     for path in paths:
         if not path.is_file():
             raise FileNotFoundError(path)
         current = registry.approve(
-            current, registry.namespaced(SPEC_NAMESPACE, key_for(root, path)), path.read_bytes()
+            current,
+            registry.namespaced(SPEC_NAMESPACE, key_for(root, path)),
+            path.read_bytes(),
+            reason=reason,
+            reviewer=reviewer,
         )
     return current
 

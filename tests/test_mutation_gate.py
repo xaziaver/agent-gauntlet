@@ -97,3 +97,17 @@ def test_killed_is_derived_from_the_run_total(project: Path, fake_mutmut: None) 
     """`mutmut results` lists only unkilled mutants — counting its lines gave 0 killed."""
     result = mutation.run(_ctx(project), {"min_score": 0, "scope": "full"})
     assert "3 killed" in str(result.actual)
+
+
+def test_a_copy_failure_is_explained(project: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """mutmut's raw traceback tells an agent nothing actionable."""
+    traceback = "FileNotFoundError: [Errno 2] No such file: 'src/gauntlet/.#cli.py'"
+    monkeypatch.setattr(
+        python_adapter, "run_mutmut", lambda *a, **k: MutationRun(ok=False, error=traceback)
+    )
+    result = mutation.run(_ctx(project), {"scope": "full"})
+    assert "editor lock" in (result.error or "").lower()
+
+
+def test_an_unrelated_error_is_passed_through_unchanged() -> None:
+    assert mutation.explain("mutmut: no [tool.mutmut]") == "mutmut: no [tool.mutmut]"

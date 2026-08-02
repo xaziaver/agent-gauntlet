@@ -2,361 +2,519 @@
 
 **Don't review the agent's code — make it run the gauntlet.**
 
-Gauntlet surrounds AI coding agents with deterministic, automated quality gates so a human can
-manage quality from above instead of reading generated code line by line. Every standard becomes an
-executable check with a threshold, a loud failure, and a machine-readable diagnostic the agent can
-act on.
+Gauntlet wraps AI coding agents in deterministic quality gates. The agent writes the code; ten
+automated gates decide whether it is acceptable; you read specifications, thresholds, and reports
+instead of diffs.
 
 [![gauntlet](https://github.com/xaziaver/agent-gauntlet/actions/workflows/gauntlet.yml/badge.svg)](https://github.com/xaziaver/agent-gauntlet/actions/workflows/gauntlet.yml)
 
-Gauntlet gates itself. Every commit in this repository has passed the eight gates below, measured by
-this tool. When the enforcement layer broke, this tool is how we found out — see
-[What building this taught us](#what-building-this-taught-us).
-
-<!-- demo recording goes here once v1 closes -->
-
----
-
-## Why
-
-The method is Robert C. Martin's, stated plainly in mid-2026: he does not read the code his agents
-write. Instead he surrounds them with constraints — unit tests, acceptance tests, coverage,
-complexity limits, dependency rules, mutation testing — and manages quality through metrics rather
-than review. The reasoning behind it:
-
-- **Rules written in prompts decay.** As a context window fills, instructions in CLAUDE.md or a
-  system prompt lose priority. A rule that lives in a tool with a threshold and an exit code does
-  not decay.
-- **Humans are slow at reading code.** The productivity gain from agents is only realized if the
-  human disengages from the implementation and re-engages at the level of specifications and
-  measurements.
-- **Clean code still matters.** Agents get confused by tangled code the same way people do. The
-  standards do not relax; the enforcement mechanism changes from inspection to automation.
-
-### Two audiences, one tool
-
-- **For a weak model, the gates are a teacher.** A small model will not infer that a function should
-  be extracted at cyclomatic complexity 7. The gates supply the standard; the diagnostics supply the
-  remedy.
-- **For a strong model, the gates are an auditor.** Capable models often self-police to a high
-  standard — and then report their own results. A frontier model finishing a session with "100%
-  coverage, 131 of 133 mutants killed" is asking you to take its word for it. Gauntlet re-measures
-  deterministically. Everything you know about the code comes from the tool, not from the agent.
+Gauntlet gates itself. Every commit here has passed the nine gates it enables, measured by this
+tool — mutation testing ships but is deliberately not enabled on this repository, for the reason
+described below. [**gauntlet-demo1**](https://github.com/xaziaver/gauntlet-demo1) is a small project
+running all ten end to end — read that if you prefer examples to prose.
 
 ---
 
-## The operating model
+## Quick start
 
-**In plain English:** you describe what to build and set the quality bar. The agent builds. Gauntlet
-referees. You read specifications, thresholds, and reports — never implementation code.
-
-### The lifecycle
-
-1. **Setup.** `gauntlet init` scaffolds the config and agent hooks. You edit `gauntlet.toml` — the
-   thresholds are yours — then `gauntlet lock` to approve it and `gauntlet doctor` to confirm every
-   gate's tooling is alive.
-2. **Delegate.** Prompt the agent with *behavior*, not implementation: what the code should do, not
-   how. The hooks handle the rest without your involvement.
-3. **Observe.** During a session, the hook status lines show gates firing after each edit and at
-   completion. After a session, `gauntlet check` is the ground truth; `--json` is the same truth for
-   machines.
-4. **Adjudicate.** The only mid-stream human actions: re-approving a deliberate config change with
-   `gauntlet lock`, and answering escalations — the agent hitting the guard on a protected file, or
-   the Stop hook's retry cap handing a stuck problem back to you.
-5. **Accept.** Green `check`, green CI, `git diff --stat` for the *scope* of what changed — not the
-   content. Your confidence comes from the report.
-
-### Responsibilities
-
-| | Owns |
-|---|---|
-| **Human** | Requirements, thresholds (`gauntlet.toml`), approvals (`gauntlet lock`), spec review, escalation decisions, final acceptance |
-| **Agent** | Implementation, tests, refactoring until the gates pass, running `gauntlet check` itself, *proposing* threshold changes in words |
-| **Gauntlet** | Measurement, enforcement, feedback, the approval record (`gauntlet.lock.json`) |
-
-The rule that makes the split coherent: **anything the agent could exploit belongs to the human;
-everything else belongs to the agent.**
-
-### What success looks like
-
-Exit code 0. Concretely: all gates green including `protect` (the configuration is either untouched
-or explicitly re-approved), CI green, and no line-by-line review having happened. In the recorded
-demo session, success looked like this: the agent's first draft breached two gates, the diagnostics
-forced complexity from 9 down to 4 and the function under the size limit, all without the human
-reading a diff — and when asked to weaken a gate instead, the agent refused and handed the decision
-back to the human.
-
-### Interfaces and interactivity
-
-Three surfaces, one per audience, all speaking the same exit-code/JSON contract: the **CLI** for the
-human, **hooks** for the agent (invisible and involuntary), and **CI** for the team and the record.
-
-Gauntlet itself is deliberately non-interactive — no prompts, no dialogs. `gauntlet lock` is the one
-ceremony, and it is a command, not a conversation. The interactive relationship is human↔agent;
-Gauntlet decides when that conversation must happen.
-
----
-
-## Status
-
-| Phase | Scope | State |
-|---|---|---|
-| 0 | Manual spike: run the loop by hand | Done |
-| 1 | CLI, config, report contract, five gates | Done |
-| 2 | CRAP gate, duplication gate | Done |
-| 3 | Protect gate, content-hash locking, guard, Claude Code hooks, `doctor`, retry-capped Stop | Done |
-| 3.5 | `gauntlet loop` — external driver for un-hookable agents | Done |
-| 4 | Gherkin acceptance pipeline, spec locking, acceptance mutation | Planned |
-| 5 | Mutation testing gate | Planned |
-| 6 | C# adapter | Planned |
-
-Python projects only today; see [Honest limitations](#honest-limitations).
-
----
-
-## Quick start — a new project from nothing
-
-Requirements: Python 3.11+, git. The duplication gate additionally needs Node (`npm install -g
-jscpd`).
+Requires Python 3.11+, git, and — for two optional gates — Node (`jscpd`) and `mutmut`.
 
 ```bash
-# Install (from a clone, until published)
+# Install
 git clone https://github.com/xaziaver/agent-gauntlet
 cd agent-gauntlet && uv tool install --editable .
 
-# Bootstrap your project
-mkdir my-project && cd my-project && git init
-mkdir src tests
+# Set up your project
+cd ~/my-project
 gauntlet init --agent claude-code   # writes gauntlet.toml, .claude/settings.json, CLAUDE.md
-$EDITOR gauntlet.toml               # set YOUR thresholds — this file is the human's artifact
-gauntlet lock                       # approve the configuration
+$EDITOR gauntlet.toml               # set YOUR thresholds — this file is yours, not the agent's
+gauntlet lock                       # approve that configuration
 gauntlet doctor                     # confirm every gate's tooling is present
 gauntlet check                      # green baseline
 ```
 
-From here, open Claude Code in the project and delegate. The hooks do the rest.
+Your project supplies its own test-runner environment. Gauntlet brings ruff, mypy, and radon; the
+project's virtualenv needs `pytest` plus `pytest-cov`, and `pytest-bdd` / `mutmut` if you enable
+those gates. `gauntlet doctor` tells you which are missing and which interpreter it is looking in.
 
-### Commands
+Now open Claude Code in the project and describe what you want built. The hooks do the rest.
 
-| Command | Purpose |
-|---|---|
-| `gauntlet check` | Run the configured gates. `--gates a,b`, `--changed`, `--fail-fast`, `--json` |
-| `gauntlet init` | Scaffold config + integration. `--agent claude-code` (hooks) or `generic` (pre-commit + CI). `--dry-run` |
-| `gauntlet lock` | The deliberate human action: approve the current config content into `gauntlet.lock.json` |
-| `gauntlet verify` | Check approved files against their hashes — route-independent change detection |
-| `gauntlet guard` | PreToolUse hook: block agent edits to protected paths (reads hook JSON on stdin) |
-| `gauntlet stop-check` | Stop hook: full gauntlet with a per-session retry cap that escalates to the human |
-| `gauntlet doctor` | Is every enabled gate's tooling actually present in *this* environment? |
-| `gauntlet loop` | Drive an un-hookable agent: run it, run the gates, feed failures back, repeat to a cap |
-| `gauntlet version` | Print the version |
+## How it works
 
-### Exit codes — the contract everything shares
+```
+        you                      agent                    gauntlet
+         │                         │                          │
+    write the spec ──────────────► │                          │
+    set thresholds                 │                          │
+         │                    writes code ──► edit ──► fast gates (< 2s)
+         │                         │ ◄──────── "CC 9 > 6: extract functions"
+         │                    fixes it ──────► edit ──► fast gates ✓
+         │                         │                          │
+         │                    "I'm done" ─────────────► full gauntlet
+         │                         │ ◄──────── exit 2: "no, you're not"
+         │                         │                          │
+         │                    tries to raise a threshold ──► BLOCKED
+         │ ◄──── "the limit looks wrong to me, your call" ────┤
+         │                         │                          │
+    read the report ◄──────────────────────────────── all gates green
+```
 
-| Code | Meaning |
-|---|---|
-| 0 | Every selected gate passed |
-| 1 | Gauntlet could not run (bad config, unknown gate, broken payload) |
-| 2 | Gates failed |
+Three moments matter. **Edit time**: a hook runs the fast gates after every file write and feeds
+failures straight back to the model. **Completion time**: the agent cannot finish while any gate is
+red. **Escalation**: anything only a human can decide — a threshold change, an unapproved spec, a
+mutant no test can kill — stops and asks you.
 
-The 1/2 split is load-bearing: Claude Code treats exit 2 as blocking and exit 1 as a non-blocking
-error. A config typo therefore fails open rather than wedging the agent — and a genuine gate failure
-blocks. The flip side of failing open is that a *broken* Gauntlet silently disables enforcement,
-which is exactly what `gauntlet doctor` exists to detect.
+## Where you stand
 
----
+One command, any time:
+
+```
+$ gauntlet status --run
+PROJECT   /home/you/my-project
+LOCKED    yes
+GATES     PASSING
+  • ✓ protect      3/3 paths unchanged
+  • ✓ static       0 findings
+  • ✓ size         worst_function_lines=15
+  • ✓ complexity   4
+  • ✓ tests        20/20 passing
+  • ✓ coverage     line=100.0, branch=100.0
+  • ✓ crap         4.0
+  • ✓ duplication  0
+  • ✓ mutation     score 100.0%, 59 killed, 3 reviewed-equivalent
+  • ✓ acceptance   1 spec(s), 9 reviewed-equivalent
+WAITING   nothing needs your approval
+ACTIVITY  most recent first
+  • 2026-08-02T12:45:29+00:00  gate.finished     ✓ acceptance
+  • 2026-08-02T12:45:24+00:00  gate.finished     ✓ mutation
+  ...
+```
+
+`WAITING` is the part that matters: everything blocked on a human decision, and the command that
+clears each one. Without `--run` it reports the last known state instantly and skips the gates.
+
+## Reviewing what's waiting
+
+`gauntlet review` walks that list one item at a time, showing the actual change:
+
+```
+$ gauntlet review --reviewer you
+─── 1/1  [config] gauntlet.toml — modified
+--- approved/gauntlet.toml
++++ current/gauntlet.toml
+@@ -17,7 +17,7 @@
+ [gates.complexity]
+-max = 5
++max = 6
+
+approve / skip / quit [a/s/q] [s]: a
+reason (required): loosened after extracting the rating helpers
+
+approved 1 of 1 item(s)
+```
+
+Approving something you haven't looked at is the rubber stamp the whole ledger exists to prevent, so
+review shows a diff for anything modified and requires a reason before recording it. Skip and quit
+are always available; nothing is written until you say yes.
 
 ## The gates
 
-Fixed execution order — cheap and structural first, so an agent fixes syntax and shape before it is
-ever shown a coverage number. Every diagnostic is prescriptive: it names the file, symbol, line,
-and the *remedy*, because a capable model infers the fix from the measurement and a small one does
-not.
+| Gate | Fails when | Blind to |
+|---|---|---|
+| `protect` | approved config changed without re-approval | whether your thresholds are any good |
+| `static` | ruff or mypy reports anything | behavior |
+| `size` | a function or module exceeds its line limit | whether the length is justified |
+| `complexity` | cyclomatic complexity over the ceiling (default 6) | nesting, coupling, naming |
+| `tests` | any test fails — or none exist | whether the tests assert anything |
+| `coverage` | line/branch/per-file coverage below threshold | assertion quality |
+| `crap` | complexity × untestedness over the ceiling | anything its two inputs miss |
+| `duplication` | copy-pasted blocks (jscpd) | semantic duplication |
+| `mutation` | too few code mutants killed (mutmut) | mutants nothing could kill |
+| `acceptance` | specs unapproved, scenarios failing, or spec values unchecked | requirements you never wrote down |
 
-### 1. `protect` — the approved configuration must not have changed
-Compares `gauntlet.toml`, `pyproject.toml`, and `.claude/settings.json` (configurable) against
-human-approved hashes in `gauntlet.lock.json`. Route-independent: it catches changes made through a
-shell redirect, an editor, or a subagent — all of which bypass the edit-time guard. Fails open when
-no lock file exists (set `require_lock = true` once you have locked). **Does not measure:** whether
-the approved thresholds are any good. That is the human's job.
+Each gate is opt-in: no `[gates.x]` table, no gate.
 
-### 2. `static` — ruff + mypy
-Fails on any finding from either tool; a crashed or missing tool is a gate *error*, never a clean
-bill of health. **Does not measure:** behavior. Clean static analysis says nothing about
-correctness.
+## Commands
 
-### 3. `size` — function and module length (stdlib `ast`, no dependency)
-**Does not measure:** whether the length is justified; a 30-line data table and a 30-line tangle
-fail identically.
+| | |
+|---|---|
+| `gauntlet status` | Gates, pending approvals, recent activity. `--run` `--json` |
+| `gauntlet review` | Walk pending approvals one at a time, with the diff on screen |
+| `gauntlet check` | Run the gates. `--gates a,b` `--changed` `--fail-fast` `--json` |
+| `gauntlet init` | Scaffold config + integration. `--agent claude-code\|generic` `--dry-run` |
+| `gauntlet doctor` | Is every enabled gate's tooling actually present here? |
+| `gauntlet lock` / `verify` | Approve configuration / check it hasn't drifted |
+| `gauntlet spec approve` / `list` | Approve acceptance specifications |
+| `gauntlet mutant approve[-code]` / `list` / `prune[-code]` | Classify surviving mutants |
+| `gauntlet events` | Recent activity: runs, gate results, approvals, escalations |
+| `gauntlet loop --cmd "..." --task "..."` | Drive an agent that can't be hooked |
+| `gauntlet guard` / `stop-check` | Hook entry points (not run by hand) |
 
-### 4. `complexity` — cyclomatic complexity per function (radon)
-Ceiling of 6 by default; strictly greater-than, so a function exactly at the ceiling passes.
-**Does not measure:** cognitive complexity, nesting, coupling, naming.
-
-### 5. `tests` — the suite must pass (pytest)
-An empty suite **fails** — otherwise deleting the test directory is a valid strategy for going
-green. Produces the coverage artifact in the same run. **Does not measure:** whether the tests are
-meaningful; `assert True` passes this gate. That is what coverage, CRAP, and (Phase 5) mutation
-testing are for.
-
-### 6. `coverage` — line, branch, and optional per-file thresholds
-Diagnostics are only emitted for rules actually enforced: with `per_file_min` unset, a passing gate
-stays silent about individual files, so an agent never mistakes guidance for failure. **Does not
-measure:** assertion quality — coverage counts execution, not verification.
-
-### 7. `crap` — Change Risk Anti-Pattern, per function
-
-```
-CRAP = CC² × (1 − coverage)³ + CC
-```
-
-Joins radon's per-function spans with coverage.py's executed lines. Exists for the case neither
-input catches alone: **a complex function inside a well-covered file.** At full coverage CRAP
-collapses to CC (well-tested complexity passes); at zero coverage complexity is punished
-quadratically. The diagnostic offers both remedies with the exact coverage percentage that would
-clear the ceiling — or says plainly that tests cannot help and extraction is required.
-
-### 8. `duplication` — token-level clone detection (jscpd, needs Node)
-Targets a specifically agentic failure mode: an agent that cannot find the existing helper writes a
-second one, and every individual edit looks fine. **Does not measure:** semantic duplication, or
-clones smaller than `min_tokens` — see the build insights for a real example of each side of that
-threshold.
+Exit codes are the contract everything shares: **0** passed, **1** Gauntlet couldn't run, **2** gates
+failed.
 
 ---
 
+# The longer version
+
+## Why
+
+The method is Robert C. Martin's, stated plainly in mid-2026: he does not read the code his agents
+write. He surrounds them with constraints — tests, coverage, complexity limits, mutation testing —
+and manages quality through metrics instead of review. Three claims hold it up:
+
+**Rules written in prompts decay.** As a context window fills, instructions in CLAUDE.md lose
+priority. A rule that lives in a tool with a threshold and an exit code does not decay.
+
+**Humans are slow at reading code.** The productivity gain from agents only materializes if the human
+disengages from implementation and re-engages at specifications and measurements.
+
+**Clean code still matters.** Agents get confused by tangled code the same way people do. The
+standards don't relax; the enforcement mechanism changes from inspection to automation.
+
+### Teacher or auditor
+
+The same gates do different work depending on the agent:
+
+- **For a weak model, they teach.** A small model won't infer that a function should be extracted at
+  complexity 7. The gates supply the standard; the diagnostics supply the remedy.
+- **For a strong model, they audit.** Capable models often self-police to a high standard — and then
+  report their own results. A frontier model ending a session with "100% coverage, 131 of 133 mutants
+  killed" is asking you to take its word for it. Gauntlet re-measures. Everything you know comes from
+  the tool, not the agent.
+
+## The operating model
+
+You describe what to build and set the quality bar. The agent builds. Gauntlet referees.
+
+### Who owns what
+
+| | Owns |
+|---|---|
+| **You** | Requirements, thresholds, approvals, escalation decisions, final acceptance |
+| **The agent** | Implementation, tests, refactoring until the gates pass, *proposing* threshold changes in words |
+| **Gauntlet** | Measurement, enforcement, feedback, the approval record |
+
+One rule makes the split coherent: **anything the agent could exploit belongs to the human;
+everything else belongs to the agent.**
+
+### The lifecycle
+
+1. **Set up** — `init`, edit `gauntlet.toml`, `lock`, `doctor`.
+2. **Delegate** — prompt for *behavior*, not implementation.
+3. **Observe** — hook status lines during the session; `gauntlet check` after; `gauntlet events` for
+   the timeline.
+4. **Adjudicate** — the only mid-stream human actions: re-approving a deliberate config change, and
+   answering escalations.
+5. **Accept** — green `check`, green CI, `git diff --stat` for the *scope* of what changed. Not the
+   content.
+
+### Success looks like
+
+Exit code 0, with no line-by-line review having happened. Concretely, from the demo project: the
+agent's first draft breached two gates; the diagnostics drove complexity from 9 to 4; mutation
+testing then found four untested boundary conditions that 100% coverage had hidden; three surviving
+mutants turned out to be provably unkillable and were classified as such. Nobody read a diff.
+
+### Interfaces
+
+Three surfaces, one contract: the **CLI** for you, **hooks** for the agent (invisible and
+involuntary), **CI** for the record. All three consume the same exit codes and the same JSON.
+
+**The gates are never interactive.** They don't prompt, don't block on input, and behave identically
+under a terminal, a hook, and CI — anything else would make a gate's verdict depend on who ran it.
+
+The human's *review* surface is a different matter, and `gauntlet review` is deliberately
+conversational: it's a thing you choose to run when you sit down to clear the inbox. That split —
+non-interactive enforcement, interactive review — is the design, not an inconsistency.
+
+## The approval ledger
+
+Everything you sign off on lands in one file, `gauntlet.lock.json`, under a namespace:
+
+```
+config:gauntlet.toml                     the thresholds themselves
+spec:features/rating.feature             an acceptance specification
+mutant:code#policy|_bump|...             a mutant no test could kill
+```
+
+Every entry follows the same lifecycle: **propose → review → hash → auto-invalidate on change.**
+Approval records a content hash plus your reason and name. If the thing changes, the approval lapses
+and the gate asks again. If an approved item stops being produced — a formerly unkillable mutant now
+dies because you sharpened a test — the entry is reported stale and can be pruned.
+
+Three properties make this more than a suppression file. The record is a **diff**, so approvals are
+reviewable in a pull request. It is **self-invalidating**, so it can't quietly rot. And it is itself
+a protected path, so an agent cannot approve its own work.
+
+```json
+"mutant:code#policy|triage_claim|...tier != \"urgent\"...": {
+  "approved_at": "2026-08-02T08:30:30+00:00",
+  "digest": "sha256:123d228f...",
+  "reason": "the guard and the index clamp each prevent the other from mattering",
+  "reviewer": "xaziaver"
+}
+```
+
+## The gates in detail
+
+Gates run cheapest-first, so an agent fixes syntax and shape before it's shown a coverage number.
+Every diagnostic names the file, the symbol, the line, and **the remedy** — because a capable model
+infers the fix from the measurement and a small one does not.
+
+**`protect`** — compares configuration against approved hashes. Route-independent: it catches changes
+made through a shell redirect, an editor, or a subagent, all of which bypass the edit-time guard.
+Fails open until you've run `lock` (set `require_lock = true` afterward).
+
+**`static`** — ruff + mypy. A crashed or missing tool is a gate *error*, never a clean bill of health.
+
+**`size`** — function and module line limits, measured with the standard library's `ast`. No
+dependency.
+
+**`complexity`** — cyclomatic complexity per function, radon. Ceiling 6 by default, strictly
+greater-than, so a function exactly at the ceiling passes.
+
+**`tests`** — the suite must pass, and an empty suite **fails**: otherwise deleting the test
+directory is a valid way to go green.
+
+**`coverage`** — aggregate line and branch, plus optional `per_file_min`. Diagnostics appear only for
+rules actually enforced, so a passing gate never emits guidance an agent could mistake for a failure.
+
+**`crap`** — `CC² × (1 − coverage)³ + CC`, per function, joining radon's spans with coverage's
+executed lines. It exists for the case neither input catches alone: **a complex function inside a
+well-covered file.** At full coverage it collapses to CC; at zero coverage complexity is punished
+quadratically. The diagnostic offers both remedies, including the exact coverage percentage that
+would clear the ceiling.
+
+**`duplication`** — jscpd. Targets a specifically agentic failure: an agent that can't find the
+existing helper writes a second one, and every individual edit looks fine.
+
+**`mutation`** — mutmut against your unit tests. Coverage proves lines ran; this proves the tests
+*notice* when those lines behave differently. Reviewed-equivalent mutants count as killed, so the
+score stays honest.
+
+**`acceptance`** — the human-reviewed layer, in three stages: every spec must be approved and
+unchanged, the bound scenarios must pass, and **every mutation of a specification value must fail.**
+That last stage is the distinctive one — see below.
+
+## Acceptance mutation
+
+A scenario can pass without checking anything. Consider a binding that calls the system and then
+asserts something trivially true: the suite is green, coverage is full, and the scenario is theater.
+
+So Gauntlet perturbs the values in your specification — numbers by one, booleans flipped, enums
+swapped for another value in the same column — reruns, and demands every mutant *fail*. A survivor
+means the scenario passes regardless of the value it claims to test.
+
+Mutants are applied as targeted edits at parsed positions, never by re-rendering the file: your
+specification is the human's artifact, not Gauntlet's to reformat. The original is always restored.
+
+## Equivalent mutants
+
+Some mutants can't be killed by any test. If your rules say amounts above 50,000 are "high", then
+mutating 75,000 to 75,001 changes nothing observable. That's an **equivalent mutant** — a statement
+about your domain, not a weakness in your tests.
+
+Ignoring them pollutes the score and trains everyone to disregard survivors. Chasing them is
+impossible. So Gauntlet asks for a judgment, once:
+
+```bash
+gauntlet mutant approve-code \
+  --reason "both values fall on the same side of every threshold" \
+  --reviewer you
+```
+
+Thereafter they're reported in a separate reviewed-equivalent bucket and count as killed. If the code
+or the tests change so that the mutation *would* now discriminate, the approval lapses automatically
+and it comes back for review.
+
 ## Agent integration
 
-`gauntlet init --agent claude-code` generates three hooks (idempotently — it merges into existing
+`gauntlet init --agent claude-code` writes three hooks (idempotently — it merges into existing
 settings and replaces only its own entries):
 
-- **PreToolUse → `gauntlet guard`.** Blocks edits to protected paths before they happen. The refusal
-  message includes a deliberate escalation valve — *"If you believe a threshold is genuinely wrong,
-  say so in your response and let the human decide"* — because a model facing a wrong threshold with
-  no escape hatch can only thrash.
-- **PostToolUse → fast gates on changed files** (static, size, complexity; sub-second). Cannot block
-  — the edit already happened — but its stderr reaches the model as an immediate correction signal.
-- **Stop → `gauntlet stop-check`.** The real gate: full gauntlet, exit 2 means "you are not done"
-  and the report re-enters the agent's context. Bounded by a per-session retry cap (default 3) that
-  then escalates to the human with a systemMessage, because an agent that cannot fix the problem
-  should not loop forever.
+- **PreToolUse → `gauntlet guard`** blocks edits to protected paths before they happen. The refusal
+  includes a deliberate escape valve: *"If you believe a threshold is genuinely wrong, say so and let
+  the human decide."* A model facing a wrong threshold with no way out can only thrash.
+- **PostToolUse → fast gates on changed files.** Cannot block — the edit already happened — but its
+  stderr reaches the model as an immediate correction signal.
+- **Stop → `gauntlet stop-check`.** The real gate. Exit 2 means "you're not done" and the report
+  re-enters the agent's context. Bounded by a per-session retry cap that escalates to you, because an
+  agent that cannot fix the problem shouldn't loop forever.
 
-It also writes a marked, idempotent block into `CLAUDE.md` — advisory context, never enforcement.
-Worth including anyway: capable models demonstrably read ambient signals and raise their own bar.
-The gates remain the only thing relied upon.
+It also writes a marked block into `CLAUDE.md` — advisory context, never enforcement. Worth including
+anyway: capable models read ambient signals and raise their own bar. The gates remain the only thing
+relied upon.
 
-**Un-hookable agents:** `gauntlet loop --cmd "<agent command>" --task "..."` drives any CLI that
-reads a prompt on stdin and edits files: run agent → run gates → feed the JSON report back as the
-next prompt → repeat to a cap. Deliberately dumb — no conversation state, no roles. The moment it
-grows those it is multi-agent orchestration, which is out of scope by design.
+**Agents that can't be hooked** get an external driver: `gauntlet loop --cmd "<agent>" --task "..."`
+runs the agent, runs the gates, feeds the JSON report back as the next prompt, and repeats to a cap.
+Deliberately dumb — no conversation state, no roles. The moment it grows those it becomes multi-agent
+orchestration, which is out of scope.
 
-**Environment note:** hooks run bare `gauntlet`, not your project venv. Install with
-`uv tool install --editable .` so hooks track the repo — but a later *dependency* change still needs
+**Environment note:** hooks run bare `gauntlet`, not your project venv. Install with `uv tool install
+--editable .` so hooks track the repo — but a later *dependency* change still needs
 `uv tool install --reinstall --editable .`, because editable tracks source, not the dependency list.
 When in doubt: `gauntlet doctor`, from a plain shell.
+
+A **cloned or copied project** needs its environment rebuilt before the gates will pass: virtualenvs
+and `__pycache__` directories embed absolute paths, so a directory that was copied rather than
+created will fail in confusing ways. `rm -rf .venv __pycache__` and rebuild.
+
+## The event log
+
+Gates answer "what is the state now." A dashboard also needs "what is happening." Every command
+appends to `.gauntlet/events.jsonl`: runs starting and finishing, each gate's result, approvals
+granted, **approvals needed**, agent blocks, loop iterations, escalations.
+
+```bash
+gauntlet events --limit 20
+gauntlet events --json | jq 'select(.kind == "approval.needed")'
+```
+
+`approval.needed` is the interesting one: it's the inbox — everything waiting on a human. A live
+dashboard is a tail-and-render over this file rather than a special path into internals, which is the
+same discipline that lets hooks and CI share one contract.
+
+## Configuration
+
+```toml
+[project]
+language = "python"
+src = "src/"
+tests = "tests/"
+python = ".venv/bin/python"      # optional; auto-detected from .venv
+
+[output]
+max_diagnostics_per_gate = 10    # worst-first, then a truncation count
+
+[protect]
+paths  = ["gauntlet.toml", "gauntlet.lock.json", ".gauntlet/", ".claude/settings.json"]
+verify = ["gauntlet.toml", "pyproject.toml", ".claude/settings.json"]
+```
+
+`paths` are **blocked** from agent edits; `verify` are **content-checked**. `pyproject.toml` belongs
+in the second only — it holds thresholds *and* legitimate dependency work, so it's checked rather
+than frozen.
+
+Then one table per gate you want. Full examples in
+[gauntlet.toml](gauntlet.toml) and in the
+[demo project](https://github.com/xaziaver/gauntlet-demo1/blob/main/gauntlet.toml).
+
+## Continuous integration
+
+`.github/workflows/gauntlet.yml` runs `gauntlet check --json` and passes or fails on the exit code —
+the same contract the hooks use. For real enforcement, add a branch protection rule requiring the
+`gauntlet` check. A gate you can merge around is not a gate.
 
 ---
 
 ## What building this taught us
 
-Kept because it is the most interesting engineering content in the project. Every incident below
-happened in this repository's own history.
+Every incident below happened in this repository's own history.
 
-**A frontier model's standards converge on the same ceiling — by accident.** In the Phase 0 spike,
-a maximum-effort agent given no quality instructions noticed `pytest-cov` and `mutmut` in the dev
-dependencies, inferred that rigor mattered, and delivered 73 tests, 100% coverage, 131/133 mutants
-killed — and a maximum cyclomatic complexity of exactly 6, the ceiling it was never told about.
-Impressive, and a bad thing to depend on: rules in ambient signals were never rules at all.
+**A frontier model converges on the same ceiling — by accident.** In the initial spike, an agent
+given no quality instructions noticed `pytest-cov` and `mutmut` in the dev dependencies, inferred
+that rigor mattered, and delivered 73 tests, 100% coverage, 131/133 mutants killed — and a maximum
+complexity of exactly 6, the ceiling it was never told about. Impressive, and a bad thing to depend
+on: rules in ambient signals were never rules at all.
 
 **Gauntlet failed its own gates on the first honest run.** Eight functions over the complexity
-ceiling — the worst, `check` itself, at CC 15 — in a tool whose purpose is enforcing a ceiling of
-6. The refactor the gate demanded forced parsing apart from orchestration in every gate, which is
-what made the logic unit-testable without mocking. The gate found the design flaw before either
-author did.
+ceiling — the worst, `check` itself, at CC 15 — in a tool whose purpose is enforcing a ceiling of 6.
+The refactor it demanded forced parsing apart from orchestration in every gate, which is what made
+the logic testable without mocking. The gate found the design flaw before either author did.
 
-**Each gate caught something the others could not.** A stray trailing comma turned a string into a
-tuple: ruff suggested the *opposite* fix, mypy said nothing, the tests gate caught it. An
-integration test against a real git repo exposed that `git status --porcelain` collapses untracked
-directories, so `--changed` silently missed every new file — invisible to every unit test.
+**Each gate caught what the others couldn't.** A stray trailing comma turned a string into a tuple:
+ruff suggested the *opposite* fix, mypy said nothing, the tests gate caught it. `git status
+--porcelain` collapses untracked directories, so `--changed` silently skipped every new file —
+invisible to every unit test, caught by one integration test against a real repo. A refactor left a
+33-line function existing twice: static clean, coverage 97%, 234 tests passing, and only jscpd
+noticed. Earlier, a *smaller* duplicate slipped under `min_tokens` and through — the same gate, the
+same bug class, one caught and one missed.
 
-**CRAP earned its place within minutes of existing.** Its first run flagged a function at CRAP
-16.58 — complexity 4 (passes the complexity gate) at 8% coverage (in a repo passing the coverage
-gate). Only the intersection failed.
+**CRAP earned its place within minutes of existing.** Its first run flagged a function at 16.58 —
+complexity 4 (passes the complexity gate) at 8% coverage (in a repo passing the coverage gate). Only
+the intersection failed.
 
-**The duplication gate, both sides of the threshold.** A refactor left a 33-line function existing
-twice in one file: static clean, complexity fine, coverage 97%, all 234 tests passing — only jscpd
-caught it. Earlier, a smaller duplicated block slipped *under* `min_tokens` and through. Same gate,
-same class of bug, one caught and one missed: an honest illustration of what a threshold buys and
-costs.
+**The enforcement layer died silently, and the session looked perfect.** The first demo attempt: both
+hooks crashed (ruff was missing from the hook environment — hooks don't run your project venv),
+exited 1, and *failed open*. The agent produced excellent work and reported that all gates passed.
+Nothing had verified it. Worse, mypy's failure mode was silent: absent, it exits 1 with empty stdout,
+which parsed as "no findings." Three fixes followed — missing tools became gate errors, measurement
+tools moved into runtime dependencies, and `gauntlet doctor` exists because a system that fails open
+needs a way to be asked whether it's alive.
 
-**The enforcement layer died silently, and the session looked perfect.** The first demo attempt:
-both hooks crashed with tracebacks (ruff missing from the hook environment — hooks do not run your
-project venv), exited 1, and *failed open*. The agent, unhooked, produced excellent work and
-reported that all gates passed. Nothing verified it. Worse, mypy's failure mode was silent: absent,
-it exits 1 with empty stdout, which parsed as "no findings." Three fixes came out of the incident —
-missing tools became gate errors, all measurement tools moved into runtime dependencies, and
-`gauntlet doctor` now exists because a system that fails open needs a way to be asked whether it is
-alive.
+**Resolving a symlink quietly disabled the virtual environment.** `.venv/bin/python` is a symlink to
+the base interpreter; calling `.resolve()` on it — to be tidy — produced an interpreter without the
+venv's packages, so every project dependency looked missing. `doctor` printing both interpreters side
+by side turned an afternoon into a glance.
 
-**The demo session, once the hooks were alive.** The agent's first draft breached two gates
-(complexity 9, size 21); the PostToolUse diagnostics fed back; the agent extracted five helper
-predicates and landed at complexity 4 — then began running `gauntlet check` on its own, unprompted.
-Asked to raise the complexity limit instead, it first *cased the mechanism* — read the lock file,
-the settings, the CLI help, looking for seams — then attempted the edit, was blocked by the guard,
-and responded by refusing on the merits:
+**The demo session, once the hooks were alive.** The agent's first draft breached two gates; the
+diagnostics fed back; it extracted five helper predicates and landed at complexity 4 — then started
+running `gauntlet check` on its own, unprompted. Asked to raise the limit instead, it first *cased
+the mechanism* — reading the lock file, the settings, the CLI help, looking for seams — then
+attempted the edit, was blocked, and refused on the merits:
 
-> "I don't think I should even if I could… Raising the ceiling to 20 wouldn't fix anything broken;
-> it would just permit deeply nested claim-triage logic to go unflagged in the future. If you still
-> want the limit raised, you'll need to do it yourself… run `gauntlet lock` to re-approve — that's
-> the deliberate human action the lock mechanism requires."
+> "I don't think I should even if I could… Raising the ceiling to 20 wouldn't fix anything broken; it
+> would just permit deeply nested claim-triage logic to go unflagged. If you still want the limit
+> raised, you'll need to do it yourself… run `gauntlet lock` to re-approve — that's the deliberate
+> human action the lock mechanism requires."
 
-The escalation valve written into the refusal message produced exactly the intended behavior — and
-the agent went one better and defended the human's threshold against the human.
+The escape valve produced exactly the intended behavior, and the agent went one better: it defended
+the threshold against the human who set it.
 
----
+**Mutation testing's cost is your test suite's runtime.** The demo project ran 62 mutants in 2.6
+seconds. This repository would need roughly 87 minutes for 3,752, because its own tests spawn real
+subprocesses. mutmut also mutates string literals, so error messages that no test asserts on surface
+as survivors — noise that would need either suppression patterns or dozens of approvals. So the
+mutation gate ships, is proven on a project it fits, and is deliberately not enabled here. A gate you
+would have to weaken to pass is not a gate.
+
+**Mutation testing found what 100% coverage hid.** The demo project's unit tests looked thorough —
+parameterized cases, one test per tier. Mutmut killed 55 of 62 mutants. Every survivor was a boundary
+nobody tested: no case used exactly 50,000, or exactly 90 days, or exactly 1,000. Four tests fixed
+that (59/62). The remaining three were genuinely equivalent — two safeguards each preventing the
+other from mattering — and were classified rather than chased.
 
 ## Honest limitations
 
-- **Python only.** The adapter split exists in the architecture but is undemonstrated until the C#
-  adapter ships.
-- **Gates measure proxies.** Every metric is a proxy for quality, and proxies can be satisfied
-  without the quality — which is why the gates overlap, and why nothing here yet checks that the
-  code does the *right* thing. That is Phase 4's acceptance pipeline.
+- **Python only.** The adapter seam exists but is undemonstrated until a second language ships.
+- **Gates measure proxies.** Proxies can be satisfied without the quality, which is why the gates
+  overlap — and why nothing here checks that the code does the *right* thing except the acceptance
+  pipeline, which only checks what you wrote down.
 - **The guard is not airtight, by construction.** It sees file-path tools only; a shell redirect
-  bypasses it. The `protect` gate catches every route after the fact via content hashes, and CI plus
-  human review of config diffs is the backstop. The guard raises the cost; it does not make the
-  thing impossible. Suppression comments (`# noqa`, `# type: ignore`) remain a code-review problem.
-- **Locking fails open until you opt in.** No lock file means the protect gate passes with a nudge —
-  deliberate, so installation does not break a project — and means an unlocked project is
-  unprotected. Set `require_lock = true` after your first `gauntlet lock`.
-- **A silently broken hook environment is still possible.** Fail-open is the design; `gauntlet
-  doctor` is the mitigation, not a guarantee. Run it after any dependency change.
+  bypasses it. `protect` catches every route afterward via content hashes, and CI plus review of
+  config diffs is the backstop. The guard raises the cost; it doesn't make the thing impossible.
+  Suppression comments (`# noqa`, `# type: ignore`) remain a review problem.
+- **Locking fails open until you opt in.** No lock file means `protect` passes with a nudge —
+  deliberate, so installing doesn't break a project, and it means an unlocked project is unprotected.
+- **A silently broken hook environment is still possible.** Fail-open is the design; `doctor` is the
+  mitigation, not a guarantee.
+- **Gauntlet validates only its own config.** Your `pyproject.toml` can contain invalid TOML and no
+  gate will notice — it's hashed, not parsed.
+- **Tool errors pass through mostly unedited.** Gauntlet can tell you *that* pytest or mutmut failed
+  and give you its first meaningful line, but it cannot diagnose an arbitrary third-party failure. A
+  confused tool produces a confusing gate error.
 - **`--changed` compares against the working tree,** not a merge base: built for the edit-time loop,
   not PR diffing.
+- **mutmut 3 requires fork support** (no native Windows) and copies your project into `./mutants`,
+  which needs a pytest ignore and a gitignore entry. `doctor` warns when it's missing.
 - **`gauntlet loop` is deliberately dumb.** One prompt in, files out, no memory between iterations
-  beyond the report itself.
-
----
+  beyond the report.
 
 ## Roadmap
 
-- **Phase 4 — acceptance pipeline.** Gherkin features as the human-reviewed artifact, hash-locked on
-  approval (the registry mechanism already exists and protects the config today), with mutation of
-  Example-table values to prove the acceptance tests are connected to behavior rather than
-  decorative.
-- **Phase 5 — mutation testing.** mutmut with per-survivor diffs as diagnostics, changed-scope by
-  default, and a hash-keyed registry of human-approved equivalent mutants (the spike proved
-  equivalent mutants are real: 131/133 was a principled ceiling, not a miss).
-- **Phase 6 — C# adapter.** coverlet, Roslyn analyzers, Stryker.NET, Reqnroll — driven by a real
-  application, not built speculatively.
-- **Multi-agent orchestration stays out of scope.** A finished single-agent harness beats a
-  half-built swarm.
-
----
+- **C# adapter** — coverlet, Roslyn analyzers, Stryker.NET, Reqnroll — driven by a real application,
+  which is what turns the adapter seam from a claim into a fact.
+- **A dashboard** over the event log: live gate progress, the approval inbox, one-click review. The
+  log and the JSON contract exist so this can be a client rather than a rewrite.
+- **Multi-agent orchestration stays out of scope.** A finished single-agent harness beats a half-built
+  swarm.
 
 ## Credits
 
 The methodology is Robert C. Martin's ([@unclebobmartin](https://x.com/unclebobmartin)) — the CRAP
-ceiling, the complexity limit of 6, the acceptance-pipeline structure, and the central premise that
-the implementation is the agent's business and the metrics are yours. Reference implementations:
+ceiling, the complexity limit of 6, the acceptance-pipeline structure, and the premise that the
+implementation is the agent's business and the metrics are yours. Reference implementations:
 [swarm-forge](https://github.com/unclebob/swarm-forge),
 [Acceptance-Pipeline-Specification](https://github.com/unclebob/Acceptance-Pipeline-Specification).
 Gauntlet is an independent implementation of the ideas, not a port of his tools.

@@ -25,6 +25,27 @@ def read_subjects(root: Path, patterns: list[str]) -> dict[str, bytes | None]:
     return subjects
 
 
+def approve_paths(
+    root: Path, patterns: list[str], reason: str = "", reviewer: str = ""
+) -> registry.Registry:
+    """Approve specific config paths, leaving every other approval intact.
+
+    Unlike approve_all, this does not replace the namespace — review approves one
+    item at a time and must not silently drop the others.
+    """
+    current = registry.load(lock_path(root))
+    for key, content in read_subjects(root, patterns).items():
+        if content is not None:
+            current = registry.approve(
+                current,
+                registry.namespaced(CONFIG_NAMESPACE, key),
+                content,
+                reason=reason,
+                reviewer=reviewer,
+            )
+    return current
+
+
 def approve_all(root: Path, patterns: list[str]) -> tuple[registry.Registry, list[str]]:
     """Approve every verified path that exists, replacing the config namespace.
 

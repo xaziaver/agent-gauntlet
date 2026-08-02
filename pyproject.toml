@@ -42,3 +42,6 @@ extend-immutable-calls = ["typer.Option", "typer.Argument"]
 
 [tool.mypy]
 strict = true
+
+[tool.pytest.ini_options]
+addopts = "--ignore=mutants"

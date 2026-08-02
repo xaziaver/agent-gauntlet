@@ -35,6 +35,12 @@ MAX_SURVIVORS_INSPECTED = 40
 
 SHOW_TIMEOUT = 60
 
+ARTIFACT_HINT = (
+    "mutmut failed to copy the source tree. This usually means an editor lock or "
+    "backup file (.#name.py, name.py~) is present — mutmut cannot copy a dangling "
+    "symlink. Close the file in your editor or delete the artifact."
+)
+
 
 def score(killed: int, equivalent: int, unresolved: int) -> float:
     """Reviewed-equivalent mutants count as killed: no test could have killed them."""
@@ -51,6 +57,13 @@ def _filters(ctx: GateContext, config: dict[str, Any]) -> list[str] | None:
     if not ctx.changed_files:
         return None
     return python_adapter.module_filter(ctx.src, ctx.changed_files)
+
+
+def explain(error: str) -> str:
+    """Turn mutmut's traceback into something an agent can act on."""
+    if "FileNotFoundError" in error and (".#" in error or "~" in error):
+        return f"{ARTIFACT_HINT}\n{error}"
+    return error
 
 
 def collect(root: Path, python: str, names: list[str], timeout: int) -> list[CodeMutant]:
@@ -78,7 +91,7 @@ def survivors_for(root: Path, python: str, filters: list[str], timeout: int) -> 
     """Run mutmut and return the survivors, fully described."""
     outcome = python_adapter.run_mutmut(root, python, filters, timeout)
     if not outcome.ok:
-        raise MutmutError(outcome.error)
+        raise MutmutError(explain(outcome.error))
     return collect(root, python, outcome.survivors, SHOW_TIMEOUT)
 
 
@@ -151,7 +164,11 @@ def run(ctx: GateContext, config: dict[str, Any]) -> GateResult:
     outcome = python_adapter.run_mutmut(ctx.project_root, ctx.python, filters, timeout)
     if not outcome.ok:
         return GateResult(
-            gate=name, passed=False, threshold=threshold, actual=None, error=outcome.error[:800]
+            gate=name,
+            passed=False,
+            threshold=threshold,
+            actual=None,
+            error=explain(outcome.error)[:800],
         )
 
     survivors = collect(ctx.project_root, ctx.python, outcome.survivors, SHOW_TIMEOUT)

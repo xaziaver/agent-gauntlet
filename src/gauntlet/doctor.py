@@ -47,6 +47,8 @@ PROJECT_MODULES = {
 
 OWN_MODULES = {"mypy": "mypy"}
 
+EDITOR_ARTIFACT_GLOBS = (".#*", "#*#", "*~")
+
 
 @dataclass(frozen=True)
 class Check:
@@ -140,7 +142,33 @@ def mutants_dir_warning(root: Path, enabled_gates: list[str]) -> str | None:
     )
 
 
-def warnings_for(root: Path, enabled_gates: list[str]) -> list[str]:
+def warnings_for(root: Path, src: Path, enabled_gates: list[str]) -> list[str]:
     """Advisory environment problems: real, but not a missing tool."""
-    found = [mutants_dir_warning(root, enabled_gates)]
+    found = [
+        mutants_dir_warning(root, enabled_gates),
+        editor_artifact_warning(src, enabled_gates),
+    ]
     return [w for w in found if w is not None]
+
+
+def _artifacts(src: Path) -> list[str]:
+    found: list[str] = []
+    for pattern in EDITOR_ARTIFACT_GLOBS:
+        found.extend(str(path.relative_to(src)) for path in src.rglob(pattern))
+    return sorted(found)
+
+
+def editor_artifact_warning(src: Path, enabled_gates: list[str]) -> str | None:
+    """mutmut copies the source tree with a plain copy2, which dies on a dangling
+    symlink — and an Emacs lock file is exactly that."""
+    if "mutation" not in enabled_gates or not src.is_dir():
+        return None
+    found = _artifacts(src)
+    if not found:
+        return None
+    more = " ..." if len(found) > 3 else ""
+    return (
+        f"Editor lock/backup files under {src}: {', '.join(found[:3])}{more}. "
+        f"mutmut cannot copy them and will fail. Close the file in your editor or "
+        f"delete them."
+    )

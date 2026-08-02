@@ -25,23 +25,23 @@ def _project(tmp_path: Path, pyproject: str = "") -> Path:
 
 
 def test_no_warning_when_the_mutation_gate_is_off(tmp_path: Path) -> None:
-    assert doctor.warnings_for(_project(tmp_path), ["tests"]) == []
+    assert doctor.warnings_for(_project(tmp_path), tmp_path / "src", ["tests"]) == []
 
 
 def test_no_warning_without_a_mutants_directory(tmp_path: Path) -> None:
-    assert doctor.warnings_for(tmp_path, ["mutation"]) == []
+    assert doctor.warnings_for(tmp_path, tmp_path / "src", ["mutation"]) == []
 
 
 def test_a_mutants_directory_without_the_pytest_ignore_warns(tmp_path: Path) -> None:
     """Otherwise a bare `pytest` fails with an opaque import-file-mismatch error."""
-    warnings = doctor.warnings_for(_project(tmp_path), ["mutation"])
+    warnings = doctor.warnings_for(_project(tmp_path), tmp_path / "src", ["mutation"])
     assert len(warnings) == 1
     assert "--ignore=mutants" in warnings[0]
 
 
 def test_the_configured_ignore_silences_the_warning(tmp_path: Path) -> None:
     pyproject = '[tool.pytest.ini_options]\naddopts = "--ignore=mutants"\n'
-    assert doctor.warnings_for(_project(tmp_path, pyproject), ["mutation"]) == []
+    assert doctor.warnings_for(_project(tmp_path, pyproject), tmp_path / "src", ["mutation"]) == []
 
 
 def test_render_shows_warnings(tmp_path: Path) -> None:
@@ -83,3 +83,25 @@ def test_project_modules_are_checked_against_the_project_interpreter(tmp_path: P
 def test_render_names_both_interpreters() -> None:
     text = doctor.render(doctor.run_checks(["static"]), "/proj/.venv/bin/python")
     assert "project python:  /proj/.venv/bin/python" in text
+
+
+def test_editor_lock_files_are_warned_about(tmp_path: Path) -> None:
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / ".#module.py").symlink_to(src / "gone.py")
+    warnings = doctor.warnings_for(tmp_path, src, ["mutation"])
+    assert any("Editor lock" in w for w in warnings)
+
+
+def test_a_clean_source_tree_produces_no_artifact_warning(tmp_path: Path) -> None:
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "module.py").write_text("x = 1\n")
+    assert doctor.warnings_for(tmp_path, src, ["mutation"]) == []
+
+
+def test_artifacts_are_ignored_when_the_mutation_gate_is_off(tmp_path: Path) -> None:
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / ".#module.py").symlink_to(src / "gone.py")
+    assert doctor.warnings_for(tmp_path, src, ["tests"]) == []

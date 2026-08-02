@@ -40,4 +40,3 @@ features = "features/"
 require_approved = true
 mutate_examples = true
 mutation_sample = 0
-api_boundary = "tests/api"
