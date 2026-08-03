@@ -13,7 +13,7 @@ import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from gauntlet.acceptance.gherkin import ExampleTable, Feature, Scenario, Step
+from gauntlet.acceptance.gherkin import ExampleTable, Feature, Row, Scenario, Step
 
 MARKER = "_gauntlet"
 
@@ -103,32 +103,46 @@ def _swap(value: str, alternatives: Sequence[str]) -> str:
     return next((a for a in alternatives if a != value), value + MARKER)
 
 
-def mutate_value(value: str, alternatives: Sequence[str] = ()) -> str:
-    """A meaningfully different value of the same shape."""
-    stripped = value.strip()
-    if not stripped:
-        return MARKER
-    flipped = BOOLEANS.get(stripped.lower())
-    if flipped is not None:
-        return flipped
-    number = _mutate_number(stripped)
-    if number is not None:
-        return number
-    return _swap(value, alternatives)
+def _row_distance(left: list[str], right: list[str], skip: int) -> int:
+    """How many columns other than `skip` differ between two rows."""
+    return sum(
+        1 for index, (a, b) in enumerate(zip(left, right, strict=False)) if index != skip and a != b
+    )
 
 
-def _column_values(table: ExampleTable, column: int) -> list[str]:
-    return [row.cells[column].value for row in table.rows if column < len(row.cells)]
+def _discriminating_alternatives(table: ExampleTable, column: int, row: Row) -> list[str]:
+    """Values from this column in other rows, most-different row first.
+
+    A swap only proves something if the mutated row would have a different
+    expected outcome. The gate does not know which column holds that outcome, so
+    it prefers a value from the row that differs most elsewhere — which in
+    practice is a row whose expectation differs. Swapping one valid policy
+    prefix for another valid one proves nothing; swapping it for an invalid one
+    kills the mutant.
+
+    Ordering is total and deterministic: mutants are ledger keys, so the same
+    table must always produce the same mutation.
+    """
+    current = row.cells[column].value
+    scored: list[tuple[int, str, str]] = []
+    for other in table.rows:
+        if other.line == row.line or column >= len(other.cells):
+            continue
+        value = other.cells[column].value
+        if value == current:
+            continue
+        scored.append((-_row_distance(row.values, other.values, column), value, value))
+    return [value for _, _, value in sorted(scored)]
 
 
 def _column_mutants(scenario: str, table: ExampleTable, column: int) -> list[Mutant]:
-    alternatives = _column_values(table, column)
     header = table.headers[column] if column < len(table.headers) else str(column)
     mutants: list[Mutant] = []
     for row in table.rows:
         if column >= len(row.cells):
             continue
         cell = row.cells[column]
+        alternatives = _discriminating_alternatives(table, column, row)
         mutated = mutate_value(cell.value, alternatives)
         if mutated == cell.value:
             continue
@@ -146,6 +160,20 @@ def _column_mutants(scenario: str, table: ExampleTable, column: int) -> list[Mut
             )
         )
     return mutants
+
+
+def mutate_value(value: str, alternatives: Sequence[str] = ()) -> str:
+    """A meaningfully different value of the same shape."""
+    stripped = value.strip()
+    if not stripped:
+        return MARKER
+    flipped = BOOLEANS.get(stripped.lower())
+    if flipped is not None:
+        return flipped
+    number = _mutate_number(stripped)
+    if number is not None:
+        return number
+    return _swap(value, alternatives)
 
 
 def _example_mutants(scenario: Scenario) -> list[Mutant]:

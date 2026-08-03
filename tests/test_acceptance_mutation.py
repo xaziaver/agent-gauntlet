@@ -166,3 +166,56 @@ def test_changing_a_cell_freshens_only_that_row_s_locators() -> None:
 def test_signature_describes_the_mutation() -> None:
     mutant = next(m for m in _mutants() if m.original == "596.72")
     assert mutant.signature == "596.72->597.72"
+
+
+PREFIXES = """\
+Feature: Policy numbers
+
+  Scenario Outline: Format
+    Given the policy number is "<policy_number>"
+    Then the validation result is "<result>"
+
+    Examples:
+      | policy_number | result  |
+      | HO-1234567    | valid   |
+      | AU-1234567    | valid   |
+      | XX-1234567    | invalid |
+"""
+
+
+def _for(text: str, original: str) -> mutation.Mutant:
+    return next(m for m in mutation.mutants(gherkin.parse(text)) if m.original == original)
+
+
+def test_a_swap_prefers_a_row_with_a_different_outcome() -> None:
+    """HO -> AU proves nothing: both are valid. HO -> XX kills the mutant."""
+    assert _for(PREFIXES, "HO-1234567").mutated == "XX-1234567"
+
+
+def test_the_discriminating_choice_holds_from_every_row() -> None:
+    assert _for(PREFIXES, "AU-1234567").mutated == "XX-1234567"
+    assert _for(PREFIXES, "XX-1234567").mutated in {"HO-1234567", "AU-1234567"}
+
+
+def test_selection_is_deterministic() -> None:
+    """Mutants are ledger keys: the same table must always mutate the same way."""
+    first = [(m.original, m.mutated) for m in mutation.mutants(gherkin.parse(PREFIXES))]
+    second = [(m.original, m.mutated) for m in mutation.mutants(gherkin.parse(PREFIXES))]
+    assert first == second
+
+
+def test_a_column_with_no_discriminating_row_still_mutates() -> None:
+    """When every row shares an outcome the mutant is equivalent — but still produced."""
+    uniform = PREFIXES.replace("| XX-1234567    | invalid |", "| CP-1234567    | valid   |")
+    assert _for(uniform, "HO-1234567").mutated in {"AU-1234567", "CP-1234567"}
+
+
+def test_a_single_row_table_falls_back_to_a_marker() -> None:
+    single = PREFIXES.replace(
+        "      | AU-1234567    | valid   |\n      | XX-1234567    | invalid |\n", ""
+    )
+    assert _for(single, "HO-1234567").mutated.startswith("HO-1234567")
+
+
+def test_outcome_columns_still_mutate_against_the_other_outcome() -> None:
+    assert _for(PREFIXES, "invalid").mutated == "valid"
