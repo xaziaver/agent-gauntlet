@@ -7,6 +7,7 @@ greater-than, so a function exactly at the ceiling passes.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from gauntlet import artifacts
@@ -46,14 +47,21 @@ def judge(data: dict[str, Any], ceiling: int) -> tuple[int, list[Diagnostic]]:
     return worst, diagnostics
 
 
+def _no_source(ceiling: int, src: Path) -> GateResult:
+    return GateResult(
+        gate=name,
+        passed=True,
+        threshold=ceiling,
+        actual=f"no Python files under {src}",
+        vacuous=True,
+    )
+
+
 @timed
 def run(ctx: GateContext, config: dict[str, Any]) -> GateResult:
     ceiling = int(config.get("max", DEFAULT_CEILING))
-
-    # radon_blocks returns {} for an empty target list, which would otherwise
-    # read as a clean pass. Nothing to check is not the same as checked.
-    if not ctx.tool_targets():
-        return GateResult(gate=name, passed=True, threshold=ceiling, actual=0, vacuous=True)
+    if not ctx.python_files():
+        return _no_source(ceiling, ctx.src)
 
     try:
         data = artifacts.radon_blocks(ctx)

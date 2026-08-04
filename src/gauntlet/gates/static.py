@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sys
+from pathlib import Path
 from typing import Any
 
 from gauntlet.gates.base import Diagnostic, GateContext, GateResult, run_cmd, timed
@@ -95,15 +96,25 @@ def _mypy_diagnostics(ctx: GateContext, targets: list[str]) -> list[Diagnostic]:
     return parse_mypy(proc.stdout)
 
 
+def _no_source(src: Path) -> GateResult:
+    # mypy's own message here is "There are no .py[i] files in directory", which
+    # sends people looking at mypy rather than at their empty src/.
+    return GateResult(
+        gate=name,
+        passed=True,
+        threshold="clean",
+        actual=f"no Python files under {src}",
+        vacuous=True,
+    )
+
+
 @timed
 def run(ctx: GateContext, config: dict[str, Any]) -> GateResult:  # noqa: ARG001
     # `config` is unused but required by the Gate protocol's uniform signature.
-    targets = ctx.tool_targets()
-    if not targets:
-        return GateResult(
-            gate=name, passed=True, threshold="clean", actual="no files", vacuous=True
-        )
+    if not ctx.python_files():
+        return _no_source(ctx.src)
 
+    targets = ctx.tool_targets()
     try:
         diagnostics = _ruff_diagnostics(ctx, targets) + _mypy_diagnostics(ctx, targets)
     except _ToolError as exc:

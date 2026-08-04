@@ -13,6 +13,7 @@ from typing import Any
 from gauntlet.gates.base import GateContext, run_cmd
 
 COVERAGE_ARTIFACT = Path(".gauntlet") / "coverage.json"
+JUNIT_ARTIFACT = Path(".gauntlet") / "junit.xml"
 FUNCTION_TYPES = frozenset({"function", "method"})
 
 
@@ -20,14 +21,26 @@ class ArtifactError(Exception):
     """Tool output is missing or unparsable. Becomes GateResult.error, never a crash."""
 
 
+def _missing_coverage_reason(root: Path) -> str:
+    """ "The tests gate never ran" and "it ran and measured nothing" are different
+    problems. Telling someone to run the tests gate when they just did sends them
+    looking in the wrong place — usually it means an empty source tree."""
+    if (root / JUNIT_ARTIFACT).exists():
+        return (
+            "The tests gate ran but wrote no coverage data. That usually means there is "
+            "no Python source under [project].src for pytest-cov to measure."
+        )
+    return (
+        f"No {COVERAGE_ARTIFACT} — the tests gate must run before this gate "
+        f"(check gate order / --gates selection)."
+    )
+
+
 def load_coverage(root: Path) -> dict[str, Any]:
     """The coverage.json written by the tests gate."""
     path = root / COVERAGE_ARTIFACT
     if not path.exists():
-        raise ArtifactError(
-            f"No {COVERAGE_ARTIFACT} — the tests gate must run before this gate "
-            f"(check gate order / --gates selection)."
-        )
+        raise ArtifactError(_missing_coverage_reason(root))
     try:
         parsed: dict[str, Any] = json.loads(path.read_text())
     except (OSError, json.JSONDecodeError) as exc:

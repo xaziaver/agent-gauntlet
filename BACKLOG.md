@@ -78,6 +78,24 @@ The coverage message is actively misleading: the tests gate *did* run.
 
 ---
 
+### 4. Concurrent runs corrupt each other
+
+**Evidence.** During the ClaimGate boundary refactor, a Stop-hook run reported a failing scenario
+that did not reproduce. An agent-initiated `gauntlet check` was finishing at nearly the same moment.
+
+**Cause.** All runs share `.gauntlet/junit.xml`, `.gauntlet/coverage.json`, and mutmut's `mutants/`
+directory. Two runs interleave and read each other's half-written artifacts.
+
+**Why it matters more than it looks.** The overlap is designed in: `CLAUDE.md` tells the agent to run
+`gauntlet check` before declaring done, and the Stop hook fires *when* it declares done. A gate that
+occasionally reports a failure that is not real is worse than a missing gate — it teaches everyone to
+re-run and shrug, and everything here depends on a red result meaning something.
+
+**Fix.** An advisory lock at `.gauntlet/run.lock` (`fcntl.flock`, non-blocking). A second concurrent
+run exits 0 with "another gauntlet run is in progress" rather than interleaving. Longer term,
+run-scoped artifact directories keyed on the event log's existing run id would remove the shared
+state entirely.
+
 ## P2 — Real gaps
 
 ### 4. The test API boundary gate was designed and never built
@@ -168,6 +186,12 @@ persists and lapses automatically when the surrounding case changes. Used in ang
 times across the session, unprompted after the first, and never attempted to weaken a threshold.
 That is not enforcement and should never be relied upon — but it is real, and cheap.
 
+**A rule with no gate behind it decays — measured.** ClaimGate's kickoff prompt required a test API
+boundary in its ground rules. The agent acknowledged it and then wrote eight direct imports of the
+production package across four step-definition files. Every other rule in that prompt that a gate
+enforced was followed; the one rule with nothing behind it did not survive a single session. Building
+the boundary gate and enabling it caught all eight immediately.
+
 **The spec-change loop is sound.** The human requests a spec change, the agent edits, the gate
 reports the spec as modified, and the human re-approves. That happened on ClaimGate and worked
 exactly as designed.
@@ -180,6 +204,8 @@ exactly as designed.
   is consistent with an agent whose code always passed the fast gates (max function 10 lines, max
   complexity 5) — but it is also consistent with dead hooks, and there is no way to tell after the
   fact. That ambiguity is itself the argument for item 2.
-- **Is acceptance mutation worth its cost once item 1 is fixed?** It proved the bindings were
-  connected, which is real. But on this evidence its signal-to-noise is far worse than code
-  mutation's, and the honest answer may be that it belongs in CI rather than in the edit loop.
+- **Is acceptance mutation worth its cost?** After the discriminating-selection fix, ClaimGate went
+  from 41 survivors (all equivalent) to 4, with 13 mutants becoming killable — roughly a tenfold
+  improvement in signal. Runtime rose from 94s to 117s, because dying mutants require a full failing
+  run. It is now genuinely useful and genuinely expensive, which makes sampling and caching more
+  pressing rather than less.

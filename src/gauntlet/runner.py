@@ -15,6 +15,7 @@ from gauntlet.adapters import python as python_adapter
 from gauntlet.gates import (
     acceptance,
     base,
+    boundary,
     complexity,
     coverage,
     crap,
@@ -33,6 +34,7 @@ REGISTRY: dict[str, base.Gate] = {
         static,
         size,
         complexity,
+        boundary,
         tests,
         coverage,
         crap,

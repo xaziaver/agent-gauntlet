@@ -18,6 +18,7 @@ DEFAULT_GATE_ORDER = [
     "static",
     "size",
     "complexity",
+    "boundary",
     "tests",
     "coverage",
     "crap",

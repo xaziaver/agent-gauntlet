@@ -129,6 +129,7 @@ are always available; nothing is written until you say yes.
 | `coverage` | line/branch/per-file coverage below threshold | assertion quality |
 | `crap` | complexity × untestedness over the ceiling | anything its two inputs miss |
 | `duplication` | copy-pasted blocks (jscpd) | semantic duplication |
+| `boundary` | step definitions import production code directly | whether the API layer itself is any good |
 | `mutation` | too few code mutants killed (mutmut) | mutants nothing could kill |
 | `acceptance` | specs unapproved, scenarios failing, or spec values unchecked | requirements you never wrote down |
 
@@ -462,6 +463,14 @@ attempted the edit, was blocked, and refused on the merits:
 The escape valve produced exactly the intended behavior, and the agent went one better: it defended
 the threshold against the human who set it.
 
+**A rule with no gate behind it decayed inside one session.** The FNOL project's kickoff prompt
+required, in its ground rules, that step definitions reach the system only through a stable test API
+layer. The agent acknowledged the rule and then wrote eight direct imports of the production package
+across four step files. Every other rule in that prompt that a gate enforced was followed. The one
+rule with nothing behind it was not. Building the `boundary` gate caught all eight immediately — on
+a rule we had written ourselves, in a project built to test the tool, with an agent that had been
+told explicitly.
+
 **Mutation testing's cost is your test suite's runtime.** The demo project ran 62 mutants in 2.6
 seconds. This repository would need roughly 87 minutes for 3,752, because its own tests spawn real
 subprocesses. mutmut also mutates string literals, so error messages that no test asserts on surface
@@ -501,14 +510,106 @@ other from mattering — and were classified rather than chased.
 - **`gauntlet loop` is deliberately dumb.** One prompt in, files out, no memory between iterations
   beyond the report.
 
-## Roadmap
+## Known issues
 
-- **C# adapter** — coverlet, Roslyn analyzers, Stryker.NET, Reqnroll — driven by a real application,
-  which is what turns the adapter seam from a claim into a fact.
+The full list, with the evidence behind each, is in [BACKLOG.md](BACKLOG.md).
+Contributors and agents picking this up should start with
+[ARCHITECTURE.md](ARCHITECTURE.md).
+
+Real defects with workarounds, kept here rather than in an issue tracker because they are part of an
+honest picture of a v1.
+
+**A brand-new project fails `gauntlet check` immediately.** With an empty `src/`, mypy exits 2
+("no .py files in directory"), and with nothing to measure, pytest-cov writes no report — so
+`static`, `coverage`, and `crap` all fail with messages pointing at the symptom rather than the
+cause. *Workaround:* create a package `__init__.py`, one trivial module, and one test before the
+first `gauntlet check`. *Fix:* `init` should scaffold those, and the gates should name the real
+cause.
+
+**Gates report downstream symptoms.** The pattern above is the third instance of the same class:
+mypy's absence once parsed as "no findings"; a resolved symlink once produced an interpreter with no
+packages. Each was diagnosed by hand and fixed individually. The general improvement — gates that
+distinguish "the tool failed" from "the tool found nothing" consistently — is not done.
+
+**Mutation testing is impractical on integration-heavy suites.** Cost scales with test-suite
+runtime; a suite that spawns subprocesses can push a full run past an hour. *Workaround:* keep pure
+domain logic in its own package and point `[tool.mutmut] source_paths` at it alone. That is good
+architecture anyway, but it is a constraint the tool imposes rather than a choice it offers.
+
+**mutmut mutates string literals**, so error messages no test asserts on show up as survivors. On a
+message-heavy codebase this is noise that needs suppression patterns or many approvals.
+
+**A copied project directory is broken until rebuilt.** Virtualenvs and `__pycache__` embed absolute
+paths. Symptoms are confusing import errors from the *old* path. *Workaround:* `rm -rf .venv
+__pycache__` and rebuild.
+
+**`gauntlet review` diffs against git, not the ledger.** The registry stores hashes, not content, so
+a "what changed" diff needs another source. Without a committed version it says so plainly rather
+than guessing — but the diff is unavailable for uncommitted or untracked files.
+
+## Planned work
+
+**Not yet built, in rough priority order.**
+
+- **The test API boundary gate.** Step definitions should only reach the system through a stable
+  `tests/api/` layer — an AST check on imports. This was designed in Phase 4 and never implemented,
+  which makes it exactly the kind of rule that decays: currently it can only live in a prompt.
+- **Root-cause diagnostics** across the gates, per the known issue above.
+- **`init` scaffolding** so a new project is green by construction.
+- **A second language adapter** (C#: coverlet, Roslyn, Stryker.NET, Reqnroll) — what turns the
+  adapter seam from a claim into a fact.
 - **A dashboard** over the event log: live gate progress, the approval inbox, one-click review. The
   log and the JSON contract exist so this can be a client rather than a rewrite.
-- **Multi-agent orchestration stays out of scope.** A finished single-agent harness beats a half-built
-  swarm.
+- **Real-world validation.** Everything here has been proven on one small project. The tool has not
+  yet been used to build something someone actually wanted, which is the next thing being done with
+  it.
+
+## Roadmap
+
+### v1 — a usable single-agent harness for Python (where this is now)
+
+Ten gates, the approval ledger, hooks, status and review, the event log. Proven on two projects:
+this repository, and an FNOL intake service built end to end under the gates. What remains for the
+v1 line is polish rather than capability — see `BACKLOG.md`.
+
+### v2 — the workspace
+
+The bottleneck today is not enforcement, it is the human's surface. Setup is a dozen manual steps;
+review is a terminal walk; "what is waiting on me" is a command you have to think to run. A
+workspace — live gate progress, the approval inbox, diffs in context, one-click approve — is the
+next real gain, and the event log and JSON contract exist so it can be a *client* of the existing
+tool rather than a rewrite of it.
+
+### v3 — the substrate for orchestration
+
+Multi-agent harnesses describe a fixed workflow as a state machine: themes to stories, stories to
+specifications, specifications to code, code to cleaned, cleaned to hardened, hardened to accepted.
+That structure needs an answer to *"has this transition actually happened?"* — and a supervisor
+agent that answers by inspection inherits exactly the prompt decay the gates exist to eliminate.
+
+Gauntlet already answers most of those questions deterministically. A state's exit criteria is a set
+of gates; a human-in-the-loop state is an entry in the approval ledger; the event log is the
+observability substrate, and it records real per-gate durations, which is what a simulation of such
+a workflow would need in order to jitter anything meaningfully.
+
+Three additions would make that substrate explicit:
+
+- **Work-item identity** — an ID threaded through every event, so the log is per-story rather than
+  per-project.
+- **Named gate profiles** — `[profiles] cleaning = [...]`, so a workflow state's exit criteria has a
+  name rather than an ad-hoc gate list.
+- **A transition query** — which profiles currently pass, as JSON.
+
+That is deliberately *not* orchestration. Scheduling, worktrees, role prompts, and handoff protocols
+belong to whatever sits on top. The claim here is narrower and, hopefully, more durable: a workflow
+engine is only as trustworthy as its transition predicates, and deterministic predicates are what
+this tool makes.
+
+### Also planned
+
+A second language adapter (C#: coverlet, Roslyn, Stryker.NET, Reqnroll) — what turns the adapter
+seam from a claim into a fact — and broader agent support beyond Claude Code's hooks, for which
+`gauntlet loop` is already the generic fallback.
 
 ## Credits
 

@@ -8,9 +8,21 @@ update Gauntlet's own entries and leave everything else in the file alone.
 from __future__ import annotations
 
 import json
+import re
 from enum import Enum
 from pathlib import Path
 from typing import Any
+
+from gauntlet.templates import (
+    CONFTEST,
+    GAUNTLET_TOML_TEMPLATE,
+    GITHUB_WORKFLOW,
+    GUIDANCE_BODY,
+    PACKAGE_INIT,
+    PLACEHOLDER_MODULE,
+    PLACEHOLDER_TEST,
+    PRECOMMIT_CONFIG,
+)
 
 COMMAND = "gauntlet"
 CONFIG_PATH = Path("gauntlet.toml")
@@ -25,121 +37,40 @@ SETTINGS_PATH = Path(".claude") / "settings.json"
 CLAUDE_MD = Path("CLAUDE.md")
 PRECOMMIT_PATH = Path(".pre-commit-config.yaml")
 WORKFLOW_PATH = Path(".github") / "workflows" / "gauntlet.yml"
+CONFTEST_PATH = Path("conftest.py")
 
 BLOCK_BEGIN = "<!-- gauntlet:begin -->"
 BLOCK_END = "<!-- gauntlet:end -->"
-
-PRECOMMIT_CONFIG = """repos:
-  - repo: local
-    hooks:
-      - id: gauntlet
-        name: gauntlet
-        entry: gauntlet check --changed
-        language: system
-        pass_filenames: false
-        always_run: true
-"""
-
-GITHUB_WORKFLOW = """name: gauntlet
-
-on:
-  push:
-    branches: [main]
-  pull_request:
-  workflow_dispatch:
-
-jobs:
-  gauntlet:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v6
-        with:
-          enable-cache: true
-
-      - name: Install the project
-        run: uv sync --dev
-
-      - name: Run the gauntlet
-        run: uv run gauntlet check --json
-
-      - name: Upload gauntlet report
-        if: always()
-        uses: actions/upload-artifact@v5
-        with:
-          name: gauntlet-report
-          path: .gauntlet/
-          if-no-files-found: ignore
-"""
-
-GAUNTLET_TOML_TEMPLATE = """\
-# Gauntlet quality gates. This file is the human's artifact: edit it, then run
-# `gauntlet lock` to approve it. Agents are blocked from changing it.
-
-[project]
-language = "python"
-src = "src/"
-tests = "tests/"
-
-[output]
-max_diagnostics_per_gate = 10
-
-[gates.protect]
-# require_lock = true   # enable once you have run `gauntlet lock`
-
-[gates.static]
-
-[gates.size]
-max_function_lines = 25
-max_module_lines = 300
-
-[gates.complexity]
-max = 6
-
-[gates.tests]
-
-[gates.coverage]
-line = 90
-branch = 80
-
-[gates.crap]
-max = 15
-
-# Requires jscpd (npm install -g jscpd); enable when installed.
-# [gates.duplication]
-# max_duplicate_blocks = 0
-
-# Acceptance specs are the human's artifact: the agent drafts them, you approve
-# them with `gauntlet spec approve`, and an agent editing an approved spec fails
-# this gate. Requires pytest-bdd.
-# [gates.acceptance]
-# features = "features/"
-# require_approved = true
-# mutate_examples = true
-# api_boundary = "tests/api"
-
-# Mutation testing of the unit tests. Requires mutmut in the project
-# environment, plus a [tool.mutmut] section in pyproject.toml:
-#     [tool.mutmut]
-#     source_paths = ["src/"]
-#     pytest_add_cli_args_test_selection = ["tests/"]
-# mutmut copies the project into ./mutants, so also add:
-#     [tool.pytest.ini_options]
-#     addopts = "--ignore=mutants"
-# and put `mutants/` and `.mutmut-cache` in .gitignore.
-# [gates.mutation]
-# min_score = 90
-# scope = "changed"      # changed | full
-# require_review = false
-"""
 
 
 class Action(Enum):
     CREATED = "created"
     UPDATED = "updated"
     UNCHANGED = "unchanged"
+
+
+def package_name(root: Path) -> str:
+    """A valid Python package name derived from the project directory."""
+    cleaned = re.sub(r"[^0-9a-zA-Z_]", "_", root.name.lower()).strip("_")
+    if not cleaned:
+        return "app"
+    return f"pkg_{cleaned}" if cleaned[0].isdigit() else cleaned
+
+
+def baseline_files(root: Path) -> list[tuple[Path, str]]:
+    """A minimal green baseline: a package, one module, one test, one conftest.
+
+    Without these the first `gauntlet check` on a new project fails three gates,
+    none of which names the actual cause — an empty source tree. A new project
+    should be green by construction.
+    """
+    package = package_name(root)
+    return [
+        (CONFTEST_PATH, CONFTEST),
+        (Path("src") / package / "__init__.py", PACKAGE_INIT.format(package=package)),
+        (Path("src") / package / "placeholder.py", PLACEHOLDER_MODULE),
+        (Path("tests") / "test_placeholder.py", PLACEHOLDER_TEST.format(package=package)),
+    ]
 
 
 def _handler(args: list[str], timeout: int, status: str | None = None) -> dict[str, Any]:
@@ -223,24 +154,7 @@ def guidance_block() -> str:
     Worth including even though it decays: capable models read ambient signals and
     raise their own bar. The gates remain the only thing relied upon.
     """
-    return f"""{BLOCK_BEGIN}
-## Quality gates (Gauntlet)
-
-This project is gated. Implementation code is yours; thresholds and approvals are
-the human's.
-
-- Run `gauntlet check` yourself before you say you are done. Do not wait for the
-  Stop hook to tell you.
-- Gate failures come back as JSON with a file, a symbol, a line, and a remedy.
-  Act on the remedy rather than guessing.
-- Never edit `gauntlet.toml`, `gauntlet.lock.json`, `.claude/settings.json`, or
-  anything under `.gauntlet/`. Weakening a threshold is not a way to pass a gate.
-  If you believe a threshold is genuinely wrong, say so and let the human decide.
-- Write tests that would fail if the behavior were wrong. Coverage of code that
-  asserts nothing is worthless and later gates are designed to catch it.
-- Prefer extracting functions over suppressing a finding. `# noqa` and
-  `# type: ignore` are last resorts, not shortcuts.
-{BLOCK_END}"""
+    return f"{BLOCK_BEGIN}\n{GUIDANCE_BODY}{BLOCK_END}"
 
 
 def upsert_block(existing_text: str | None, block: str) -> str:
@@ -254,11 +168,21 @@ def upsert_block(existing_text: str | None, block: str) -> str:
     return existing_text[:start] + block + existing_text[end + len(BLOCK_END) :]
 
 
+def _agent_files(agent: str, fast_gates: str, read: Any) -> list[tuple[Path, str]]:
+    if agent == "claude-code":
+        return [
+            (SETTINGS_PATH, settings_json(read(SETTINGS_PATH), fast_gates)),
+            (CLAUDE_MD, upsert_block(read(CLAUDE_MD), guidance_block())),
+        ]
+    return [(PRECOMMIT_PATH, PRECOMMIT_CONFIG), (WORKFLOW_PATH, GITHUB_WORKFLOW)]
+
+
 def plan(root: Path, agent: str, fast_gates: str = FAST_GATES) -> list[tuple[Path, str]]:
     """(path, new content) for each file this agent target needs.
 
-    A starter gauntlet.toml is included only when none exists — plan never
-    overwrites the human's thresholds.
+    A starter gauntlet.toml and a green baseline are included only when no config
+    exists — plan never overwrites the human's thresholds, and an existing project
+    already has its own layout.
     """
 
     def read(path: Path) -> str | None:
@@ -268,12 +192,8 @@ def plan(root: Path, agent: str, fast_gates: str = FAST_GATES) -> list[tuple[Pat
     entries: list[tuple[Path, str]] = []
     if read(CONFIG_PATH) is None:
         entries.append((CONFIG_PATH, GAUNTLET_TOML_TEMPLATE))
-    if agent == "claude-code":
-        entries.append((SETTINGS_PATH, settings_json(read(SETTINGS_PATH), fast_gates)))
-        entries.append((CLAUDE_MD, upsert_block(read(CLAUDE_MD), guidance_block())))
-    else:
-        entries.append((PRECOMMIT_PATH, PRECOMMIT_CONFIG))
-        entries.append((WORKFLOW_PATH, GITHUB_WORKFLOW))
+        entries.extend((p, c) for p, c in baseline_files(root) if read(p) is None)
+    entries.extend(_agent_files(agent, fast_gates, read))
     return entries
 
 

@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from gauntlet import scaffold
 from gauntlet.scaffold import Action
 
@@ -149,3 +151,33 @@ def test_plan_never_overwrites_an_existing_config(tmp_path: Path) -> None:
     (tmp_path / "gauntlet.toml").write_text("[project]\n")
     paths = [p for p, _ in scaffold.plan(tmp_path, "claude-code")]
     assert scaffold.CONFIG_PATH not in paths
+
+
+def test_a_new_project_gets_a_green_baseline(tmp_path: Path) -> None:
+    """The first `gauntlet check` on a new project used to fail three gates."""
+    paths = [p for p, _ in scaffold.plan(tmp_path, "claude-code")]
+    assert Path("conftest.py") in paths
+    assert any(str(p).endswith("placeholder.py") for p in paths)
+    assert any(str(p).startswith("tests") for p in paths)
+
+
+def test_the_baseline_is_skipped_when_a_config_already_exists(tmp_path: Path) -> None:
+    (tmp_path / "gauntlet.toml").write_text("[project]\n")
+    paths = [p for p, _ in scaffold.plan(tmp_path, "claude-code")]
+    assert Path("conftest.py") not in paths
+
+
+def test_the_baseline_test_imports_the_generated_package(tmp_path: Path) -> None:
+    files = dict(scaffold.baseline_files(tmp_path))
+    package = scaffold.package_name(tmp_path)
+    assert f"from {package}.placeholder import ready" in files[Path("tests/test_placeholder.py")]
+
+
+@pytest.mark.parametrize(
+    ("directory", "expected"),
+    [("my-project", "my_project"), ("ClaimGate", "claimgate"), ("2fast", "pkg_2fast")],
+)
+def test_package_names_are_valid_identifiers(tmp_path: Path, directory: str, expected: str) -> None:
+    target = tmp_path / directory
+    target.mkdir()
+    assert scaffold.package_name(target) == expected

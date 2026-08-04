@@ -172,6 +172,7 @@ def _proc(stdout: str = "", stderr: str = "") -> subprocess.CompletedProcess[str
 def test_complexity_gate_surfaces_a_tool_failure_as_error_not_a_pass(
     project: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    (project / "src" / "a.py").write_text(CLEAN)
     monkeypatch.setattr(artifacts, "run_cmd", lambda *a, **k: _proc(stderr="radon exploded"))
     result = complexity.run(ctx_for(project), {"max": 6})
     assert result.passed is False
@@ -224,3 +225,17 @@ def test_gates_with_no_files_report_themselves_as_vacuous(project: Path) -> None
     assert size.run(ctx, {}).vacuous is True
     assert complexity.run(ctx, {"max": 6}).vacuous is True
     assert static.run(ctx, {}).vacuous is True
+
+
+def test_an_empty_source_tree_names_itself_rather_than_mypy(project: Path) -> None:
+    """Three gates used to fail here, none of them naming the real cause."""
+    result = static.run(ctx_for(project), {})
+    assert result.vacuous is True
+    assert "no Python files" in str(result.actual)
+
+
+def test_coverage_distinguishes_a_missing_run_from_an_empty_one(project: Path) -> None:
+    (project / ".gauntlet").mkdir()
+    (project / ".gauntlet" / "junit.xml").write_text("<testsuites/>")
+    result = coverage.run(ctx_for(project), {"line": 90})
+    assert "wrote no coverage data" in (result.error or "")
