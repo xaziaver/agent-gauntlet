@@ -55,6 +55,7 @@ def _unlocked(require_lock: bool, lock: Path) -> GateResult:
         passed=True,
         threshold=THRESHOLD,
         actual=f"not locked — run `gauntlet lock` to create {lock.name}",
+        vacuous=True,
     )
 
 

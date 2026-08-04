@@ -61,6 +61,15 @@ class Config:
         return [g for g in DEFAULT_GATE_ORDER if g in self.gates]
 
     @property
+    def disabled_gates(self) -> list[str]:
+        """Known gates with no [gates.*] table.
+
+        A commented-out or misspelled table is invisible otherwise: check and
+        status list only what ran, so under-enforcement looks like success.
+        """
+        return [g for g in DEFAULT_GATE_ORDER if g not in self.gates]
+
+    @property
     def max_diagnostics(self) -> int:
         return int(self.output.get("max_diagnostics_per_gate", 10))
 

@@ -100,7 +100,9 @@ def run(ctx: GateContext, config: dict[str, Any]) -> GateResult:  # noqa: ARG001
     # `config` is unused but required by the Gate protocol's uniform signature.
     targets = ctx.tool_targets()
     if not targets:
-        return GateResult(gate=name, passed=True, threshold="clean", actual="no files")
+        return GateResult(
+            gate=name, passed=True, threshold="clean", actual="no files", vacuous=True
+        )
 
     try:
         diagnostics = _ruff_diagnostics(ctx, targets) + _mypy_diagnostics(ctx, targets)

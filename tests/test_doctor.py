@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
-from gauntlet import doctor
+import pytest
+
+from gauntlet import __version__, doctor
 
 ALL_GATES = [
     "static",
@@ -16,6 +19,26 @@ ALL_GATES = [
     "acceptance",
 ]
 
+VALID_SETTINGS = json.dumps(
+    {"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "gauntlet"}]}]}}
+)
+
+
+@pytest.fixture(autouse=True)
+def _hooked(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Most warning tests are not about hooks; give them a healthy hook path.
+
+    Tests that are about hooks override _path_version themselves; a later
+    monkeypatch wins over this one.
+    """
+    monkeypatch.setattr(doctor, "_path_version", lambda: __version__)
+
+
+def _with_hooks(root: Path) -> Path:
+    (root / ".claude").mkdir(exist_ok=True)
+    (root / ".claude" / "settings.json").write_text(VALID_SETTINGS)
+    return root
+
 
 def _project(tmp_path: Path, pyproject: str = "") -> Path:
     (tmp_path / "mutants").mkdir()
@@ -24,34 +47,7 @@ def _project(tmp_path: Path, pyproject: str = "") -> Path:
     return tmp_path
 
 
-def test_no_warning_when_the_mutation_gate_is_off(tmp_path: Path) -> None:
-    assert doctor.warnings_for(_project(tmp_path), tmp_path / "src", ["tests"]) == []
-
-
-def test_no_warning_without_a_mutants_directory(tmp_path: Path) -> None:
-    assert doctor.warnings_for(tmp_path, tmp_path / "src", ["mutation"]) == []
-
-
-def test_a_mutants_directory_without_the_pytest_ignore_warns(tmp_path: Path) -> None:
-    """Otherwise a bare `pytest` fails with an opaque import-file-mismatch error."""
-    warnings = doctor.warnings_for(_project(tmp_path), tmp_path / "src", ["mutation"])
-    assert len(warnings) == 1
-    assert "--ignore=mutants" in warnings[0]
-
-
-def test_the_configured_ignore_silences_the_warning(tmp_path: Path) -> None:
-    pyproject = '[tool.pytest.ini_options]\naddopts = "--ignore=mutants"\n'
-    assert doctor.warnings_for(_project(tmp_path, pyproject), tmp_path / "src", ["mutation"]) == []
-
-
-def test_render_shows_warnings(tmp_path: Path) -> None:
-    text = doctor.render(doctor.run_checks(["static"]), None, ["something is off"])
-    assert "WARNING  something is off" in text
-
-
-def test_warnings_do_not_make_the_environment_unhealthy() -> None:
-    """A warning is advisory: the gates pass pytest an explicit path and are unaffected."""
-    assert doctor.healthy(doctor.run_checks(["static"])) is True
+# --- tool checks ---------------------------------------------------------
 
 
 def test_checks_cover_only_the_enabled_gates() -> None:
@@ -80,16 +76,59 @@ def test_project_modules_are_checked_against_the_project_interpreter(tmp_path: P
     assert next(c for c in checks if c.tool == "pytest").ok is True
 
 
+def test_warnings_do_not_make_the_environment_unhealthy() -> None:
+    """A warning is advisory: the gates pass pytest an explicit path and are unaffected."""
+    assert doctor.healthy(doctor.run_checks(["static"])) is True
+
+
+# --- rendering -----------------------------------------------------------
+
+
 def test_render_names_both_interpreters() -> None:
     text = doctor.render(doctor.run_checks(["static"]), "/proj/.venv/bin/python")
     assert "project python:  /proj/.venv/bin/python" in text
+
+
+def test_render_shows_warnings() -> None:
+    text = doctor.render(doctor.run_checks(["static"]), None, ["something is off"])
+    assert "WARNING  something is off" in text
+
+
+# --- the mutants directory -----------------------------------------------
+
+
+def test_no_warning_when_the_mutation_gate_is_off(tmp_path: Path) -> None:
+    root = _with_hooks(_project(tmp_path))
+    assert doctor.warnings_for(root, tmp_path / "src", ["tests"]) == []
+
+
+def test_no_warning_without_a_mutants_directory(tmp_path: Path) -> None:
+    root = _with_hooks(tmp_path)
+    assert doctor.warnings_for(root, tmp_path / "src", ["mutation"]) == []
+
+
+def test_a_mutants_directory_without_the_pytest_ignore_warns(tmp_path: Path) -> None:
+    """Otherwise a bare `pytest` fails with an opaque import-file-mismatch error."""
+    root = _with_hooks(_project(tmp_path))
+    warnings = doctor.warnings_for(root, tmp_path / "src", ["mutation"])
+    assert len(warnings) == 1
+    assert "--ignore=mutants" in warnings[0]
+
+
+def test_the_configured_ignore_silences_the_warning(tmp_path: Path) -> None:
+    pyproject = '[tool.pytest.ini_options]\naddopts = "--ignore=mutants"\n'
+    root = _with_hooks(_project(tmp_path, pyproject))
+    assert doctor.warnings_for(root, tmp_path / "src", ["mutation"]) == []
+
+
+# --- editor artifacts ----------------------------------------------------
 
 
 def test_editor_lock_files_are_warned_about(tmp_path: Path) -> None:
     src = tmp_path / "src"
     src.mkdir()
     (src / ".#module.py").symlink_to(src / "gone.py")
-    warnings = doctor.warnings_for(tmp_path, src, ["mutation"])
+    warnings = doctor.warnings_for(_with_hooks(tmp_path), src, ["mutation"])
     assert any("Editor lock" in w for w in warnings)
 
 
@@ -97,11 +136,63 @@ def test_a_clean_source_tree_produces_no_artifact_warning(tmp_path: Path) -> Non
     src = tmp_path / "src"
     src.mkdir()
     (src / "module.py").write_text("x = 1\n")
-    assert doctor.warnings_for(tmp_path, src, ["mutation"]) == []
+    assert doctor.warnings_for(_with_hooks(tmp_path), src, ["mutation"]) == []
 
 
 def test_artifacts_are_ignored_when_the_mutation_gate_is_off(tmp_path: Path) -> None:
     src = tmp_path / "src"
     src.mkdir()
     (src / ".#module.py").symlink_to(src / "gone.py")
-    assert doctor.warnings_for(tmp_path, src, ["tests"]) == []
+    assert doctor.warnings_for(_with_hooks(tmp_path), src, ["tests"]) == []
+
+
+# --- the hook path -------------------------------------------------------
+
+
+def test_a_project_without_hooks_is_told_so(tmp_path: Path) -> None:
+    assert "No Claude Code hooks" in (doctor.hook_warning(tmp_path) or "")
+
+
+def test_a_version_mismatch_is_reported(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A stale PATH install means hooks silently enforce an older tool."""
+    monkeypatch.setattr(doctor, "_path_version", lambda: "0.0.1")
+    assert "Reinstall" in (doctor.hook_warning(_with_hooks(tmp_path)) or "")
+
+
+def test_a_missing_path_install_is_reported(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Hooks fail open, so a missing binary disables enforcement silently."""
+    monkeypatch.setattr(doctor, "_path_version", lambda: None)
+    assert "fail open" in (doctor.hook_warning(_with_hooks(tmp_path)) or "")
+
+
+def test_matching_hooks_produce_no_warning(tmp_path: Path) -> None:
+    assert doctor.hook_warning(_with_hooks(tmp_path)) is None
+
+
+def test_malformed_settings_are_treated_as_no_hooks(tmp_path: Path) -> None:
+    (tmp_path / ".claude").mkdir()
+    (tmp_path / ".claude" / "settings.json").write_text("{not json")
+    assert "No Claude Code hooks" in (doctor.hook_warning(tmp_path) or "")
+
+
+# --- disabled gates ------------------------------------------------------
+
+
+def test_disabled_gates_are_named(tmp_path: Path) -> None:
+    warning = doctor.disabled_warning(["mutation", "acceptance"])
+    assert warning is not None
+    assert "mutation, acceptance" in warning
+
+
+def test_no_warning_when_every_gate_is_enabled() -> None:
+    assert doctor.disabled_warning([]) is None
+
+
+def test_disabled_gates_surface_through_warnings_for(tmp_path: Path) -> None:
+    """ClaimGate ran with 7 of 10 gates for a whole phase without anyone noticing."""
+    warnings = doctor.warnings_for(
+        _with_hooks(tmp_path), tmp_path / "src", ["static"], ["mutation"]
+    )
+    assert any("not enabled" in w for w in warnings)

@@ -5,13 +5,18 @@ from __future__ import annotations
 from typing import Any
 
 from gauntlet.gates.base import GateResult
-from gauntlet.report import FAIL, PASS
+from gauntlet.report import FAIL, PASS, VACUOUS
 from gauntlet.status import Status
 
 BULLET = "  •"
-
 MAX_DETAIL = 70
 SPINNER_CHARS = "⠁⠂⠃⠄⠅⠆⠇⠈⠉⠊⠋⠌⠍⠎⠏⠐⠑⠒⠓⠔⠕⠖⠗⠘⠙⠚⠛⠜⠝⠞⠟⠠⠡⠢⠣⠤⠥⠦⠧⠨⠩⠪⠫⠬⠭⠮⠯⠰⠱⠲⠳⠴⠵⠶⠷⠸⠹⠺⠻⠼⠽⠾⠿"
+
+
+def _mark(result: GateResult) -> str:
+    if result.vacuous:
+        return VACUOUS
+    return PASS if result.passed else FAIL
 
 
 def _first_meaningful_line(text: str) -> str:
@@ -38,14 +43,16 @@ def _detail(gate: GateResult) -> str:
 
 def _gate_lines(status: Status) -> list[str]:
     if not status.gates:
-        return ["GATES     not run (use `gauntlet status --run`)"]
-    verdict = "PASSING" if status.passed else "FAILING"
-    lines = [f"GATES     {verdict}"]
-    for gate in status.gates:
-        mark = PASS if gate.passed else FAIL
-        lines.append(f"{BULLET} {mark} {gate.gate:<12} {_detail(gate)}")
-    if not status.passed:
-        lines.append("      -> run `gauntlet check` for full diagnostics")
+        lines = ["GATES     not run (use `gauntlet status --run`)"]
+    else:
+        verdict = "PASSING" if status.passed else "FAILING"
+        lines = [f"GATES     {verdict}"]
+        for gate in status.gates:
+            lines.append(f"{BULLET} {_mark(gate)} {gate.gate:<12} {_detail(gate)}")
+        if not status.passed:
+            lines.append("      -> run `gauntlet check` for full diagnostics")
+    if status.disabled:
+        lines.append(f"      not enabled: {', '.join(status.disabled)}")
     return lines
 
 

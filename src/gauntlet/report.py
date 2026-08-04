@@ -9,7 +9,22 @@ from typing import Any
 
 from gauntlet.gates.base import Diagnostic, GateResult
 
-PASS, FAIL = "\u2713", "\u2717"
+PASS, FAIL, VACUOUS = "\u2713", "\u2717", "\u25cb"
+
+
+def _mark(result: GateResult) -> str:
+    if result.vacuous:
+        return VACUOUS
+    return PASS if result.passed else FAIL
+
+
+def _verdict(results: list[GateResult]) -> str:
+    if not passed(results):
+        return "GAUNTLET FAILED"
+    empty = sum(1 for r in results if r.vacuous)
+    if empty:
+        return f"GAUNTLET PASSED ({empty} gate(s) had nothing to check)"
+    return "GAUNTLET PASSED"
 
 
 def passed(results: list[GateResult]) -> bool:
@@ -96,7 +111,7 @@ def _render_diagnostic(diagnostic: Diagnostic) -> str:
 
 
 def _render_result(result: GateResult, max_diags: int) -> list[str]:
-    mark = PASS if result.passed else FAIL
+    mark = _mark(result)
     header = (
         f"{mark} {result.gate:<12} threshold={result.threshold} "
         f"actual={result.actual} ({result.duration}s)"
@@ -115,5 +130,5 @@ def to_human(results: list[GateResult], max_diags: int = 10) -> str:
     lines: list[str] = []
     for result in results:
         lines.extend(_render_result(result, max_diags))
-    verdict = "GAUNTLET PASSED" if passed(results) else "GAUNTLET FAILED"
+    verdict = _verdict(results)
     return "\n".join([*lines, "", verdict])

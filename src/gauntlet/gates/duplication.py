@@ -8,10 +8,18 @@ existing helper writes a second one, and every individual edit looks fine.
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 from typing import Any
 
-from gauntlet.gates.base import Diagnostic, GateContext, GateResult, run_cmd, timed
+from gauntlet.gates.base import (
+    MISSING_TOOL_RETURNCODE,
+    Diagnostic,
+    GateContext,
+    GateResult,
+    run_cmd,
+    timed,
+)
 
 name = "duplication"
 
@@ -66,25 +74,32 @@ def _command(ctx: GateContext, config: dict[str, Any], out_dir: Path) -> list[st
     ]
 
 
+def _run_jscpd(
+    ctx: GateContext, config: dict[str, Any]
+) -> tuple[Path, subprocess.CompletedProcess[str]]:
+    """Run jscpd; returns where its report should be and how the process went."""
+    out_dir = ctx.project_root / ".gauntlet" / "jscpd"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    proc = run_cmd(_command(ctx, config, out_dir), cwd=ctx.project_root)
+    return out_dir / "jscpd-report.json", proc
+
+
+def _failure(limit: int, error: str) -> GateResult:
+    return GateResult(gate=name, passed=False, threshold=limit, actual=None, error=error)
+
+
 @timed
 def run(ctx: GateContext, config: dict[str, Any]) -> GateResult:
     limit = int(config.get("max_duplicate_blocks", 0))
-    out_dir = ctx.project_root / ".gauntlet" / "jscpd"
-    out_dir.mkdir(parents=True, exist_ok=True)
+    if not ctx.tool_targets():
+        return GateResult(gate=name, passed=True, threshold=limit, actual="no files", vacuous=True)
 
-    try:
-        proc = run_cmd(_command(ctx, config, out_dir), cwd=ctx.project_root)
-    except FileNotFoundError:
-        return GateResult(gate=name, passed=False, threshold=limit, actual=None, error=INSTALL_HINT)
-
-    report_path = out_dir / "jscpd-report.json"
+    report_path, proc = _run_jscpd(ctx, config)
+    if proc.returncode == MISSING_TOOL_RETURNCODE:
+        return _failure(limit, INSTALL_HINT)
     if not report_path.exists():
-        return GateResult(
-            gate=name,
-            passed=False,
-            threshold=limit,
-            actual=None,
-            error=f"jscpd produced no report: {(proc.stderr or proc.stdout).strip()[:500]}",
+        return _failure(
+            limit, f"jscpd produced no report: {(proc.stderr or proc.stdout).strip()[:500]}"
         )
 
     count, diagnostics = parse_jscpd(json.loads(report_path.read_text()), ctx.project_root)

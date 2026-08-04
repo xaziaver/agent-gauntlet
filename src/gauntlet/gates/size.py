@@ -94,27 +94,38 @@ def _judge_file(rel: str, source: str, max_fn: int, max_mod: int) -> tuple[int, 
     return worst, diagnostics
 
 
+def _judge_files(
+    files: list[Path], root: Path, max_fn: int, max_mod: int
+) -> tuple[int, list[Diagnostic]]:
+    diagnostics: list[Diagnostic] = []
+    worst = 0
+    for path in files:
+        source = _read(path)
+        if source is None:
+            continue
+        file_worst, file_diags = _judge_file(str(path.relative_to(root)), source, max_fn, max_mod)
+        worst = max(worst, file_worst)
+        diagnostics.extend(file_diags)
+    return worst, diagnostics
+
+
 @timed
 def run(ctx: GateContext, config: dict[str, Any]) -> GateResult:
     max_fn = int(config.get("max_function_lines", 25))
     max_mod = int(config.get("max_module_lines", 300))
+    threshold = {"max_function_lines": max_fn, "max_module_lines": max_mod}
 
-    diagnostics: list[Diagnostic] = []
-    worst = 0
-    for path in ctx.python_files():
-        source = _read(path)
-        if source is None:
-            continue
-        file_worst, file_diags = _judge_file(
-            str(path.relative_to(ctx.project_root)), source, max_fn, max_mod
+    files = ctx.python_files()
+    if not files:
+        return GateResult(
+            gate=name, passed=True, threshold=threshold, actual="no files", vacuous=True
         )
-        worst = max(worst, file_worst)
-        diagnostics.extend(file_diags)
 
+    worst, diagnostics = _judge_files(files, ctx.project_root, max_fn, max_mod)
     return GateResult(
         gate=name,
         passed=not diagnostics,
-        threshold={"max_function_lines": max_fn, "max_module_lines": max_mod},
+        threshold=threshold,
         actual={"worst_function_lines": worst},
         diagnostics=diagnostics,
     )

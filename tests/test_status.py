@@ -102,7 +102,7 @@ def test_status_without_gates_is_not_reported_as_passing(project: Path) -> None:
 
 def test_the_json_shape_is_stable(project: Path) -> None:
     payload = status.collect(project, _cfg(project)).to_dict()
-    assert set(payload) == {"passed", "locked", "gates", "pending", "recent"}
+    assert set(payload) == {"passed", "locked", "gates", "pending", "recent", "disabled"}
     assert set(payload["pending"][0]) == {"namespace", "subject", "status", "action"}
 
 
@@ -159,3 +159,9 @@ def test_render_shows_all_three_sections(project: Path) -> None:
 
 def test_output_that_is_only_spinner_frames_still_returns_something() -> None:
     assert status_render._first_meaningful_line("⠋ Generating\n⠙ Generating\n").strip()
+
+
+def test_status_names_gates_that_are_not_enabled(project: Path) -> None:
+    current = status.collect(project, _cfg(project))
+    assert "mutation" in current.disabled
+    assert "mutation" in status_render.render(current)

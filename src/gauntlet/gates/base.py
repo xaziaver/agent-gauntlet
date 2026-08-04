@@ -35,6 +35,9 @@ class GateResult:
     diagnostics: list[Diagnostic] = field(default_factory=list)
     duration: float = 0.0
     error: str | None = None  # tool crashed, vs. a legitimate gate failure
+    # Passed because there was nothing to check — not the same as passing. A
+    # gate with no input is silent under-enforcement unless it says so.
+    vacuous: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

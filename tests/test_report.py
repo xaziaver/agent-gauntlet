@@ -125,3 +125,25 @@ def test_summary_reports_a_missing_actual_rather_than_none() -> None:
 
 def test_summary_falls_back_to_actual_for_an_unknown_gate() -> None:
     assert report.summary_line(_gate("mutation", 80, "61% killed")).endswith("61% killed")
+
+
+def test_a_vacuous_gate_is_marked_differently_from_a_pass() -> None:
+    empty = GateResult(
+        gate="acceptance", passed=True, threshold="x", actual="no feature files", vacuous=True
+    )
+    text = report.to_human([empty])
+    assert report.VACUOUS in text
+    assert report.PASS not in text
+
+
+def test_the_verdict_counts_gates_with_nothing_to_check() -> None:
+    results = [
+        GateResult(gate="size", passed=True, threshold=25, actual=10),
+        GateResult(gate="acceptance", passed=True, threshold="x", actual="none", vacuous=True),
+    ]
+    assert "1 gate(s) had nothing to check" in report.to_human(results)
+
+
+def test_a_fully_checked_pass_says_nothing_extra() -> None:
+    results = [GateResult(gate="size", passed=True, threshold=25, actual=10)]
+    assert report.to_human(results).rstrip().endswith("GAUNTLET PASSED")

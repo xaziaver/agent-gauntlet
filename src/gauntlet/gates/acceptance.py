@@ -111,13 +111,16 @@ def _survivors(
     return survived
 
 
-def _result(passed: bool, actual: str, diagnostics: list[Diagnostic] | None = None) -> GateResult:
+def _result(
+    passed: bool, actual: str, diagnostics: list[Diagnostic] | None = None, vacuous: bool = False
+) -> GateResult:
     return GateResult(
         gate=name,
         passed=passed,
         threshold=THRESHOLD,
         actual=actual,
         diagnostics=diagnostics or [],
+        vacuous=vacuous,
     )
 
 
@@ -232,6 +235,6 @@ def _stages(
 def run(ctx: GateContext, config: dict[str, Any]) -> GateResult:
     features = specs.discover(ctx.project_root, str(config.get("features", "features/")))
     if not features:
-        return _result(True, "no feature files")
+        return _result(True, "no feature files", vacuous=True)
     steps = ctx.project_root / str(config.get("steps", "tests/steps"))
     return _stages(ctx, config, features, steps, int(config.get("timeout", 600)))

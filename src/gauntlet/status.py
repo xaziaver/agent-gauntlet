@@ -56,6 +56,7 @@ class Status:
     pending: list[Pending] = field(default_factory=list)
     recent: list[dict[str, Any]] = field(default_factory=list)
     locked: bool = False
+    disabled: list[str] = field(default_factory=list)
 
     @property
     def passed(self) -> bool:
@@ -71,6 +72,7 @@ class Status:
             ],
             "pending": [p.to_dict() for p in self.pending],
             "recent": self.recent,
+            "disabled": self.disabled,
         }
 
 
@@ -114,4 +116,5 @@ def collect(root: Path, cfg: config_mod.Config, gates: list[GateResult] | None =
         pending=pending(root, cfg),
         recent=events.read(events.events_path(root), MAX_RECENT),
         locked=locking.lock_path(root).exists(),
+        disabled=cfg.disabled_gates,
     )

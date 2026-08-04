@@ -150,6 +150,27 @@ def _judge(
     )
 
 
+def _classified_result(
+    ctx: GateContext, outcome: python_adapter.MutationRun, min_score: float, require_review: bool
+) -> GateResult:
+    survivors = collect(ctx.project_root, ctx.python, outcome.survivors, SHOW_TIMEOUT)
+    approved = registry.load(locking.lock_path(ctx.project_root))
+    verdict = mutants_mod.classify(approved, SUBJECT, survivors)
+    return _judge(verdict, outcome.total - len(outcome.survivors), min_score, require_review)
+
+
+def _nothing_changed(threshold: dict[str, Any]) -> GateResult:
+    return GateResult(
+        gate=name, passed=True, threshold=threshold, actual="no changed modules", vacuous=True
+    )
+
+
+def _tool_failure(threshold: dict[str, Any], error: str) -> GateResult:
+    return GateResult(
+        gate=name, passed=False, threshold=threshold, actual=None, error=explain(error)[:800]
+    )
+
+
 @timed
 def run(ctx: GateContext, config: dict[str, Any]) -> GateResult:
     min_score = float(config.get("min_score", DEFAULT_MIN_SCORE))
@@ -158,20 +179,10 @@ def run(ctx: GateContext, config: dict[str, Any]) -> GateResult:
 
     filters = _filters(ctx, config)
     if filters is None:
-        return GateResult(gate=name, passed=True, threshold=threshold, actual="no changed modules")
+        return _nothing_changed(threshold)
 
     timeout = int(config.get("timeout", 1800))
     outcome = python_adapter.run_mutmut(ctx.project_root, ctx.python, filters, timeout)
     if not outcome.ok:
-        return GateResult(
-            gate=name,
-            passed=False,
-            threshold=threshold,
-            actual=None,
-            error=explain(outcome.error)[:800],
-        )
-
-    survivors = collect(ctx.project_root, ctx.python, outcome.survivors, SHOW_TIMEOUT)
-    approved = registry.load(locking.lock_path(ctx.project_root))
-    verdict = mutants_mod.classify(approved, SUBJECT, survivors)
-    return _judge(verdict, outcome.total - len(outcome.survivors), min_score, require_review)
+        return _tool_failure(threshold, outcome.error)
+    return _classified_result(ctx, outcome, min_score, require_review)

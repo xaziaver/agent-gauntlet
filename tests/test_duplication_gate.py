@@ -58,8 +58,10 @@ def _ctx(root: Path) -> GateContext:
     return GateContext(project_root=root, src=root / "src", tests=root / "tests")
 
 
-def _proc(stdout: str = "", stderr: str = "") -> subprocess.CompletedProcess[str]:
-    return subprocess.CompletedProcess(args=["jscpd"], returncode=0, stdout=stdout, stderr=stderr)
+def _proc(stdout: str = "", stderr: str = "", code: int = 0) -> subprocess.CompletedProcess[str]:
+    return subprocess.CompletedProcess(
+        args=["jscpd"], returncode=code, stdout=stdout, stderr=stderr
+    )
 
 
 def _writes(report: dict[str, object]):
@@ -126,10 +128,13 @@ def test_limit_above_zero_tolerates_that_many_clones(
 def test_missing_jscpd_explains_how_to_install_it(
     project: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    def missing(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
-        raise FileNotFoundError(2, "No such file or directory: 'jscpd'")
-
-    monkeypatch.setattr(duplication, "run_cmd", missing)
+    """run_cmd returns 127 for a missing binary rather than raising, so the gate
+    must recognize the code — not an exception it will never see."""
+    monkeypatch.setattr(
+        duplication,
+        "run_cmd",
+        lambda *a, **k: _proc(stderr="could not run 'jscpd'", code=127),
+    )
     result = duplication.run(_ctx(project), {})
     assert result.passed is False
     assert "npm install" in (result.error or "")

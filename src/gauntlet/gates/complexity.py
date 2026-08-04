@@ -49,6 +49,12 @@ def judge(data: dict[str, Any], ceiling: int) -> tuple[int, list[Diagnostic]]:
 @timed
 def run(ctx: GateContext, config: dict[str, Any]) -> GateResult:
     ceiling = int(config.get("max", DEFAULT_CEILING))
+
+    # radon_blocks returns {} for an empty target list, which would otherwise
+    # read as a clean pass. Nothing to check is not the same as checked.
+    if not ctx.tool_targets():
+        return GateResult(gate=name, passed=True, threshold=ceiling, actual=0, vacuous=True)
+
     try:
         data = artifacts.radon_blocks(ctx)
     except artifacts.ArtifactError as exc:

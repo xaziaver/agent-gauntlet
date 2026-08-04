@@ -214,3 +214,13 @@ def test_coverage_artifact_is_written_for_the_crap_gate_too(project: Path) -> No
     (project / "tests" / "test_ok.py").write_text("def test_ok():\n    assert True\n")
     tests_gate.run(ctx_for(project, enabled=["tests", "crap"]), {})
     assert (project / ".gauntlet" / "coverage.json").exists()
+
+
+def test_gates_with_no_files_report_themselves_as_vacuous(project: Path) -> None:
+    """Passing with nothing to check is not the same as passing."""
+    ctx = base.GateContext(
+        project_root=project, src=project / "src", tests=project / "tests", changed_files=[]
+    )
+    assert size.run(ctx, {}).vacuous is True
+    assert complexity.run(ctx, {"max": 6}).vacuous is True
+    assert static.run(ctx, {}).vacuous is True
