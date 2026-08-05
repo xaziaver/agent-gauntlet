@@ -12,6 +12,7 @@ from typer.testing import CliRunner
 
 from gauntlet import events
 from gauntlet.cli import EXIT_CONFIG_ERROR, EXIT_GATE_FAILURE, EXIT_OK, app
+from gauntlet.gates import base
 
 runner = CliRunner()
 
@@ -337,3 +338,20 @@ def test_status_json_is_parsable(project: Path) -> None:
     payload = json.loads(_text(result))
     assert "pending" in payload
     assert "gates" in payload
+
+
+def test_a_concurrent_run_exits_zero_rather_than_interleaving(project: Path) -> None:
+    """Two runs share coverage.json and junit.xml; interleaving reports failures
+    that are not real, which is worse than no gate at all."""
+    (project / "src" / "a.py").write_text(LONG_FUNCTION)
+    with base.exclusive_run(project):
+        result = runner.invoke(app, ["check", "--gates", "size"])
+    assert result.exit_code == EXIT_OK
+    assert "in progress" in _text(result)
+
+
+def test_the_lock_is_released_after_a_run(project: Path) -> None:
+    (project / "src" / "a.py").write_text(LONG_FUNCTION)
+    runner.invoke(app, ["check", "--gates", "size"])
+    result = runner.invoke(app, ["check", "--gates", "size"])
+    assert result.exit_code == EXIT_GATE_FAILURE

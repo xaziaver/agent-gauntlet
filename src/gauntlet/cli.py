@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import sys
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, NoReturn
 
@@ -34,6 +35,7 @@ from gauntlet.cli_support import fail as _fail
 from gauntlet.cli_support import resolve_config as _resolve_config
 from gauntlet.cli_support import select_gates as _select_gates
 from gauntlet.gates import base
+from gauntlet.gates.base import RunInProgressError, exclusive_run
 
 AGENTS = ("claude-code", "generic")
 
@@ -52,6 +54,31 @@ app.add_typer(review_app, name="review")
 @app.callback()
 def main() -> None:
     """Gauntlet — deterministic quality gates for AI coding agents."""
+
+
+def _locked_run(root: Path, execute: Callable[[], list[base.GateResult]]) -> list[base.GateResult]:
+    """Execute gates under the project lock, or exit 0 if another run holds it.
+
+    Runs share the .gauntlet artifacts, so interleaving reports failures that are
+    not real. A concurrent run is not a gate failure: exit 0 rather than blocking
+    a hook on somebody else's run.
+    """
+    try:
+        with exclusive_run(root):
+            return execute()
+    except RunInProgressError as exc:
+        typer.echo(str(exc))
+        raise typer.Exit(code=EXIT_OK) from None
+
+
+def _finish(log: events.Log, results: list[base.GateResult]) -> None:
+    _emit_approval_needed(log, results)
+    log.emit(
+        events.RUN_FINISHED,
+        command="check",
+        passed=report.passed(results),
+        failed=[r.gate for r in results if not r.passed],
+    )
 
 
 def _read_stop_payload() -> dict[str, Any]:
@@ -120,16 +147,10 @@ def check(
     root, cfg = _resolve_config()
     selected = _select_gates(gates, cfg)
     log = events.Log(root)
-    log.emit(events.RUN_STARTED, command="check", gates=selected, changed=changed)
     ctx = runner.build_context(root, cfg, selected, changed)
-    results = runner.run_gates(ctx, cfg, selected, fail_fast, log)
-    _emit_approval_needed(log, results)
-    log.emit(
-        events.RUN_FINISHED,
-        command="check",
-        passed=report.passed(results),
-        failed=[r.gate for r in results if not r.passed],
-    )
+    log.emit(events.RUN_STARTED, command="check", gates=selected, changed=changed)
+    results = _locked_run(root, lambda: runner.run_gates(ctx, cfg, selected, fail_fast, log))
+    _finish(log, results)
     _emit(results, cfg.max_diagnostics, json_out)
 
 
@@ -210,7 +231,8 @@ def stop_check(
     root, cfg = _resolve_config()
     session = stop_mod.session_id(_read_stop_payload())
     log = events.Log(root)
-    results = runner.run_full_gauntlet(root, cfg, _select_gates("", cfg), log)
+    selected = _select_gates("", cfg)
+    results = _locked_run(root, lambda: runner.run_full_gauntlet(root, cfg, selected, log))
     count = _stop_outcome(root, session, report.passed(results))
     if count == 0:
         raise typer.Exit(code=EXIT_OK)

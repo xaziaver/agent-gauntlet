@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import fcntl
 import functools
 import subprocess
 import sys
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
@@ -15,6 +17,36 @@ from typing import Any, Protocol
 IGNORED_NAME_PREFIXES = (".#", "#")
 TIMEOUT_RETURNCODE = 124  # conventional shell timeout code
 MISSING_TOOL_RETURNCODE = 127  # conventional shell "command not found"
+
+LOCK_FILE = Path(".gauntlet") / "run.lock"
+
+
+class RunInProgressError(Exception):
+    """Another gauntlet run holds the lock."""
+
+
+@contextmanager
+def exclusive_run(root: Path) -> Iterator[None]:
+    """One gauntlet run per project at a time.
+
+    Runs share .gauntlet/junit.xml, .gauntlet/coverage.json, and mutmut's
+    mutants/ directory. Two overlapping runs read each other's half-written
+    artifacts and report failures that are not real — which is worse than no
+    gate, because it teaches everyone to re-run and shrug.
+    """
+    path = root / LOCK_FILE
+    path.parent.mkdir(parents=True, exist_ok=True)
+    handle = path.open("w")
+    try:
+        fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError as exc:
+        handle.close()
+        raise RunInProgressError("another gauntlet run is in progress") from exc
+    try:
+        yield
+    finally:
+        fcntl.flock(handle, fcntl.LOCK_UN)
+        handle.close()
 
 
 @dataclass(frozen=True)
