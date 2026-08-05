@@ -1,15 +1,15 @@
 {
   "entries": {
     "config:.claude/settings.json": {
-      "approved_at": "2026-08-02T12:28:45+00:00",
+      "approved_at": "2026-08-05T09:46:29+00:00",
       "digest": "sha256:bce5a043a7ff06608318ecbafc3c3c2b63dccd5e3cf8a21710fef713b9513122"
     },
     "config:gauntlet.toml": {
-      "approved_at": "2026-08-02T12:28:45+00:00",
+      "approved_at": "2026-08-05T09:46:29+00:00",
       "digest": "sha256:255ea167618c59b4fc62529c84a312ca5bf19e1b5b6185b6c33fc251f141fd65"
     },
     "config:pyproject.toml": {
-      "approved_at": "2026-08-02T12:28:45+00:00",
+      "approved_at": "2026-08-05T09:46:29+00:00",
       "digest": "sha256:bea8ea687be4771a11a9eee0f135424a8af53980bbb7fe539b388ccc62434636"
     }
   },
