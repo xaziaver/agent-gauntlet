@@ -9,9 +9,9 @@ instead of diffs.
 [![gauntlet](https://github.com/xaziaver/agent-gauntlet/actions/workflows/gauntlet.yml/badge.svg)](https://github.com/xaziaver/agent-gauntlet/actions/workflows/gauntlet.yml)
 
 Gauntlet gates itself. Every commit here has passed the nine gates it enables, measured by this
-tool — mutation testing ships but is deliberately not enabled on this repository, for the reason
+tool - mutation testing ships but is deliberately not enabled on this repository, for the reason
 described below. [**gauntlet-demo1**](https://github.com/xaziaver/gauntlet-demo1) is a small project
-running all ten end to end — read that if you prefer examples to prose.
+running all ten end to end.
 
 ---
 
