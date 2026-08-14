@@ -258,6 +258,66 @@ happened to run `git diff` before the next commit; nothing in the harness itself
 
 **Status.** Open.
 
+#### Run pairing in the event log is unreliable in two directions
+
+**What happened.** Reconstructing which `gauntlet check` runs had been killed required pairing
+`run.started` to `run.finished` across the whole event log. Two separate asymmetries in `cli.py`
+make that unreliable, and both were found only by reading the source after a pairing attempt
+produced a wrong answer.
+
+First, `check` emits `RUN_STARTED` at `cli.py:151` *before* calling `_locked_run`. When another run
+holds the project lock, `_locked_run` catches `RunInProgressError`, echoes, and raises
+`typer.Exit(EXIT_OK)` — so `_finish`, the only emitter of `RUN_FINISHED`, never runs. A lock-rejected
+run leaves an orphaned `run.started` with the same shape as a run killed mid-gate. In this project's
+log that produced 5 orphans in 59 seconds on 2026-08-13 alongside 4 genuine kills, and the two
+classes are separable only by counting `gate.finished` events as a proxy: a lock-rejected run has
+none, a killed run has one per completed gate.
+
+Second, `RUN_STARTED` is emitted in exactly one place in the whole package — inside `check`.
+`stop_check` (`cli.py:235`) runs the full gauntlet under the same lock and emits neither boundary
+event, only the per-gate events the runner produces. Every Stop-hook run is therefore invisible to
+any pairing keyed on `run.started`, and drops silently out of any run count taken that way. Two
+separate analyses in this project undercounted gate executions for exactly that reason before the
+cause was read from source.
+
+**Why it matters.** The event log is the only durable record of what the harness actually did, and it
+is what a reviewer reaches for when a spec file turns up modified or a gate result looks wrong. A log
+whose runs cannot be paired reliably answers the question it exists to answer only with a heuristic.
+The first asymmetry cost a full session's analysis, redone twice: once with a nesting-depth heuristic
+that invented structure the log does not have, and once correctly by run id.
+
+**Proposed change.** Two parts, neither a one-liner. For `check`, move the emit inside the lock:
+
+```python
+# check(), replacing cli.py:151-152
+def _run() -> list[base.GateResult]:
+    log.emit(events.RUN_STARTED, command="check", gates=selected, changed=changed)
+    return runner.run_gates(ctx, cfg, selected, fail_fast, log)
+
+results = _locked_run(root, _run)
+```
+
+That keeps `check()` at 19 lines against its own 25-line size gate. The second part is larger:
+`stop_check` needs the same treatment plus a `_finish` call, and `_finish` currently hardcodes
+`command="check"`, so it needs the command parameterised. Either change needs a test pinning it —
+that a lock-rejected run emits no `run.started`, and that a stop-check run emits both boundaries — or
+Gauntlet's own mutation gate has nothing holding the behaviour in place.
+
+**What it cost us.** One session's event-log analysis produced a confidently wrong conclusion about
+which runs had been killed, corrected only after the correlation id was found in the source. A
+related claim — that a spec corruption had recurred — was asserted, then withdrawn, then confirmed
+against the log by a third method. None of that would have been necessary if `run.started` meant a
+run started.
+
+**Why it is not applied.** Gauntlet is deliberately held still while ClaimGate runs against it.
+agent-gauntlet is an editable install, so any change takes effect on ClaimGate's next gate run, and
+ClaimGate's `docs/harness-findings.md` records the current behaviour as verified from source — the
+harness change would land inside the gated project's own documentation. Apply after ClaimGate ships.
+
+**Routes to:** BACKLOG.md, v1.
+
+**Status.** Open, patch ready.
+
 #### The acceptance gate short-circuits mutation on an approval failure
 
 **What happened.** One dangling approval key (`spec:features/siu_flags.feature`, see below) made
@@ -768,6 +828,15 @@ read awkwardly — here it produced a record that was wrong about most of what i
 call is also the path of least resistance, because the acceptance gate's own diagnostic recommends it
 by name: "have a human review them with `gauntlet mutant approve`.
 
+**Measured cost, 2026-08-14.** Item 4c's re-approval put a number on this. One reason covered eleven
+survivors; by the time it was rewritten it carried four separate inaccuracies — a $500 threshold
+deleted by a later item, two claims about the wider suite falsified by a different item's work, and a
+threshold quoted as 30 where the scenario uses 45. All four survived two re-stampings, because
+`mutant approve` applies one reason to every survivor in scope and the locator and digest never
+changed. Three of the four were introduced not by carelessness but by other items invalidating claims
+the reason made about files it did not own. Scoping does not help here: all eleven survivors sat in
+one scenario, so `--scenario` could not isolate the five that were new.
+
 **Routes to:** BACKLOG.md, v1, blocking v2. An inbox showing why each individual mutant was approved requires a per-locator reason to exist.
 
 **Status.** Open.
@@ -995,6 +1064,14 @@ mutation testing structurally can and can't generate, not a misconfiguration. Wo
 standing caveat on any 100% code-mutation score: it certifies the mutations tried, not the space of
 inputs the code was never asked to handle.
 
+**Correction, 2026-08-14.** This entry's evidence is stale. The `0 <=` lower bound in
+`_is_recent_inception` *is* exercised with a negative interval, and has been since item 2 shipped on
+2026-08-09: `siu_indicators.feature`'s scenario "An inception date later than the loss date does not
+fire the indicator" specifies it, and `tests/unit/test_siu.py` tests it. Removing the bound would now
+fail both. The general point stands — a 100% code-mutation score certifies the mutations tried, not
+the space of inputs the code was never asked to handle — but the example no longer supports it.
+
+
 ## Properties to preserve
 
 Things the harness does well that a refactor could break without meaning to. A
@@ -1018,6 +1095,12 @@ after a spec changed.
 **What would address it.** Nothing — this is the mechanism working as designed, worth naming so it
 isn't mistaken for a coincidence. A revisit trigger written into a reason (see line 71's approval) is
 belt-and-suspenders on top of a check the ledger already performs structurally.
+
+**Correction, 2026-08-14.** The premise "which no test exercises" is stale, for the same reason
+recorded under "Code mutation cannot find a guard no test exercises": `siu_indicators.feature` and
+`tests/unit/test_siu.py` have both exercised that bound since 2026-08-09. The property this entry
+describes is unaffected — an approval still defends the code property that makes it valid — but the
+bound is now defended twice over, not only by its approval.
 
 **Routes to:** Gauntlet's README, "What building this taught us" — it is the strongest available answer to what stops human approvals rotting as the code moves beneath them.
 
