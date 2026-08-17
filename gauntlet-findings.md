@@ -631,6 +631,73 @@ observation in the note below.
 
 **Status.** Open.
 
+#### The stale-approval remedy asserts one cause for a condition with two, and emits an incomplete command
+ 
+**What happened.** ClaimGate item 4d renamed one Scenario Outline column (`inception_date` to
+`coverage_start`) and three scenario titles in `features/siu_indicators.feature`. Six
+approved-equivalent mutants had their locators change as a result, since a locator is built from the
+scenario name and the example row's contents. The acceptance gate reported them as: "6 approved
+equivalent mutant(s) no longer survive — the assertions got sharper, so these judgments are stale.
+Remove them with `gauntlet mutant prune`". `mutant prune`'s own docstring says the same thing in the
+same voice: "An assertion got sharper and now kills what a human once judged equivalent."
+ 
+Neither statement was true. No assertion changed. No mutant was killed. Measured against
+`gauntlet.acceptance.mutation.mutants()` at both refs rather than inferred: `triage.feature` yielded
+90 mutants before and 90 after, `siu_indicators.feature` 38 and 38, and each of the six removed
+approval keys paired to exactly one added key carrying an identical digest. The six judgments were
+as valid after the rename as before. Their addresses moved.
+ 
+**Why it matters.** ClaimGate's CLAUDE.md instructs the agent to act on the remedy rather than
+guessing, which makes remedy text an interface. An agent told the assertions got sharper will go
+looking for the sharpened assertion, and there is none to find. That much is only wasted effort. The
+worse reading is the one the sentence actually licenses: if an assertion now kills what a human
+judged equivalent, the judgment is obsolete and should be pruned and *not* reinstated. Under a
+rename the opposite is correct — prune the dead key and re-approve the identical judgment at its new
+locator. The two causes call for opposite second steps, and the diagnostic names only the first.
+ 
+This is the same class as the sibling entry above, one level down. There the remedy named the wrong
+command; here it names the wrong cause.
+ 
+**Also, the command as emitted does not run.** `mutant prune` takes a required `feature` argument.
+Pasting the remedy's `gauntlet mutant prune` verbatim fails with `Missing argument 'feature'` —
+observed, not reasoned; it was run. It also prunes one feature per invocation, so a condition
+spanning two features needs two calls, while the remedy reads as one action. The diagnostic knows
+which features hold stale keys, since it lists them.
+ 
+**What would address it.** The gate already holds everything needed to tell the two causes apart.
+Each ledger entry carries a digest, and the digest of every current mutant is computable in the same
+pass that finds the stale keys. If a stale key's digest matches a live mutant under a different
+locator, the mutant was relocated, not killed; if it matches nothing, an assertion genuinely got
+sharper. Diagnosing by cause also removes the need for a human to work out which case they are in,
+which on this project was done by hand each of the four times it came up.
+ 
+**Proposed change.** Split the stale-approval diagnostic into two reported states with distinct
+remedies:
+ 
+- *relocated* — the stale key's digest matches a live mutant at a different locator. Remedy: prune,
+  then re-approve at the new locator, and say explicitly that the judgment itself stands. Name the
+  new locator so the human can see the pairing rather than reconstruct it.
+- *superseded* — no digest match. Remedy: prune, and do not re-approve without fresh review, because
+  the assertion that now kills this mutant may be the correct outcome.
+Emit `gauntlet mutant prune <feature>` with the argument filled in, one line per feature holding
+stale keys. Correct `mutant prune`'s docstring, which asserts the superseded cause unconditionally.
+ 
+**What it cost us.** Real but small. The advisor on this project handed the human
+`gauntlet mutant prune` with no argument, taken from the remedy text rather than from the CLI, and it
+errored on first run. Per-feature invocations followed. More significantly, the relocated-versus-
+superseded distinction was worked out by hand — by pairing digests in a scratch script — on a
+condition the gate could have classified itself, and the same manual reasoning was repeated across
+items 4a, 4c and 4d.
+ 
+**Routes to:** BACKLOG.md, v1, beside "The acceptance gate's remedy names a command that
+re-baselines a different gate." Related to "Renaming a spec orphans its approval and leaves a
+dangling key" (v2) — that entry covers the spec-level case of the same underlying fact, that
+approval keys are addresses rather than identities. Related also to "Approval reasons go stale
+silently where the key does not," which is the inverse failure: there the key holds while the prose
+rots, here the key moves while the judgment holds.
+ 
+**Status.** Open.
+
 #### Background steps are invisible to acceptance mutation entirely
 
 **What happened.** Found while inventorying `loss_type`/`policy_number` vocabulary across
