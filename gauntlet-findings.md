@@ -45,6 +45,21 @@ process lessons live in ClaimGate's `harness-findings.md`.
 
 ## Proposed changes to Gauntlet
 
+**Vocabulary note, 2026-08-16.** Entries written before 2026-08-16 use ClaimGate names that have
+since changed. `_is_recent_inception` became `_evaluate_recent_inception` on 2026-08-09, in the same
+commit that created it. `policy_inception_date` and the `inception_date` column became
+`continuous_coverage_date` and `coverage_start`, and `NO_POLICY_INCEPTION_DATE` became
+`NO_CONTINUOUS_COVERAGE_DATE`, in ClaimGate item 4d on 2026-08-15. References to `siu_flags.feature`
+are historical and correct as written — the file was called that at the time, and several entries are
+about the rename itself. The arguments in every affected entry are unchanged; only the names moved.
+
+A findings document that cites the gated project's internals accumulates that project's vocabulary
+drift, and no sweep of the gated project will ever reach it — the names crossed a repository boundary
+and nothing followed them. The dating convention ClaimGate adopted, naming a symbol only as a
+locating aid with a verified-on date, applies here with more force rather than less, because the
+distance between the two repositories means nothing will ever fail to tell you.
+
+
 ### v1 — finish line
 
 #### The blast radius of a spec change cannot be measured before making it
@@ -476,6 +491,76 @@ instead of running again.
 
 **Status.** Open.
 
+#### The Stop hook cannot be scoped, and the prescribed workflow produces a phase where it cannot pass
+
+**What happened.** ClaimGate's workflow, which Gauntlet's own design prescribes, commits the spec
+lock before the implementation that satisfies it. During that interval the specification deliberately
+describes behaviour the code does not yet have. Item 4e spent four turns in that state: the
+acceptance specs asserted `LOSS_TYPE_UNRECOGNIZED` while `validate()` had no closed-set check, so the
+`tests` gate reported 179/182 by construction.
+
+The Stop hook ran the full gauntlet at the end of every one of those turns. Read `cli.py`:
+`stop_check` takes exactly one option, `--max-attempts`, and calls `_select_gates("", cfg)` with a
+hardcoded empty selector, which means every enabled gate. There is no `--gates` and no `--changed`,
+unlike the `PostToolUse` hook, which scopes itself to `static,size,complexity --changed`. So each
+turn paid the acceptance gate's ~156s, produced a 12KB persisted-output blob, and consumed a retry
+attempt, to rediscover a failure that was the intended state of the work.
+
+**Why it matters.** Two distinct problems share one cause.
+
+The first is cost. There is no way to tell the Stop hook to run less, so a session that cannot pass
+pays full price every turn. `--max-attempts` bounds how many times the agent is *bounced*, not how
+many times the gauntlet *runs*.
+
+The second is louder. The escalation message reads "Gauntlet gates still failing after N attempts —
+stopping the retry loop and handing this to you," which frames an expected intermediate state as the
+agent having failed to converge. On this project the agent was explicitly told the failure was
+expected and to stop rather than fix it, and it complied — but the instruction had to come from a
+human in the prompt, every session, because nothing in the tooling can express "the spec leads the
+implementation right now." An agent without that instruction has been handed a failing gate and told
+to act on the remedy, and the remedy for a failing acceptance test is to change the code. That is the
+correct action in general and precisely the wrong one here, before the human has reviewed and
+approved what the code is supposed to do.
+
+**Config cannot reach it.** Three apparent levers all fail. Replacing `stop-check` with
+`check --gates ...` in `.claude/settings.json` loses the exit-2 bounce semantics, per-session attempt
+counting, the escalation `systemMessage`, and the `_locked_run` concurrency guard. Disabling gates in
+`gauntlet.toml` is global and would weaken `gauntlet check` too. And both files are verified paths,
+so either edit requires a `gauntlet lock` to re-baseline — the same protected surface the remedy-text
+finding below is about.
+
+**What would address it.** Two things, separable.
+
+Give `stop-check` the gate selection `check` already has, so a project can decide what a turn
+boundary is worth. This is the cheap half and it stands on its own.
+
+The larger half: give the workflow a way to declare that the spec currently leads the implementation
+— a marker the human sets when locking a spec and clears when the implementation lands. While set,
+the Stop hook reports acceptance and tests as *expected-failing* rather than failing, does not consume
+attempts, and emits a remedy naming the implementation work rather than suggesting the code be
+changed to match. Gauntlet already knows the spec was approved more recently than the source it
+governs; that ordering is in the ledger and in git, so the marker could be derived rather than
+declared.
+
+**Proposed change.** Add `--gates` and `--changed` to `stop-check`, mirroring `check`. Separately,
+add a spec-leads-implementation state to the acceptance gate's reporting, derived from spec approval
+postdating the last change to the code under test, that suppresses attempt-counting and reframes the
+remedy.
+
+**What it cost us.** Measured, not estimated: three sessions of item 4e, each burning the full
+acceptance gate at every turn end, three escalation messages framing intended states as convergence
+failures, and roughly 36KB of persisted output nobody read. The advisor eventually worked around it by
+telling the agent to run `gauntlet check --gates protect,static,size,complexity,boundary,duplication`
+by hand — which does not touch the Stop hook at all, so the full run still happened every turn. The
+workaround addressed the symptom the human could see and not the one costing the time.
+
+**Routes to:** BACKLOG.md, v1, beside "Retry loop burns attempts on non-agent-actionable failures."
+That entry covers failures the agent cannot act on; this one covers failures the agent *can* act on
+and must not, which is the more dangerous case because the remedy text is actionable and wrong.
+
+**Status.** Open.
+
+
 #### Mutant approval defaults to the widest scope
 
 **What happened.** `gauntlet mutant approve` without `--scenario` applies to every surviving mutant in
@@ -585,6 +670,75 @@ tally.
 **Status.** Open, low priority. May be a designed boundary rather than a defect; recorded as a
 proposed-changes entry rather than moved to that section because it hasn't been decided which it is.
 
+#### A same-outcome enumeration guarantees one surviving mutant per row
+
+**What happened.** Drafting ClaimGate item 4e, a closed set of fourteen loss types had to be
+specified. The obvious shape, and the one the file's existing `notice_type` rule already used, is a
+Scenario Outline enumerating the recognized values with a single column and one shared outcome —
+every row accepted, no blockers.
+
+Read `mutation.py` before drafting rather than after. `_swap` selects a replacement from
+`_discriminating_alternatives`, which prefers a value drawn from the row differing most in the *other*
+columns. In a same-outcome enumeration there are no other columns that vary, so every row is at
+distance zero from every other, and the swap necessarily lands on another value from the same column —
+another recognized value, in a row asserting the same outcome. The mutant cannot be killed. Not "is
+hard to kill": cannot, by construction of the selection rule.
+
+Confirmed against the ledger rather than inferred: all four of `validation.feature`'s
+approved-equivalent mutants at that point were exactly the four rows of its `notice_type` enumeration,
+sharing one reason. The pattern had already taxed the project once and nobody had named it.
+
+Measured both candidate shapes with the engine before choosing. The same-outcome enumeration produced
+thirteen guaranteed survivors, thirteen permanent ledger entries requiring human review, testing
+nothing. Folding the recognized, unrecognized and absent cases into one outline with a varying outcome
+column produced thirty-two mutants and zero survivors — every swap became discriminating, and every
+one was killed by the implementation.
+
+**Why it matters.** Enumerating a closed set with a uniform outcome is not an unusual or careless spec
+shape. It is the natural way to write "these values are all accepted," it reads well, and it is what a
+careful person produces unprompted — this project produced it twice. The tax is one permanent approval
+per row, levied silently, and it scales with the size of the set being specified. Fourteen values cost
+thirteen approvals; a fifty-value vocabulary would cost forty-nine.
+
+The cost compounds with two findings already recorded here. Because `mutant approve` stamps every
+survivor in scope with a single reason, all rows of an enumeration share one justification, which then
+must stay true for all of them. And because approval reasons go stale silently where the key does not,
+that shared justification is exactly the kind of prose this project has had to correct four times. So
+the shape does not merely add entries; it adds entries of the most maintenance-hostile kind.
+
+The information the approvals encode is real but thin: these enumerated values are behaviourally
+identical inside the function under test. That is worth stating once, not once per row, and it is
+worth stating in the spec rather than in the ledger.
+
+**What would address it.** The engine could recognise the shape. When every row of an Examples table
+shares an outcome across all non-enumerated columns, a swap within the enumerated column is provably
+equivalent, and the gate could report it as a structural equivalence rather than a survivor awaiting
+human review — one diagnostic naming the column, not one per row. That is a stronger statement than
+the existing approval mechanism can make, because it is derived rather than judged, and it would not
+decay.
+
+Failing that, the gate could at least *name* the shape when it produces a run of same-signature
+survivors from one column, so the human choosing between spec shapes learns the price before paying it
+rather than after.
+
+**Proposed change.** Detect uniform-outcome enumerations in `mutants()` and classify swaps within the
+enumerated column as structurally equivalent, reported once per column. Alternatively, emit a
+diagnostic when three or more survivors in one scenario share a mutated column and an outcome,
+pointing at the mixed-outcome alternative.
+
+**What it cost us.** Nothing realized on this project, because the shape was measured before the spec
+was locked and the mixed-outcome form was chosen instead — thirteen approvals avoided, verified by
+building the counterfactual and running it. But the four `notice_type` approvals already in the ledger
+are this tax, paid earlier without anyone noticing, and they remain there.
+
+**Routes to:** BACKLOG.md, v1, beside "Acceptance mutation cannot distinguish a deliberately inert
+value from an untested one." Related to "Mutant approval defaults to the widest scope" and "The
+approval ledger has no per-mutant reason," both of which make this shape more expensive than the row
+count alone suggests.
+
+**Status.** Open.
+
+
 #### The acceptance gate's remedy names a command that re-baselines a different gate
 
 **What happened.** When `features/duplicates.feature` changed after approval, the acceptance gate
@@ -632,7 +786,7 @@ observation in the note below.
 **Status.** Open.
 
 #### The stale-approval remedy asserts one cause for a condition with two, and emits an incomplete command
- 
+
 **What happened.** ClaimGate item 4d renamed one Scenario Outline column (`inception_date` to
 `coverage_start`) and three scenario titles in `features/siu_indicators.feature`. Six
 approved-equivalent mutants had their locators change as a result, since a locator is built from the
@@ -640,63 +794,65 @@ scenario name and the example row's contents. The acceptance gate reported them 
 equivalent mutant(s) no longer survive — the assertions got sharper, so these judgments are stale.
 Remove them with `gauntlet mutant prune`". `mutant prune`'s own docstring says the same thing in the
 same voice: "An assertion got sharper and now kills what a human once judged equivalent."
- 
+
 Neither statement was true. No assertion changed. No mutant was killed. Measured against
 `gauntlet.acceptance.mutation.mutants()` at both refs rather than inferred: `triage.feature` yielded
 90 mutants before and 90 after, `siu_indicators.feature` 38 and 38, and each of the six removed
-approval keys paired to exactly one added key carrying an identical digest. The six judgments were
-as valid after the rename as before. Their addresses moved.
- 
+approval keys paired to exactly one added key carrying an identical digest. The six judgments were as
+valid after the rename as before. Their addresses moved.
+
 **Why it matters.** ClaimGate's CLAUDE.md instructs the agent to act on the remedy rather than
 guessing, which makes remedy text an interface. An agent told the assertions got sharper will go
 looking for the sharpened assertion, and there is none to find. That much is only wasted effort. The
-worse reading is the one the sentence actually licenses: if an assertion now kills what a human
-judged equivalent, the judgment is obsolete and should be pruned and *not* reinstated. Under a
-rename the opposite is correct — prune the dead key and re-approve the identical judgment at its new
-locator. The two causes call for opposite second steps, and the diagnostic names only the first.
- 
+worse reading is the one the sentence actually licenses: if an assertion now kills what a human judged
+equivalent, the judgment is obsolete and should be pruned and *not* reinstated. Under a rename the
+opposite is correct — prune the dead key and re-approve the identical judgment at its new locator. The
+two causes call for opposite second steps, and the diagnostic names only the first.
+
 This is the same class as the sibling entry above, one level down. There the remedy named the wrong
 command; here it names the wrong cause.
- 
+
 **Also, the command as emitted does not run.** `mutant prune` takes a required `feature` argument.
 Pasting the remedy's `gauntlet mutant prune` verbatim fails with `Missing argument 'feature'` —
-observed, not reasoned; it was run. It also prunes one feature per invocation, so a condition
-spanning two features needs two calls, while the remedy reads as one action. The diagnostic knows
-which features hold stale keys, since it lists them.
- 
-**What would address it.** The gate already holds everything needed to tell the two causes apart.
-Each ledger entry carries a digest, and the digest of every current mutant is computable in the same
-pass that finds the stale keys. If a stale key's digest matches a live mutant under a different
-locator, the mutant was relocated, not killed; if it matches nothing, an assertion genuinely got
-sharper. Diagnosing by cause also removes the need for a human to work out which case they are in,
-which on this project was done by hand each of the four times it came up.
- 
+observed, not reasoned; it was run. It also prunes one feature per invocation, so a condition spanning
+two features needs two calls, while the remedy reads as one action. The diagnostic knows which
+features hold stale keys, since it lists them.
+
+**What would address it.** The gate already holds everything needed to tell the two causes apart. Each
+ledger entry carries a digest, and the digest of every current mutant is computable in the same pass
+that finds the stale keys. If a stale key's digest matches a live mutant under a different locator,
+the mutant was relocated, not killed; if it matches nothing, an assertion genuinely got sharper.
+Diagnosing by cause also removes the need for a human to work out which case they are in, which on
+this project was done by hand each of the four times it came up.
+
 **Proposed change.** Split the stale-approval diagnostic into two reported states with distinct
 remedies:
- 
+
 - *relocated* — the stale key's digest matches a live mutant at a different locator. Remedy: prune,
-  then re-approve at the new locator, and say explicitly that the judgment itself stands. Name the
-  new locator so the human can see the pairing rather than reconstruct it.
+  then re-approve at the new locator, and say explicitly that the judgment itself stands. Name the new
+  locator so the human can see the pairing rather than reconstruct it.
 - *superseded* — no digest match. Remedy: prune, and do not re-approve without fresh review, because
   the assertion that now kills this mutant may be the correct outcome.
-Emit `gauntlet mutant prune <feature>` with the argument filled in, one line per feature holding
-stale keys. Correct `mutant prune`'s docstring, which asserts the superseded cause unconditionally.
- 
+
+Emit `gauntlet mutant prune <feature>` with the argument filled in, one line per feature holding stale
+keys. Correct `mutant prune`'s docstring, which asserts the superseded cause unconditionally.
+
 **What it cost us.** Real but small. The advisor on this project handed the human
 `gauntlet mutant prune` with no argument, taken from the remedy text rather than from the CLI, and it
-errored on first run. Per-feature invocations followed. More significantly, the relocated-versus-
-superseded distinction was worked out by hand — by pairing digests in a scratch script — on a
-condition the gate could have classified itself, and the same manual reasoning was repeated across
-items 4a, 4c and 4d.
- 
-**Routes to:** BACKLOG.md, v1, beside "The acceptance gate's remedy names a command that
-re-baselines a different gate." Related to "Renaming a spec orphans its approval and leaves a
-dangling key" (v2) — that entry covers the spec-level case of the same underlying fact, that
-approval keys are addresses rather than identities. Related also to "Approval reasons go stale
-silently where the key does not," which is the inverse failure: there the key holds while the prose
-rots, here the key moves while the judgment holds.
- 
+errored on first run. Per-feature invocations followed. More significantly, the
+relocated-versus-superseded distinction was worked out by hand — by pairing digests in a scratch
+script — on a condition the gate could have classified itself, and the same manual reasoning was
+repeated across items 4a, 4c and 4d.
+
+**Routes to:** BACKLOG.md, v1, beside "The acceptance gate's remedy names a command that re-baselines
+a different gate." Related to "Renaming a spec orphans its approval and leaves a dangling key" (v2) —
+that entry covers the spec-level case of the same underlying fact, that approval keys are addresses
+rather than identities. Related also to "Approval reasons go stale silently where the key does not,"
+which is the inverse failure: there the key holds while the prose rots, here the key moves while the
+judgment holds.
+
 **Status.** Open.
+
 
 #### Background steps are invisible to acceptance mutation entirely
 
@@ -1139,11 +1295,115 @@ fail both. The general point stands — a 100% code-mutation score certifies the
 the space of inputs the code was never asked to handle — but the example no longer supports it.
 
 
+### Killed-count deltas cannot register a test that guards a cross-module invariant
+
+**What happened.** ClaimGate item 4h added a unit test asserting that triage's high-severity loss
+types are a subset of validation's recognized loss types — two frozensets in two modules, related by a
+constraint stated nowhere and enforced by nothing. Predicted the code-mutation killed count would
+rise. It did not: 204 killed before, 204 after, measured by isolating the gate with
+`gauntlet check --gates mutation` and running it against both versions of the test file.
+
+Two separate reasons, and both matter.
+
+Killed count counts *killed mutants*, not killers. Remove `sinkhole` from the recognized set and the
+new test does fail — alongside `validation.feature`'s row for `sinkhole`, which was already killing
+that mutant. A test that only kills mutants other tests already kill moves the score by exactly zero
+no matter how valuable it is.
+
+More fundamentally, the state the test guards cannot be produced as a mutant at all. It requires a
+*coordinated* edit: someone drops `sinkhole` from `RECOGNIZED_LOSS_TYPES` **and** updates
+`validation.feature` to match. Validation's tests then pass, triage's severity tests pass, and only
+the subset test fails. Mutation testing perturbs one thing at a time by construction, so it never
+produces the inconsistent state, and no mutation operator ever will.
+
+**Why it matters.** The natural reading of a zero delta is that the test was redundant, and a
+maintainer trimming a suite on mutation evidence would delete exactly the tests that guard
+cross-module consistency — the class hardest to recover once gone, because nothing else in the project
+states the invariant. On ClaimGate the reasoning was recorded in `ASSUMPTIONS.md` specifically to
+survive that pruning, which is a process answer to a measurement limit.
+
+This is the second direction of the same asymmetry already recorded here. "Spec-level mutation finds
+gaps code-level mutation cannot" says one layer sees what another misses. This says something
+narrower and sharper: some invariants are invisible to *every* mutation layer, because they are
+properties of the relationship between artifacts rather than of any one artifact.
+
+**What would address it.** Nothing about the harness — this is a property of what single-point
+mutation can generate, not a misconfiguration. Worth naming so a zero delta is not read as evidence of
+redundancy. Tests guarding cross-module invariants should be judged on the coordinated edit they would
+catch, which is a question for a human, not for a score.
+
+
 ## Properties to preserve
 
 Things the harness does well that a refactor could break without meaning to. A
 handoff document listing only complaints tells the next maintainer what to
 change and nothing about what to leave alone.
+
+### The acceptance mutation engine is importable as a plain library
+
+**What happened.** `gauntlet.acceptance.gherkin.parse` takes a string and returns a `Feature`.
+`gauntlet.acceptance.mutation.mutants` takes that `Feature` and returns `Mutant` objects carrying
+locator, scenario, kind, original, mutated, and signature. Neither touches configuration, the
+filesystem, the ledger, or the CLI, and neither needs a project to exist.
+
+That made a working method possible throughout ClaimGate's phase-1 vocabulary items. Candidate specs
+that were not in the repository — not committed, not written to disk, in some cases never written at
+all — were measured before being proposed. Item 4e's shape decision was made this way: two candidate
+outlines were built as strings, run through the engine, and compared. The same-outcome enumeration
+produced thirteen guaranteed survivors; the mixed-outcome form produced thirty-two mutants and zero.
+That comparison decided the spec, and it happened before a word of it was drafted, let alone locked.
+
+The same property let every rename be checked against `git show <ref>:<path>` at both refs, so ledger
+impact was known before the reopening branch was cut.
+
+**Why it matters.** The whole discipline this document argues for — measure rather than predict,
+falsify rather than confirm — rests on being able to run the engine against hypotheticals. If
+`mutants()` required a config object, a project root, a `Path`, or a gate run, none of it works. The
+question becomes "what did the gate report after I committed," which is a slower loop and answers a
+different question, because by then the spec exists and changing it costs an approval cycle.
+
+The cost of losing this is invisible in any test suite: everything would still pass, and the
+capability would simply be gone.
+
+**What would address it.** Nothing — this is the design working. Recorded because a plausible refactor
+breaks it without touching a test: threading config through for gate-specific mutation policy, moving
+locator construction into the gate, or making `parse` take a file path rather than a string. Any of
+those would be reasonable-looking changes that end the ability to measure a spec that does not yet
+exist.
+
+**Routes to:** BACKLOG.md as a constraint on any acceptance-layer refactor, and Gauntlet's README
+under "What building this taught us" — the engine being usable outside the gate is a feature, not an
+implementation detail.
+
+### An approval's digest is independent of its key
+
+**What happened.** A mutant approval key encodes *where*:
+`mutant:<path>#<scenario>|<kind>|<context>`, with context being the example row's contents or the
+literal step text. The entry's digest hashes `Mutant.signature`, which is `original->mutated` — the
+source calls it "the mutation itself, the content whose hash an approval records." Where and what are
+stored separately.
+
+ClaimGate item 4d renamed a Scenario Outline column and three scenario titles. Six approval keys
+changed; six new locators appeared. Pairing removed keys to added keys by identical digest showed each
+removed key mapped to exactly one added key with the same digest — proof the six judgments were the
+same six mutants at new addresses, not six mutants replaced by six others. Equal counts alone cannot
+distinguish those cases, and the gate reports only counts.
+
+**Why it matters.** Renaming is the single most common thing that moves acceptance locators, and it is
+the case where a human most needs to know whether their prior judgment still applies. With the digest,
+that is decidable mechanically. Without it, every rename forces a full re-review of every displaced
+approval on the assumption that a moved key might be a different mutant.
+
+The separation is easy to lose precisely because it looks redundant. The key is already
+content-addressed on the whole row — see "Mutant approval keys are content-addressed on the whole
+row" — so a maintainer could reasonably conclude the digest duplicates information the key already
+carries. It does not. The key is sensitive to things the digest is invariant under, and that
+difference is the entire signal.
+
+**What would address it.** Nothing — recorded so the digest is not dropped as redundant. The gate does
+not currently use it to classify stale approvals, which is a separate open finding, but the data being
+there is what makes that fix cheap.
+
 
 ### An approved equivalent mutant is a regression test for its own justification
 
