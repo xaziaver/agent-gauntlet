@@ -957,6 +957,138 @@ covers agent-context cost, if such an item exists.
 
 **Status.** Open.
 
+#### Interpreter fallback lands on Gauntlet's own venv silently, and the error names the wrong thing
+
+**What happened.** `interpreter()` resolves in order: explicit `python` in `gauntlet.toml`, the
+project's local `.venv`, `$VIRTUAL_ENV`, then Gauntlet's own interpreter. When ClaimGate's `.venv`
+went missing, resolution fell through to the last entry and the mutation gate reported
+`No module named mutmut` from `.../uv/tools/agent-gauntlet/bin/python3`.
+
+**Why it matters.** The message names the module; the cause was the venv. Nothing in the output says
+a fallback occurred, and the path is a clue only to someone who already knows the resolution order.
+The obvious reading — "mutmut got uninstalled" — sends you to fix Gauntlet's environment, and doing
+so would have silenced the error while leaving every gate running against an interpreter that knows
+nothing about the project's libraries. The docstring is explicit that this is exactly the situation
+to avoid; the fallback that reaches it is silent.
+
+**What would address it.** Warn when resolution lands on `sys.executable` for a project that
+declares a language and has no configured `python` — that combination is almost always a missing or
+broken project venv rather than an intent. Naming the fallback in the gate's error would be enough:
+"no project .venv found; using Gauntlet's own interpreter, which does not carry project tooling."
+
+**What the gap cost us.** One misdiagnosis avoided only by reading the resolution order in the
+source, on a repository whose author had used the tool daily for weeks.
+
+**Routes to.** `BACKLOG.md`.
+
+**Status.** Open.
+
+#### The approval ledger is written non-atomically, and it is the one artifact no gate can rebuild
+
+**What happened.** `registry.save` ends in `path.write_text(...)` — no temp file, no atomic
+rename. A `gauntlet spec approve` or `gauntlet mutant approve` interrupted mid-write leaves
+`gauntlet.lock.json` truncated. This was reached in practice: during ClaimGate item 4g a Ctrl-C
+landed between two pasted approval commands, and the only reason it cost nothing is that the
+interrupt fell between invocations rather than inside one.
+
+**Why it matters.** Every other artifact Gauntlet touches can be regenerated. Specs are in git,
+mutants are derived from specs, scores are recomputed on every run. The ledger is the sole record
+of human judgment — approval reasons, reviewers, dates — and several of ClaimGate's run to a
+paragraph of reasoning that exists nowhere else. A truncating write puts the one irreplaceable
+file in the system on the least safe path.
+
+**What would address it.** Write to a sibling temp file and `os.replace` onto the target.
+`os.replace` is atomic on POSIX and on Windows, so a reader sees either the old ledger or the new
+one and never a partial. Roughly three lines.
+
+**What the gap cost us.** Nothing realized. The near miss produced a procedural workaround that
+should not have to exist: commit the ledger before and after every approval run, and never invoke
+an approval from a pasted multi-command block.
+
+**Routes to.** `BACKLOG.md`.
+
+**Status.** Open.
+
+#### An automatic retry loop repeats the one gate that rewrites the working tree
+
+**What happened.** The stop hook retries a failing `gauntlet check`. Observed at 2, 5, and 7
+attempts across ClaimGate items 4g and 4j, every time against a state that could not go green — a
+drafted, unapproved spec, which is the *guaranteed* condition between a spec draft and its
+approval. Instructing the agent to run the gate once does not prevent it; the loop belongs to the
+harness, not the agent.
+
+**Why it matters.** The acceptance gate mutates spec files in place and takes ~230s. Whether the
+retry is harmless or dangerous depends entirely on which stage fails. An unapproved-spec failure
+short-circuits at the approval check in ~0.001s before any mutation runs, so repeating it is
+merely slow. A failure that reaches the mutation pass rewrites the spec once per attempt, and each
+attempt is a window in which an interrupt leaves an injected mutant behind — which is how
+ClaimGate's corrupted spec of 2026-08-17 was produced.
+
+**What would address it.** Either a per-gate attempt limit, so gates that mutate the working tree
+are never retried automatically; or a crash-safe mutation pass that restores from
+`.gauntlet/mutation-backup/` on startup when it finds a run that never finished. The second is
+strictly better, because it also covers interrupts that have nothing to do with the loop.
+
+**What the gap cost us.** One corrupted spec, one session's diagnosis, and an initially wrong
+diagnosis of *which* mutant had been injected.
+
+**Routes to.** `BACKLOG.md`.
+
+**Status.** Open.
+
+#### Approval scope is coarser than the judgments it records, and it is now shaping the Gherkin
+
+**What happened.** `gauntlet mutant approve` scopes by feature file and `--scenario`, and nothing
+finer. Every survivor in a scenario shares one reason, and every re-approval overwrites all of
+them. ClaimGate item 4c recorded this once: eleven survivors in one scenario, one inherited reason
+that carried four inaccuracies forward invisibly, because neither the locator nor the digest moved.
+
+**Why it matters.** It has stopped being a documentation annoyance. ClaimGate item 4g drafted an
+eleven-row outline that simulated at ~31 survivors spanning three unrelated equivalence arguments —
+loss-type symmetry, configuration-flag no-ops, and value substitution on unrequired fields — which
+one shared reason cannot describe honestly. The specification was split into two outlines primarily
+so `--scenario` could isolate them, and item 4j then pre-split its own outline for the same reason.
+**The tool's scoping granularity is now determining the shape of the specifications**, which is the
+wrong direction for influence to run.
+
+**What would address it.** A `--locator` option accepting one or more exact locators, or a
+`--column` filter within a scenario. Either lets one scenario carry several reasons.
+
+**What the gap cost us.** One inherited reason with four inaccuracies, and two specifications
+restructured to work around the constraint rather than because the structure was better.
+
+**Routes to.** `BACKLOG.md`.
+
+**Status.** Open.
+
+#### Mutation cannot reach a fixed Given, so a specification can state a rule nothing protects
+
+**What happened.** `_literal_mutants` returns `[]` for any scenario where `is_outline` is true, so
+in a Scenario Outline only Examples cells are mutated and a fixed `Given` above the table is never
+touched regardless of quoting. `LITERAL_PATTERN` separately matches only quoted or numeric text, so
+an unquoted word is invisible in a plain scenario too.
+
+ClaimGate item 4g's first spec draft hit both at once. It stated the configuration under test — the
+entire subject of the item — as unquoted fixed `Given` lines above an outline. The scenarios read as
+covering both configuration states and the engine generated zero mutants against either. The file's
+total rose from 116 to 122, which looked like coverage growing.
+
+**Why it matters.** This is a gap the gate cannot report, because it has nothing to report: no
+mutant, no survivor, no warning. It is distinct from the code-mutation boundary recorded below —
+that one is a genuine limit of mutating code, whereas here the spec-level engine *could* mutate the
+value and simply does not.
+
+**What would address it.** Run `_literal_mutants` over an outline's steps as well, skipping only
+steps containing a `<placeholder>`. A fixed `Given the loss type is "injury"` above a table is
+exactly as mutable as the same line in a plain scenario, and mutating it is exactly as meaningful.
+
+**What the gap cost us.** One spec draft round-trip, caught by an advisor reading which values the
+mutants covered rather than reading the count.
+
+**Routes to.** `BACKLOG.md`.
+
+**Status.** Open.
+
 ### v1, blocking v2
 
 ARCHITECTURE.md's rule is that the workspace is a client reading "the event
@@ -1295,6 +1427,26 @@ fail both. The general point stands — a 100% code-mutation score certifies the
 the space of inputs the code was never asked to handle — but the example no longer supports it.
 
 
+### A same-outcome column can be the rule, not a table defect
+
+`_discriminating_alternatives` substitutes a value drawn from the mutated cell's own column. When
+the rule under specification treats every value in that column identically — by design, not by
+accident — every mutation in it is equivalent and every one survives.
+
+ClaimGate item 4g reached this deliberately: a `loss_type` column holding only `injury` and
+`liability`, under a rule whose entire purpose is that the two are treated the same. Eleven rows,
+eleven survivors, and no table shape fixes it. Adding discriminating rows makes it worse — measured
+at 77 mutants / ~31 survivors as drafted, 84 / ~36 with a row from outside the category, and 91 /
+~41 with an unrecognized row as well. The engine keeps selecting a same-category substitute, so the
+extra rows add survivors in the *other* columns without touching the original eleven.
+
+This is correct behaviour and must not be changed. The engine is reporting a true fact — the
+specification does not distinguish those values because the rule does not — and a heuristic that
+avoided same-outcome substitutions would suppress exactly the signal telling a reviewer that a
+column is inert. The resolution belongs in the specification: remove the column, fix the value in a
+`Given`, and let the symmetry be visible in the file's structure rather than recorded as equivalence
+reasons in the ledger.
+
 ### Killed-count deltas cannot register a test that guards a cross-module invariant
 
 **What happened.** ClaimGate item 4h added a unit test asserting that triage's high-severity loss
@@ -1374,6 +1526,30 @@ exist.
 **Routes to:** BACKLOG.md as a constraint on any acceptance-layer refactor, and Gauntlet's README
 under "What building this taught us" — the engine being usable outside the gate is a feature, not an
 implementation detail.
+
+### The approval stage short-circuits before the expensive one
+
+When a spec is unapproved or modified, the acceptance gate reports and returns in about a
+millisecond, without entering the ~230s mutation pass. This is not merely an optimization. The
+unapproved state is *guaranteed* on every reopening, between the spec draft and the human's
+approval, so it is the failure a session hits most often and the one an automatic retry loop
+repeats most. Because it fails before any file is rewritten, repeating it is safe.
+
+Any refactor that moves approval checking after mutation, or that mutates in order to report richer
+diagnostics on an unapproved spec, converts the most common failure in the workflow into the most
+dangerous one.
+
+### Mutant locators are structural, not positional
+
+A locator is scenario name, kind, column, and row values — not a line number and not a file offset.
+Measured repeatedly on ClaimGate: a comment rewrite anywhere in a file, two steps added to a
+`Background`, a scenario renamed elsewhere in the same file, and a whole new scenario appended each
+left every existing locator and signature byte-identical, so no approval went stale. The spec digest
+moved in every one of those cases and forced re-approval; not one approval needed re-review.
+
+This is what makes editing a specification's prose affordable. If locators were positional, every
+comment correction would restale the ledger, and the practical consequence would be that
+specifications stop being corrected.
 
 ### An approval's digest is independent of its key
 
