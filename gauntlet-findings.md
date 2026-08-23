@@ -59,6 +59,24 @@ and nothing followed them. The dating convention ClaimGate adopted, naming a sym
 locating aid with a verified-on date, applies here with more force rather than less, because the
 distance between the two repositories means nothing will ever fail to tell you.
 
+**Vocabulary sweep, 2026-08-22.** Re-run against ClaimGate at `origin/phase2/5a-carrier-configuration`.
+Nothing in this document is wrong; two references now name things that no longer exist in the gated
+project, and both entries are about historical events and are correct as written.
+
+- The **$500 theft severity threshold**, cited under "Approval reasons go stale silently where the key
+  does not" and under Designed boundaries, "Code mutation cannot find a guard no test exercises", was
+  deleted in ClaimGate item 4c on 2026-08-13 together with `_is_low_severity_theft`,
+  `THEFT_LOW_SEVERITY_THRESHOLD`, the `low` severity band and the `fast_track` queue. A reader who goes
+  looking for the threshold will not find it.
+- **`AU-7654321`**, cited under "Renaming a spec orphans its approval and leaves a dangling key", was
+  renamed to `HO-7654321` in item 4a on 2026-08-13; the recognized policy-number prefix set then became
+  caller-supplied configuration in item 4j on 2026-08-18, with `POLICY_NUMBER_PATTERN` reduced to
+  shape-only. That entry is about the rename itself.
+
+Checked and clean: no entry cites the injured-party model field names item 4g renamed on 2026-08-17,
+nor the carrier names and NAIC company and group codes ClaimGate removed on 2026-08-17. Ledger counts
+quoted inside entries were not re-verified against the current ledger this session.
+
 
 ### v1 — finish line
 
@@ -479,7 +497,10 @@ here roughly 2m17s apiece against a spec-draft state that no agent action could
 clear. The cap bounds how many times the agent is bounced back with exit 2; it
 does not bound how many times the gauntlet is executed, and the counter counts
 stops rather than retries, so the message text describes something other than
-what it names. When the failure is human-blocked, the expensive thing is the
+what it names. A sixth session under the same cap reached "after 3 attempts"
+in one sitting — three full runs against a spec human-blocked from the first —
+confirming the counter is bounded by nothing, since it clears only on a passing
+run and a human-blocked gate cannot pass. When the failure is human-blocked, the expensive thing is the
 run, not the bounce. A cap on the wrong quantity looks like a fix and is not
 one — which is a reason to classify human-blocked states properly rather than
 to keep tuning the loop around them. The narrower version, if classification is
@@ -617,6 +638,25 @@ row, or report staled approvals grouped by whether the mutated cell itself chang
 rather than a straightforward defect — over-invalidation is the safe direction, and the fix must not
 weaken the self-verifying property.
 
+**Addition, 2026-08-22 — a second over-invalidation channel, which the change proposed above does not
+close.** The key is not the only content-addressed half of an approval. `mutants.subjects()` builds each
+ledger entry as `{key_for(subject_key, m): m.signature.encode("utf-8")}` — the key is the locator, the
+digest is the signature — so an approval is invalidated by a change to either. Demonstrated against the
+engine on 2026-08-22 with a three-row table: renaming one row's value from `mold` to `water_damage`, in a
+row carrying no approval at all, left the *first* row's locator byte-identical while changing its
+signature from `fire->mold` to `fire->theft`, because `_discriminating_alternatives` sorts candidates by
+`(-distance, value, value)` and the alphabetical tie-break moved. That approval reports as `MODIFIED`, not
+`MISSING` — a different bucket, a different remedy, and a cause sitting in a row the reviewer never
+touched.
+
+Keying on the mutated cell rather than the whole row does not address this, because the churn is in the
+digest rather than the key. Closing both channels means either making the substitution stable under edits
+elsewhere in the column — selecting the alternative from the mutated row's own position rather than by a
+value-ordered tie-break — or reporting the two channels distinctly, so a reviewer can tell a judgment
+that moved from a judgment whose mutation changed underneath it. ClaimGate records the operational half
+of this under "A mutant has two identities, and one of them moves when a neighbouring row changes"; the
+proposal half had not crossed to this document until now.
+
 **Routes to:** BACKLOG.md, v1. Trade-off, not defect — over-invalidation is the safe direction and the fix must not weaken the self-verifying property described under Properties to preserve.
 
 **Status.** Open.
@@ -730,6 +770,54 @@ pointing at the mixed-outcome alternative.
 was locked and the mixed-outcome form was chosen instead — thirteen approvals avoided, verified by
 building the counterfactual and running it. But the four `notice_type` approvals already in the ledger
 are this tax, paid earlier without anyone noticing, and they remain there.
+
+**Addition, 2026-08-22 — a second construction, which the detection proposed above would not catch.**
+ClaimGate item 5a produced a fully inert outline whose rows do *not* share an outcome. It carries `field`
+and `value` columns and states its expectation inside the `Then` step as
+`INVALID_REQUIRED_CONFIGURATION:<field>`, reusing a placeholder that also appears in a `Given`. The
+outcome is therefore not a column at all. `_row_distance` scores only the Examples columns, so it cannot
+see the expectation; and because the placeholder feeds the input and the assertion together, a swap in
+`field` moves both and stays correct. Every swap in `value` lands on another malformed value, which is
+malformed for every field. Measured 12 mutants, simulated 12 survivors — the first fully inert scenario
+this project has produced.
+
+The detection proposed above — every row sharing an outcome across all non-enumerated columns — returns
+false here, because the rows genuinely differ in both columns present. The rule a detector needs is a
+different one: **an outline is undiscriminated when its expectation is not a column of its own**, that is,
+when every `Then` step is fixed text or is built from placeholders that also appear in a `Given`. That is
+decidable from the parsed IR without evaluating anything, and it would have fired on this draft before a
+lock rather than after.
+
+Alternatives measured on the same rule before recommending one — mutant counts measured against the
+engine, survivor counts simulated against the rule as specified, since no implementation exists yet:
+promoting the expectation to its own column with one loading row gave 21 mutants and 7 survivors;
+splitting by value type into three outlines, each pairing a valid value against a malformed one, gave 36
+and about 5; carrying two reason codes with absent, malformed and valid rows in one table gave 39 and 1.
+The sibling outline in the same file that had kept its expectation as a column measured 10 and 1. The
+lever is neither the row count nor the column count. It is whether the expectation is one of the columns.
+
+**Addition, 2026-08-22 — and having made the expectation a column, do not then add a loading row.**
+The two halves of this advice work against each other, which nothing here said.
+`_discriminating_alternatives` ranks candidates by `-_row_distance`, so it always prefers the most
+different row, and an all-blank row differs from every other row in every column — the maximum
+available. Once one exists it is a global attractor: **every cell in the table substitutes to blank**,
+and no cell ever substitutes to a sibling value again.
+
+Measured on ClaimGate's `carrier_configuration.feature` at `3ebea71`, a ten-row mixed-outcome table
+plus one blank loading row. With the blank row: 33 mutants, of which 30 substitute to blank and 3 to
+the `_gauntlet` marker, one or two of those three surviving. With the blank row deleted: 30 mutants,
+**all thirty substituting to sibling values** — `claimant name -> claimant contact`,
+`MISSING_REQUIRED_CONFIGURATION:claimant name -> MALFORMED_REQUIRED_CONFIGURATION:claimant contact` —
+every one killed by the outcome column, and no survivors at all.
+
+The two populations ask different questions. A blank substitution asks whether the rule fires when
+nothing is named. A sibling substitution asks whether the implementation attributes the right outcome
+to the right input, which is the question a mixed-outcome table exists to ask. So: **a loading row is
+the fix for a same-outcome table and a regression in a mixed-outcome one.** It manufactures the
+discriminating row a same-outcome table lacks; in a table that already discriminates through its
+outcome column, it replaces all of that discrimination with weaker tests and adds survivors of its
+own. Any detection this entry's proposed change implements should tell the two cases apart, because
+the same remedy applied to the wrong one makes the table worse while raising its mutant count.
 
 **Routes to:** BACKLOG.md, v1, beside "Acceptance mutation cannot distinguish a deliberately inert
 value from an untested one." Related to "Mutant approval defaults to the widest scope" and "The
@@ -913,6 +1001,109 @@ whole row" and "Acceptance mutation cannot distinguish a deliberately inert valu
 one" — grouped with acceptance-mutation-coverage gaps.
 
 **Status.** Open.
+
+#### Step data tables are discarded by the Gherkin IR, so nothing downstream can reach them
+
+**What happened.** Found reviewing ClaimGate item 5a's redraft of `features/carrier_configuration.feature`
+(branch `phase2/5a-carrier-configuration`, commit `11fd18b`, 2026-08-22), which placed that item's
+headline new rule — a refusal names every value it rejected, not the first — in a `Then` step's data
+table. Read `gauntlet.acceptance.gherkin` rather than infer from behaviour: `Step` is `keyword`, `text`,
+`line`, `column`, and nothing else. There is no field for a step-attached data table anywhere in the IR.
+`Scenario` carries `steps` and `examples`; `Feature` carries `scenarios`, `background`, `tags`. A data
+table under a step is discarded during parsing, silently and with no diagnostic, so `mutants()` cannot
+reach it and neither can anything else built on the IR later.
+
+Measured, not inferred. That scenario yields 5 mutants, every one a `"AAAA"->"AAAA"_gauntlet`
+substitution on a step literal, none from its three-row assertion table. The pattern is not confined to
+the new file: `features/validation.feature` uses `Then the blockers are:` in nine scenarios, and each of
+the four standalone ones — "An absent policy number is a missing field, not a malformed one", "A
+whitespace-only policy number is a missing field, not a malformed one", "A missing notice type is a
+blocker", "An unrecognized notice type is a distinct blocker from a missing one" — yields exactly one
+mutant, on its `Given`'s quoted literal. All nine of those expectations sit outside mutation.
+
+**Why it matters.** This is the Background gap one step worse. A Background value at least survives into
+the IR as `Feature.background`, so extending mutation to it needs only a call site; a data table is gone
+before mutation runs, and the fix has to start in the parser. And where a Background carries inputs, a
+data table usually carries the *assertion* — it is the shape a spec author reaches for precisely when an
+expectation is too structured for one line, which is to say when it is the most load-bearing thing in
+the scenario. A step definition that ignores its `datatable` argument, or asserts a hardcoded list,
+survives every mutant in such a scenario and the gate stays green.
+
+Nothing else covers it either. The spec digest hashes file bytes and moves for any edit, saying nothing
+about whether the table is wired; the boundary gate walks the steps directory for absolute imports
+rooted at a `src/` top-level name; code mutation mutates `src/`. So the agreement between a data table as
+written and the parser that consumes it is held by review alone. ClaimGate's own convention makes that
+concrete: its step reads `header, *rows = datatable` and zips with `strict=True` (verified in
+`tests/acceptance/test_validation_acceptance.py`, 2026-08-22), so a table written without a header row
+loses its first assertion row silently. The 5a redraft wrote one without a header against nine existing
+tables that have one, and no gate could have said so.
+
+**What would address it.** Retain step data tables in the IR, then mutate their cells with the machinery
+`_column_mutants` already has. Unlike the Background gap, a call site is not enough — the data does not
+exist by the time mutation runs.
+
+**Proposed change.** Add a table field to `Step` (an `ExampleTable | None`), populate it in
+`gherkin.parse`, and extend `_step_mutants` to generate cell mutants against it with a distinct `kind`
+(e.g. `"table"`) so a survivor reads as table-sourced rather than being attributed to the step's literal
+text. Failing that, at minimum `parse` should not silently discard a construct it cannot represent.
+
+**What it cost us.** Nothing realized — caught in review before the spec was locked. The near-miss is the
+whole point: had it locked, item 5a's central new rule would have shipped behind a green acceptance gate
+with no mutation coverage of the one assertion that rule exists to make.
+
+**Addition, 2026-08-22 — the remedy above has a trap, and this project walked into it the same day.**
+The fix says to carry a structured assertion in an `Examples` column instead. ClaimGate did exactly
+that and lost five mutants doing it. `_literal_mutants` returns early for outlines, so converting a
+plain scenario into a one-row outline — the smallest edit that moves an assertion into an `Examples`
+cell — forfeits every step literal in that scenario, and a one-row table has no alternatives, so each
+cell yields a single `value+_gauntlet` substitution. Measured across three committed revisions of the
+same scenario: 5 mutants as a plain scenario with the assertion in a data table, 1 as a one-row
+outline with it in an `Examples` cell, and 6 as a plain scenario with the assertion **quoted in the
+step text**, because `LITERAL_PATTERN` matches a quoted string in a step. The file-wide count rose
+across that change, so nothing surfaced the loss.
+
+A quoted literal in a plain scenario is the cheaper carrier for any assertion that fits on one line,
+and a single-row outline is strictly worse than the plain scenario it replaces: it can only lose step
+literals, and it cannot gain discrimination, because discrimination needs a second row. A diagnostic
+on `is_outline and len(examples.rows) == 1` would catch it. Whatever addresses this entry should
+carry that with it, or the fix will keep producing the regression.
+
+**Routes to:** BACKLOG.md, v1, immediately beside "Background steps are invisible to acceptance mutation
+entirely" — same family, and the two differ in fix boundary, which is worth carrying to whoever
+implements them.
+
+**Status.** Open.
+
+
+#### A ragged Examples row parses silently and under-generates mutants
+
+**What happened.** Tested directly against the engine on 2026-08-22 rather than reasoned about. A
+three-row Examples table under a two-column header, with the middle row's second cell omitted, parses
+with no error and no diagnostic. That row's `Row.cells` has length 1; `_column_mutants` skips the missing
+cell via `if column >= len(row.cells): continue`; the table yields 5 mutants where a well-formed one
+yields 6. `_row_distance` compares with `zip(..., strict=False)`, so the short row is also scored against
+its neighbours on the shared prefix only, which can change which alternative is selected for rows that
+are themselves well formed.
+
+**Why it matters.** The failure is silent in exactly the place this project does its measuring. A mutant
+count is the unit of blast-radius estimation here, and a table that lost a cell to a bad paste produces a
+count that looks plausible and is wrong low. The ledger gives no signal either: the short row's locator
+(`...|example|loss_type|theft`) is shorter than its siblings' but perfectly well formed. This is not a
+question about hostile input — the format is hand-maintained and its alignment is manual.
+
+**What would address it.** Reject a row whose cell count differs from the header's, at parse time. A
+Gherkin Examples table is not a ragged structure and there is no reading under which one is valid.
+
+**Proposed change.** Validate row width against header width in `gherkin.parse` and raise `GherkinError`
+naming the line, or surface it as an acceptance-gate diagnostic.
+
+**What it cost us.** Nothing. No ragged row exists in ClaimGate's five feature files — checked. Recorded
+before it costs anything, which is the cheap moment to record it.
+
+**Routes to:** BACKLOG.md, v1, beside the entry above.
+
+**Status.** Open.
+
 
 #### Hook configuration has no home outside the file `init` rewrites
 
@@ -1447,6 +1638,17 @@ column is inert. The resolution belongs in the specification: remove the column,
 `Given`, and let the symmetry be visible in the file's structure rather than recorded as equivalence
 reasons in the ledger.
 
+**Note, 2026-08-22 — what this boundary does not cover.** A run of survivors from one column is not
+always this boundary, and the distinction matters because this section tells a reader what *not* to work
+on. Where the rule genuinely treats the column's values alike, this entry applies and the resolution
+belongs in the specification. Where the outline's expectation is not a column at all — built in the
+`Then` step from a placeholder that also appears in a `Given` — the survivors are an artifact of the
+engine being unable to see the expectation, and a shape change removes them; see the addition under "A
+same-outcome enumeration guarantees one surviving mutant per row". The two present identically in a gate
+report: one column, a run of survivors, one shared reason. Telling them apart means asking whether the
+expectation is in the table. Only the second is worth restructuring for, and only the first is correct
+behaviour to leave alone.
+
 ### Killed-count deltas cannot register a test that guards a cross-module invariant
 
 **What happened.** ClaimGate item 4h added a unit test asserting that triage's high-severity loss
@@ -1580,6 +1782,13 @@ difference is the entire signal.
 not currently use it to classify stale approvals, which is a separate open finding, but the data being
 there is what makes that fix cheap.
 
+
+**Addition, 2026-08-22.** The converse holds too, and is the easier half to miss: the digest is
+sensitive to things the key is invariant under. Because the substituted value is drawn from the column's
+other rows, an edit anywhere in a column changes the signature of every mutant in that column while
+leaving untouched rows' locators byte-identical — see the addition under "Mutant approval keys are
+content-addressed on the whole row". Both directions are load-bearing. A reader who takes only the
+sentence above will underestimate what a column edit disturbs, and will do so in the unsafe direction.
 
 ### An approved equivalent mutant is a regression test for its own justification
 
