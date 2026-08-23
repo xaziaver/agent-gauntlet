@@ -796,7 +796,7 @@ and about 5; carrying two reason codes with absent, malformed and valid rows in 
 The sibling outline in the same file that had kept its expectation as a column measured 10 and 1. The
 lever is neither the row count nor the column count. It is whether the expectation is one of the columns.
 
-**Addition, 2026-08-22 — and having made the expectation a column, do not then add a loading row.**
+**Addition, 2026-08-23 — and having made the expectation a column, do not then add a loading row.**
 The two halves of this advice work against each other, which nothing here said.
 `_discriminating_alternatives` ranks candidates by `-_row_distance`, so it always prefers the most
 different row, and an all-blank row differs from every other row in every column — the maximum
@@ -1051,7 +1051,7 @@ text. Failing that, at minimum `parse` should not silently discard a construct i
 whole point: had it locked, item 5a's central new rule would have shipped behind a green acceptance gate
 with no mutation coverage of the one assertion that rule exists to make.
 
-**Addition, 2026-08-22 — the remedy above has a trap, and this project walked into it the same day.**
+**Addition, 2026-08-23 — the remedy above has a trap, and this project walked into it the next day.**
 The fix says to carry a structured assertion in an `Examples` column instead. ClaimGate did exactly
 that and lost five mutants doing it. `_literal_mutants` returns early for outlines, so converting a
 plain scenario into a one-row outline — the smallest edit that moves an assertion into an `Examples`
