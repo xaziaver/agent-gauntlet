@@ -77,6 +77,21 @@ Checked and clean: no entry cites the injured-party model field names item 4g re
 nor the carrier names and NAIC company and group codes ClaimGate removed on 2026-08-17. Ledger counts
 quoted inside entries were not re-verified against the current ledger this session.
 
+**Vocabulary sweep, 2026-08-23.** Re-run against ClaimGate at `origin/phase2/5b-jurisdiction-date`
+(`12dbb48`). `_evaluate_recent_inception`, `continuous_coverage_date`, `POLICY_NUMBER_PATTERN` and
+`NO_CONTINUOUS_COVERAGE_DATE` all still exist and are cited correctly. ClaimGate item 5b added
+`features/jurisdiction_date.feature`, `resolve_jurisdiction_date` and
+`JURISDICTION_TIMEZONE_UNRECOGNIZED`, and renamed nothing. Item 5a landed the same day and added
+`features/carrier_configuration.feature`, `src/claimgate/domain/carrier_configuration.py`,
+`MISSING_REQUIRED_CONFIGURATION` and `MALFORMED_REQUIRED_CONFIGURATION`, again renaming nothing. No
+entry below went stale by rename this session.
+
+One entry did go stale by *measurement* rather than by name — see the 2026-08-23 annotation under
+"A ragged Examples row parses silently and under-generates mutants". A name sweep will never catch
+that kind of drift: the words in the entry are all still correct, and the advice they add up to
+became wrong. When a measurement recorded on the ClaimGate side changes what an entry here should
+conclude, nothing connects the two.
+
 
 ### v1 — finish line
 
@@ -410,6 +425,69 @@ did not happen: "nothing to measure" reported as "measured, found nothing."
 **What would address it.** A freshness check against the current run — coverage.json's mtime (or a
 run id embedded in it) checked against the tests gate's own run, with an explicit could-not-measure
 result when the artifact predates it, rather than silently reporting a stale number as current.
+
+#### The code-mutation gate's source scope is set outside Gauntlet, and narrowing it is invisible
+
+**What happened.** Every structural gate scopes to `gauntlet.toml`'s `[project] src` — the tests
+gate builds coverage with `--cov={ctx.src}` — and `gauntlet.toml` is guard-blocked, so an agent
+cannot narrow it. The code-mutation gate is the exception. It shells out to mutmut, which takes its
+source scope from `[tool.mutmut] source_paths` in the project's own `pyproject.toml`, a file the
+protect gate content-hashes but the guard does not block. `gates/mutation.py`'s `scope = "changed"`
+only layers module-name filters on top; it cannot widen what mutmut was pointed at. A module outside
+`source_paths` yields no mutants at all. In ClaimGate that path is `src/claimgate/domain/`, so code
+in any sibling package is mutated by nothing.
+
+**Why it matters.** The narrowing has no signature in gate output, and the shape that occurs in
+practice is the worse of the two:
+
+- In a full run — the only shape ClaimGate ever issues, since no hook combines `--changed` with the
+  mutation gate — the omitted module contributes zero mutants to a total dominated by the domain's.
+  The score is unchanged and healthy, and nothing on screen indicates a module stopped being checked.
+- In a `--changed` run where only the out-of-scope file changed, `_filters` is non-empty, mutmut
+  finds nothing, and `score(0, 0, 0)` returns 100.0 through its `total == 0` branch. The gate passes
+  and is *not* flagged vacuous: `_nothing_changed` sets that flag only when no files changed at all.
+  `0 killed` in the summary is the only tell.
+
+**What would address it.** Have the mutation gate assert that the language tool's configured source
+scope covers `ctx.src`, and report a shortfall as a diagnostic rather than running inside the
+narrower window and reporting that window's score as the project's. Separately, set `vacuous` when
+`total == 0` for any reason, not only when nothing changed.
+
+**What the gap cost us.** Nothing realized — it was found while deciding where to put a module
+rather than afterwards. ClaimGate item 5b specified a timezone-resolution function that the design
+called a shell concern rather than a domain one; placing it outside `src/claimgate/domain/` would
+have exempted it from code mutation behind a green gate with no signal. It was placed in the domain
+instead, on independent design grounds, and this gap is why the placement was verified rather than
+assumed.
+
+**Routes to.** `BACKLOG.md`.
+
+**Status.** Open. Not patched: Gauntlet is frozen for the duration of the ClaimGate project.
+
+#### The mutation gate reports one project-wide total with no per-module attribution
+
+**What happened.** `gates/mutation.py::_summary` renders `score N%, K killed`, plus optional
+unresolved, reviewed-equivalent and stale counts. There is no per-file or per-module breakdown, and
+a `Diagnostic` carries a file path only for *survivors*. When everything is killed, the output
+cannot answer "was module X mutated at all" — a module fully covered and a module silently outside
+`source_paths` produce identical text.
+
+**Why it matters.** That is precisely the question the entry above forces someone to ask, and the
+gate already computed the number that answers it. It just isn't printed.
+
+**What would address it.** Emit killed/total per module. At minimum, emit the set of modules that
+produced zero mutants: that set is the signature of the scoping gap above, and it costs nothing to
+compute.
+
+**What the gap cost us.** To confirm one new module was inside the gate's scope, ClaimGate had to
+clear the mutmut cache, re-run scoped to that module alone, restore state, and subtract against a
+remembered prior total (217 + 15 = 232) — four manual steps and a subtraction standing in for a
+number already in hand. Reported by the coding agent on 2026-08-23; the absence of per-module output
+is read from source, the workaround itself is not independently verified.
+
+**Routes to.** `BACKLOG.md`.
+
+**Status.** Open.
 
 **Proposed change.** A freshness check against the current run, and an explicit could-not-measure
 result when the artifact predates it.
@@ -1068,12 +1146,79 @@ literals, and it cannot gain discrimination, because discrimination needs a seco
 on `is_outline and len(examples.rows) == 1` would catch it. Whatever addresses this entry should
 carry that with it, or the fix will keep producing the regression.
 
+**Annotated 2026-08-23: the recommendation in the paragraph above is wrong, and what falsifies it is
+a measurement, not a rename.** "A quoted literal in a plain scenario is the cheaper carrier" holds
+only if a quoted-literal mutant tests anything, and it does not — the marker lands outside the
+closing quote, so the mutated step binds to no well-formed pattern and dies at step resolution
+before the code runs. See "Every quoted-literal mutant is vacuous under a well-formed step pattern".
+
+Re-reading the three measured revisions with that in hand inverts the ranking. The 6-mutant plain
+scenario with the assertion quoted in step text is the *worst* of the three, not the best: all six
+are vacuous. The 1-mutant one-row outline is the only one of the three whose mutant reaches the
+code, because an `Examples` cell substitutes inside the quotes rather than after them. The counts in
+the paragraph above are correct as measured; only the conclusion drawn from them was wrong, which is
+why this is an annotation rather than a rewrite — the arithmetic is still the evidence.
+
 **Routes to:** BACKLOG.md, v1, immediately beside "Background steps are invisible to acceptance mutation
 entirely" — same family, and the two differ in fix boundary, which is worth carrying to whoever
 implements them.
 
 **Status.** Open.
 
+
+#### Every quoted-literal mutant is vacuous under a well-formed step pattern
+
+**What happened.** `LITERAL_PATTERN` mutates a quoted string in step text by appending the marker
+*after* the closing quote: `"America/New_York"` becomes `"America/New_York"_gauntlet`. No step
+definition written in the ordinary way — a captured group terminated by a closing quote, matched
+with `parsers.re` or `parsers.parse` — can bind that line. pytest-bdd raises at step resolution, the
+test fails, and the mutant is recorded as killed having never called the code under test.
+
+Measured in ClaimGate on 2026-08-23 against all 45 step patterns across the four feature files
+implemented at the time: of 82 literal mutants, 75 die at step resolution. Only numeric literals,
+which mutate in place rather than by suffix, yield real tests.
+
+Re-measured the same day when item 5a's `carrier_configuration.feature` was implemented, making five:
+84 mutants in that file alone, 47 `literal` and 37 `example`, of which 34 of the 47 die at step
+resolution and 13 numeric literals reach the domain. **Project total: 109 of 129 literal mutants
+vacuous across five feature files, 84.5%.** `example`-kind mutants are unaffected — an `Examples`
+cell substitutes inside the quotes rather than after them, so all 37 of those reached the domain.
+
+The mechanism was confirmed at runtime for the first time during that item: one mutant was injected
+by hand and the run raised `StepDefinitionNotFoundError`. Every earlier statement of this finding was
+an argument from step-pattern analysis — that no house-style pattern *could* bind a marker-suffixed
+line. This is direct observation of the death itself, and it closes the possibility that the pattern
+analysis was simply wrong about some step somewhere.
+
+**Why it matters.** This is a false-positive kill, and it is the most common kind of acceptance
+mutant in the project. The gate counts them as killed, the score rises, and nothing distinguishes
+them from mutants a real assertion caught. Every other entry in this document that reasons about
+acceptance mutant counts is counting these too.
+
+It also cannot be worked around honestly from the project side. Loosening a step pattern so the
+marker-suffixed line binds would make the step accept text no specification ever wrote — a real
+defect traded for a synthetic number. ClaimGate declined that and reshaped specifications instead;
+see the 2026-08-23 instance under "Approval scope is coarser than the judgments it records".
+
+**What would address it.** Mutate inside the quotes rather than after them, so the substitution
+produces a well-formed step line that binds and then fails on the value. Failing that, a diagnostic:
+a mutant that dies during step resolution is distinguishable at runtime from one that dies on an
+assertion, and reporting the two separately would at least stop the count being read as evidence.
+
+**What the gap cost us.** 75 of 82 literal mutants across four feature files test nothing while
+counting as kills. Specifications were reshaped to route around it. And the defect went unrecorded
+in this document for the length of the project — see **Status**.
+
+**Routes to.** `BACKLOG.md`, v1, beside "A ragged Examples row parses silently and under-generates
+mutants" — that entry's recommendation depends on the answer to this one.
+
+**Status.** Open, and deliberately not patched: Gauntlet is frozen for the duration of the ClaimGate
+project, so the harness and the work it gates do not move at the same time. Recorded here on
+2026-08-23, late. The measurement had been sitting in ClaimGate's `docs/harness-findings.md` since
+it was taken and the Gauntlet-facing half was never written down, so nothing in this document
+referred to it and one entry gave advice that contradicts it. Worth noting as a process failure in
+its own right: a finding recorded on the gated project's side only is invisible to whoever improves
+the tool.
 
 #### A ragged Examples row parses silently and under-generates mutants
 
@@ -1242,11 +1387,20 @@ so `--scenario` could isolate them, and item 4j then pre-split its own outline f
 **The tool's scoping granularity is now determining the shape of the specifications**, which is the
 wrong direction for influence to run.
 
+**Third instance, 2026-08-23, and a different mechanism.** ClaimGate item 5b converted a plain
+scenario in `features/jurisdiction_date.feature` into a two-row outline (`f6793aa`) for a reason
+unrelated to approval scope: all six of the plain scenario's mutants were vacuous quoted-literal
+kills, and `Examples`-column mutants are not. The conversion bought four mutants that reach the
+domain where there had been none. So the Gherkin is now being shaped by two independent tool defects
+rather than one — approval granularity in items 4g and 4j, mutant vacuity in 5b — and the second
+distorts more, because it changes a specification's shape to buy test coverage the specification's
+own content never called for.
+
 **What would address it.** A `--locator` option accepting one or more exact locators, or a
 `--column` filter within a scenario. Either lets one scenario carry several reasons.
 
-**What the gap cost us.** One inherited reason with four inaccuracies, and two specifications
-restructured to work around the constraint rather than because the structure was better.
+**What the gap cost us.** One inherited reason with four inaccuracies, and three specifications
+restructured to work around a tool constraint rather than because the structure was better.
 
 **Routes to.** `BACKLOG.md`.
 
@@ -1556,6 +1710,25 @@ record, not discovered after the fact, and got walked into anyway one reopening 
 
 **Status.** Open, convention rather than code.
 
+**A third instance, 2026-08-23, and one the convention above cannot reach.** ClaimGate item 5a's
+survivor on "A recognized carrier's rules load with neither SIU threshold configured" mutates a
+duplicate-match-window value that scenario never asserts. The value is not unprotected — a different
+scenario in the same file, "A recognized carrier's rules resolve to every value the domain will
+receive", both sets and asserts it. So the only honest approval reason is *"scaffolding here,
+asserted there"*, and its truth condition lives in a scenario the approval does not key on. That is
+the second decay mode again, reached from the opposite direction: not a stray factual claim a reason
+happened to make, but the load-bearing justification itself. "Covered elsewhere" is the most common
+honest equivalence reason there is, and every instance of it has this shape.
+
+This one is not purely a convention problem, which makes it the exception to this entry's "none
+enforceable". Prose cannot be validated; a *dependency* can. If an approval could name the locator
+its justification rests on — structurally, beside the reason rather than inside it — the ledger could
+report the approval stale when that locator's digest moves or the locator disappears, reusing the
+machinery that already exists for the approval's own key. That is a much narrower promise than
+validating prose, and it covers the commonest case. Worth carrying to whoever implements the
+`--locator` scoping proposed under "Approval scope is coarser than the judgments it records": both
+want the same addressing.
+
 ## Designed boundaries
 
 Things the harness deliberately does not do. These are not work items — recorded so nobody mistakes
@@ -1589,6 +1762,30 @@ tool.
 
 **What would address it.** Nothing — this is a process boundary, not a fixable gap. Worth naming
 explicitly so it isn't mistaken for a guarantee the mechanism doesn't actually provide.
+
+### Blocking a file and verifying a file are different mechanisms, and the second is not a lock
+
+**What happened.** Gauntlet keeps two path lists in `config.py`. `DEFAULT_PROTECTED_PATHS` —
+`gauntlet.toml`, `.gauntlet/`, `.claude/settings.json` and the lock file — is what the PreToolUse
+guard refuses writes to. `DEFAULT_VERIFIED_PATHS` — `gauntlet.toml`, `pyproject.toml`,
+`.claude/settings.json` — is what the protect gate content-hashes against the lock, failing with
+`N-1/N paths unchanged` until a human re-locks. `pyproject.toml` is in the second list only. An
+agent may write it; it cannot make the write stick without a human.
+
+**Why it matters.** This is deliberate and should not be "fixed" by moving `pyproject.toml` into the
+blocked list. Thresholds, gate configuration and tool scope live in that file, and an agent that
+cannot draft a change to them cannot propose one — the proposal would have to be prose in a report
+rather than a diff a human can read, run and lock. Blocking prevents the write; verifying routes it
+through a human. Different goals, and the split between them is the design.
+
+**What would address it.** Nothing about the boundary — it is not a gap. The one thing worth
+changing is legibility. The guard's refusal message fires only for blocked paths, so an agent that
+reasons about whether it may edit a *verified* path has nothing to read and gets no signal at write
+time. On 2026-08-23 a ClaimGate coding agent concluded it could not edit `pyproject.toml` and
+escalated an architectural decision to its human partly on that basis. Stopping and handing back was
+the behaviour the project wants; one of the two constraints it cited simply did not exist. A
+distinct message when a verified path is written, or a line in the guard's own documentation naming
+the two lists, would have prevented it.
 
 ### Code mutation cannot find a guard no test exercises
 
@@ -1709,6 +1906,20 @@ That comparison decided the spec, and it happened before a word of it was drafte
 
 The same property let every rename be checked against `git show <ref>:<path>` at both refs, so ledger
 impact was known before the reopening branch was cut.
+
+**The fidelity record, as of 2026-08-23.** Simulated survivor counts produced this way, before any
+implementation existed, have matched the gate every time they were later checked against it. Item 5b
+simulated zero survivors on a twenty-mutant spec; the gate found zero. Item 5a's refusal outline was
+simulated at 33 mutants with "1 or 2" survivors from its blank row; the gate measured 33 and one.
+That fidelity is what lets a simulation be cited as evidence rather than as a guess, and it is a
+property of the engine being pure and deterministic — not of care taken by whoever ran it. A change
+making mutant generation depend on the filesystem, the ledger, or an implementation being present
+would end it, and the loss would not show up in any gate result.
+
+The corollary matters as much. Item 5a's *other* survivor was never simulated, because the simulation
+only modelled the blank-row question then being decided. A simulation is evidence about what it
+enumerated, and silent about everything it did not. Reporting one as though it covered the file is
+how a matched count becomes false confidence.
 
 **Why it matters.** The whole discipline this document argues for — measure rather than predict,
 falsify rather than confirm — rests on being able to run the engine against hypotheticals. If
