@@ -93,6 +93,12 @@ became wrong. When a measurement recorded on the ClaimGate side changes what an 
 conclude, nothing connects the two.
 
 
+**Vocabulary sweep, 2026-08-24.** Re-run against ClaimGate at `origin/main` (`afb35a0`, item 5c
+merged). Item 5c added `features/notice_intake.feature`, `src/claimgate/shell/` (`notice_intake.py`,
+`store.py`), `src/claimgate/domain/carrier_identity.py`, and `tests/shell/`; two scenario titles in
+its own feature file were corrected during drafting, before anything cited them. Nothing this
+document cites was renamed or removed. Sweep clean.
+
 ### v1 — finish line
 
 #### The blast radius of a spec change cannot be measured before making it
@@ -275,6 +281,31 @@ reported number — not by anything in the harness flagging it.
 
 **Status.** Open.
 
+#### The acceptance gate re-runs every mutant on every check, and the green path now costs eight minutes
+
+**What happened.** A passing `gauntlet check` on ClaimGate main measured the acceptance gate at
+452.7s and 472.8s on consecutive clean runs — 48 mutants across 7 specs, one full suite execution
+per mutant, re-executed from scratch although neither the specs nor the suite had changed between
+the runs. The red path was measured the same day at 423.6s. The project's earlier records are
+~150s, then ~230s, then 260.3s: the cost tracks mutant count times suite time and both only grow.
+
+**Why it matters.** This is the recurring price of every stop event on a green tree, paid by the
+hook loop without a human asking, and it scales with project size rather than with what changed.
+The code-mutation gate has `--changed` filters; acceptance has no equivalent — an approved,
+unchanged spec whose suite fingerprint is unchanged is re-mutated in full every time.
+
+**What would address it.** Cache acceptance mutation results keyed on the pair (spec digest, suite
+fingerprint), invalidating per spec; or a `--changed` analogue that mutates only specs whose digest
+or bound step modules moved. The digests already exist in the ledger; the missing piece is a suite
+fingerprint.
+
+**What it cost us.** Roughly eight minutes per full check at current size, several times per
+session, growing monotonically. No correctness cost.
+
+**Routes to.** `BACKLOG.md`.
+
+**Status.** Open.
+
 #### Interrupted mutation runs leave corrupted source
 
 **What happened.** The acceptance gate mutates spec files in place during mutation testing and
@@ -405,6 +436,56 @@ skipped stage).
 
 **Status.** Open.
 
+#### An approved spec no test module binds reports every mutant as surviving, and the diagnostic asserts the opposite cause
+
+**What happened.** ClaimGate item 5c's spec was approved before its step definitions existed. A
+feature file joins the suite only through an explicit `scenarios(...)` call, so pytest never
+collected it; the acceptance gate mutated the file anyway and ran the whole steps directory once per
+mutant. Mutating a file no test reads cannot change the suite result, so every run passed and every
+mutant was scored surviving — 24 reported, exactly the file's mutant count, 8/10/6 by scenario,
+matching the per-scenario mutant counts to the digit. The diagnostic said "The scenario still passes
+with these values changed, so it is not checking them," which is false in a specific way: the
+scenario did not pass, it never ran. Its remedy then invited `gauntlet mutant approve` — in this
+state the worst available action, since it would bank human equivalence judgments about a suite that
+never executed, onto locators that all moved at the next spec amendment (measured: 0 of the 24
+survived it), with no un-approve path.
+
+**Why it matters.** The survivor count is the gate's central number and here it is uninterpretable
+without out-of-band knowledge: "24 surviving" is the same string whether the suite ran and failed to
+kill them or never ran at all. ClaimGate keys real decisions on that number — item 5c's
+further-split condition fires "the moment any rule accumulates a survivor" — so a vacuous count
+reads as a fired trigger. The gate's own vocabulary knows better than its behavior:
+`survivors_for`'s docstring says "Mutants of one feature that *the bound scenarios* fail to kill,"
+and the binding requirement it names is enforced nowhere. `_baseline_stage` checks only that the
+suite passes; a suite that ignores the spec passes fine.
+
+**What would address it.** Before mutating a feature, assert it contributes at least one collected
+test. If it contributes none, fail — or mark the result with the `vacuous` flag `GateResult`
+already carries and the gate already uses for the no-feature-files case — with a diagnostic naming
+the missing binding, and suppress the survivor count entirely rather than reporting one that
+carries no information.
+
+**Proposed change.** A binding check in `gauntlet/gates/acceptance.py` between the approval and
+baseline stages: collect once per feature (or parse the steps directory for `scenarios(...)`
+targets) and report "spec approved but bound by no test module" as its own state, beside the three
+the gate already distinguishes. The remedy for that state names the missing binding, not
+`gauntlet mutant approve`.
+
+**What it cost us.** One full mutation pass at 423.6s producing 24 survivors carrying zero
+information; an approval landed on a spec whose review then reopened, so the approval was spent on
+a digest that never reached implementation; and a near miss on 24 false equivalence judgments,
+declined only because the count's vacuity had been established by measuring the mutant counts
+independently first. The operational lesson recorded on the ClaimGate side — approve a spec at the
+start of the session that implements it, not the end of the session that drafts it — exists to
+route around this gap.
+
+**Routes to:** BACKLOG.md, v1, beside "The acceptance gate short-circuits mutation on an approval
+failure" — that entry is the same staging problem mirrored: there an approval failure hides
+mutation state; here approval present with binding absent runs mutation vacuously and reports it as
+real.
+
+**Status.** Open. Not patched: Gauntlet is frozen for the duration of the ClaimGate project.
+
 #### The coverage gate reports a stale artifact as a current result
 
 **What happened.** The tests gate errored at collection — a spec rename had broken a binding file's
@@ -463,6 +544,20 @@ assumed.
 **Routes to.** `BACKLOG.md`.
 
 **Status.** Open. Not patched: Gauntlet is frozen for the duration of the ClaimGate project.
+
+**Realized, 2026-08-24, with a second facet.** Item 5c placed `src/claimgate/shell/` — two modules,
+~340 lines of intake orchestration and persistence — outside `source_paths`, correctly, since the
+design separates shell from domain. The predicted shape arrived exactly: the code-mutation gate
+reports score 100.0%, 342 killed, and every one of those mutants is the domain's; the shell is
+mutated by nothing, with no signature in gate output. The same item surfaced the test-selection half
+of the delegation: ClaimGate's own config points mutmut's test selection at `tests/unit/`, and a
+unit test there importing outside the mutated tree broke the mutation run's collection outright —
+resolved by moving shell-layer unit tests to a new `tests/shell/` directory, i.e. the gated project
+reshaped its test layout around the tool's config. Reported by the implementing agent and consistent
+with the gate source (the gate runs bare `mutmut run`; every scope decision lives in the project's
+`pyproject.toml`); the collection failure itself was not independently reproduced. The "What the gap
+cost us" paragraph above should now read: realized, mildly — shipped shell code sits outside code
+mutation behind a green 100.0%, on design grounds the entry anticipated.
 
 #### The mutation gate reports one project-wide total with no per-module attribution
 
@@ -589,6 +684,20 @@ instead of running again.
 **Routes to:** BACKLOG.md, v1 item 2 AND v3. See the note for the v1 effort below — this adds a fourth category to that item's taxonomy, and the same distinction recurs in v3's transition query.
 
 **Status.** Open.
+
+**Addition, 2026-08-24.** ClaimGate wired the mitigation this entry implies —
+`gauntlet stop-check --max-attempts 1` in `.claude/settings.json` — and it measurably works:
+`should_escalate` is `count >= max_attempts`, so at 1 every failing stop-check escalates
+immediately, no bounce ever occurs, and a session's stop events each cost exactly one gate run.
+Four failing stop events in item 5c's amendment session cost four runs of the cheap approval-stage
+failure and zero retries. One defect in the message, though: the session counter in
+`.gauntlet/stop-attempts.json` resets only on a *passing* run, so the escalation text — "Gauntlet
+gates still failing after 4 attempts — stopping the retry loop" — reported the fourth failing stop
+event of the session as if a retry loop had run and been stopped. At max-attempts 1 no loop ever
+ran. In a workflow where red-at-approval is the designed state for whole sessions, the number grows
+monotonically and reads as thrash while describing the process working exactly as intended. The
+classification proposal above stands; this annotation records that the blunt setting is a working
+stopgap whose only cost is a misleading sentence.
 
 #### The Stop hook cannot be scoped, and the prescribed workflow produces a phase where it cannot pass
 
@@ -951,6 +1060,16 @@ observation in the note below.
 
 **Status.** Open.
 
+**Addition, 2026-08-24.** The defect is wider than the quoted message. Read from
+`registry.describe` and observed in output the same day: the spec diagnostics are three
+status-keyed messages — MODIFIED (the prose quoted above), MISSING (correct as written), and a
+distinct not-approved prose, "is not approved. A human must review it and run `gauntlet lock`" —
+and **two of the three name `gauntlet lock`**. The three-way distinction itself is right and worth
+keeping (see "Acceptance failures are diagnosed as three distinct states" under Properties to
+preserve); the fix proposed above must correct both messages, not one. A related over-claim on the
+ClaimGate side — that new and modified specs share "one code path" and identical text — is being
+corrected there; it reasoned from two observations to a mechanism the source contradicts.
+
 #### The stale-approval remedy asserts one cause for a condition with two, and emits an incomplete command
 
 **What happened.** ClaimGate item 4d renamed one Scenario Outline column (`inception_date` to
@@ -1019,6 +1138,33 @@ judgment holds.
 
 **Status.** Open.
 
+
+#### `status --run` reports "nothing needs your approval" beside the survivors it just counted
+
+**What happened.** `gauntlet status --run` on ClaimGate printed the acceptance gate's result — "7
+spec(s), 24 surviving mutant(s), 69 reviewed-equivalent" — and, four lines below it in the same
+output, "WAITING   nothing needs your approval." Twenty-four unreviewed survivors are precisely a
+thing waiting on a human; the gate's own remedy in the same run says so.
+
+**Why it matters.** The WAITING inbox is the surface that tells a human whether they are the
+blocker. `status.py::pending()` computes it from config and spec approvals only, and its docstring
+records the exclusion as deliberate: "Mutants are excluded on purpose: knowing whether one survives
+requires actually running the mutation, which is not a cheap status query." That reasoning is
+correct for bare `status` and stops holding for `--run`: `collect(root, cfg, gates)` receives the
+gate results and `pending()` is computed without consulting them. The cheap-query justification is
+being applied to the one invocation that already paid for the answer.
+
+**What would address it.** When `collect` is handed gate results, fold unreviewed acceptance
+survivors into `pending`. The no-gates path keeps its documented exclusion unchanged.
+
+**What it cost us.** Nothing realized — caught on first read because the contradiction sat within
+one screen. The cost shape if missed is a human reading "nothing needs your approval" as
+permission to walk away from a red gate that is waiting on exactly them.
+
+**Routes to.** `BACKLOG.md`, v1, beside the two remedy entries above — same family: the
+human-facing surface contradicting the state it reports.
+
+**Status.** Open.
 
 #### Background steps are invisible to acceptance mutation entirely
 
@@ -1223,6 +1369,18 @@ referred to it and one entry gave advice that contradicts it. Worth noting as a 
 its own right: a finding recorded on the gated project's side only is invisible to whoever improves
 the tool.
 
+**Addition, 2026-08-24 — a third kill locus, between the two this entry distinguishes.** The
+paragraph above separates death at step resolution from death on an assertion. Item 5c's step
+definitions showed a middle case: a marker mutant that *binds* (the pattern captures to end of
+line) and then dies inside the step body's own parsing — `_gauntlet` fed to a parser that splits
+blocker pairs on `:` raises before any comparison with the implementation runs. That kill is
+implementation-independent: it would score identically against a broken implementation, so it is no
+evidence the scenario checks anything, and it is invisible in gate output for the same reason
+resolution-deaths are. The same file's identity-column markers die by genuine assertion mismatch,
+and only reading the step code tells the two apart. Any diagnostic built for this entry should
+classify by failure locus — step resolution, step-body exception, assertion — not by the first two
+alone; the cheap approximation is marking any kill whose exception is not `AssertionError`.
+
 #### `LITERAL_PATTERN`'s single-quote alternative matches English possessives
 
 **What happened.** `LITERAL_PATTERN` is `\"[^\"]*\"|'[^']*'|\b\d+\.\d+\b|\b\d+\b`. The second
@@ -1399,6 +1557,17 @@ an approval from a pasted multi-command block.
 
 **Status.** Open.
 
+**Second near miss, 2026-08-24, different mechanism.** The procedural workaround above — commit
+the ledger before and after every approval run — failed silently in practice. A
+`gauntlet spec approve` ran at 11:23 and its ledger write sat uncommitted in the working tree for
+roughly seven hours; every gate run that day read the approval from disk (reporting the spec as
+MODIFIED rather than unapproved), so nothing looked wrong, and a `git checkout -- .` at any point
+would have destroyed the only record of the approval. A later session discovered it only by running
+`gauntlet spec list` and noticing HEAD carried no entry at all. Beyond the atomic-write fix above,
+the cheap addition this argues for: `spec approve` and `mutant approve` print a commit reminder, or
+`check` warns when `gauntlet.lock.json` differs from its committed state — the ledger is the one
+artifact where "uncommitted" and "at risk" are the same word.
+
 #### An automatic retry loop repeats the one gate that rewrites the working tree
 
 **What happened.** The stop hook retries a failing `gauntlet check`. Observed at 2, 5, and 7
@@ -1425,6 +1594,12 @@ diagnosis of *which* mutant had been injected.
 **Routes to.** `BACKLOG.md`.
 
 **Status.** Open.
+
+**Cost update, 2026-08-24.** The "~230s" above is stale twice over: the mutation-stage red state
+was measured at 423.6s (24 mutants, item 5c pre-binding), and the green full pass at 452.7–472.8s
+(48 mutants). The window this entry describes — each retry a chance for an interrupt to strand an
+injected mutant — is now roughly twice as long per attempt as when it was written, and it grows
+with every spec added.
 
 #### Approval scope is coarser than the judgments it records, and it is now shaping the Gherkin
 
@@ -2006,6 +2181,10 @@ Any refactor that moves approval checking after mutation, or that mutates in ord
 diagnostics on an unapproved spec, converts the most common failure in the workflow into the most
 dangerous one.
 
+**Figure update, 2026-08-24.** Re-confirmed on item 5c: the modified-spec state failed in 0.002s
+while the same tree's full mutation pass ran 452.7–472.8s — the gap this property protects is now
+five orders of magnitude wide, up from the "~230s" quoted above.
+
 ### Mutant locators are structural, not positional
 
 A locator is scenario name, kind, column, and row values — not a line number and not a file offset.
@@ -2017,6 +2196,13 @@ moved in every one of those cases and forced re-approval; not one approval neede
 This is what makes editing a specification's prose affordable. If locators were positional, every
 comment correction would restale the ledger, and the practical consequence would be that
 specifications stop being corrected.
+
+**Re-measured through item 5c, 2026-08-24.** Both directions again, at larger scale: adding a
+column to two Scenario Outlines moved every locator in those scenarios (0 of the file's 24
+pre-amendment locators survived the amendment, harmless only because none was yet approved), while
+a subsequent round of comment rewrites, placeholder quoting, and a symbol removed from a comment
+left all 48 locators *and* signatures byte-identical — verified by direct comparison at both refs,
+twice, independently by advisor and agent.
 
 ### An approval's digest is independent of its key
 
