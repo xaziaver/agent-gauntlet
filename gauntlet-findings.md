@@ -1181,7 +1181,10 @@ which mutate in place rather than by suffix, yield real tests.
 Re-measured the same day when item 5a's `carrier_configuration.feature` was implemented, making five:
 84 mutants in that file alone, 47 `literal` and 37 `example`, of which 34 of the 47 die at step
 resolution and 13 numeric literals reach the domain. **Project total: 109 of 129 literal mutants
-vacuous across five feature files, 84.5%.** `example`-kind mutants are unaffected — an `Examples`
+vacuous across five feature files, 84.5%.** That
+figure is an overcount of an unknown size — see "`LITERAL_PATTERN`'s single-quote alternative
+matches English possessives" below, which shows that some of what the engine counts as literal
+mutants are not literals at all. `example`-kind mutants are unaffected — an `Examples`
 cell substitutes inside the quotes rather than after them, so all 37 of those reached the domain.
 
 The mechanism was confirmed at runtime for the first time during that item: one mutant was injected
@@ -1219,6 +1222,57 @@ it was taken and the Gauntlet-facing half was never written down, so nothing in 
 referred to it and one entry gave advice that contradicts it. Worth noting as a process failure in
 its own right: a finding recorded on the gated project's side only is invisible to whoever improves
 the tool.
+
+#### `LITERAL_PATTERN`'s single-quote alternative matches English possessives
+
+**What happened.** `LITERAL_PATTERN` is `\"[^\"]*\"|'[^']*'|\b\d+\.\d+\b|\b\d+\b`. The second
+alternative matches any span between two apostrophes. Gherkin written in ordinary English uses
+possessives constantly, so two possessives on one line produce a literal mutant on the text between
+them.
+
+Measured by running the engine on a three-line scenario. `Then the notice's audit trail's first
+entry is recorded` yields `'s audit trail'->'s audit trail'_gauntlet`; `And the carrier's adjuster's
+queue doesn't change` yields `'s adjuster'->'s adjuster'_gauntlet`. A line carrying one apostrophe
+yields nothing.
+
+**Why it matters.** Three ways, in increasing order of cost.
+
+They are noise in the ledger. Each one is guaranteed vacuous — no step pattern binds
+`'s audit trail'_gauntlet` — and nothing distinguishes them from literal mutants on real quoted
+values. Any count of literal mutants is inflated by however many are possessives, including this
+document's own figure under "Every quoted-literal mutant is vacuous under a well-formed step
+pattern".
+
+They mislead the person reading a locator. `'s audit trail'` looks like a stray quote in the
+specification rather than a quirk of the tool, and the natural response is to go hunting through the
+feature file for a typo that is not there.
+
+Worst, it charges for plain English. Avoiding it means writing "the audit trail of the notice"
+instead of "the notice's audit trail". That makes this the third independent mechanism by which
+Gauntlet reshapes the Gherkin under it — approval granularity, mutant vacuity, and now apostrophe
+parsing — and the first that pushes a specification away from the way the person who owns the rule
+would actually say it. A tool meant to keep specifications readable by domain owners should not tax
+the possessive case.
+
+**What would address it.** Require the single-quote alternative to be bounded by whitespace or a
+line edge on both sides, so `'a value'` still matches and `notice's audit trail's` does not. Or drop
+the alternative outright: the gated project's Gherkin quotes with double quotes throughout, and no
+single-quoted literal appears in any of its six feature files.
+
+**What the gap cost us.** A drafting session found it, diagnosed it correctly, and rephrased a
+specification around it. That specification now carries a one-apostrophe-per-line constraint that
+exists for no reason a later reader could guess from the file. Caught before it shipped, so no
+phantom mutant reached a ledger.
+
+**Routes to.** `BACKLOG.md`, beside "Every quoted-literal mutant is vacuous under a well-formed step
+pattern" — same regex, and whoever fixes either should be looking at both.
+
+**Status.** Open. Not patched: Gauntlet is frozen for the duration of the ClaimGate project.
+Recorded 2026-08-23, the day it was found. Worth noting against the two entries above it, which were
+both recorded late after sitting on the gated project's side: this one was found by the coding agent
+and written into the gated project's own status file, where it would have stayed. Three findings,
+three times the Gauntlet-facing half had to be carried across by hand. Whatever replaces that
+handoff should not be a person remembering.
 
 #### A ragged Examples row parses silently and under-generates mutants
 
