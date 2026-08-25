@@ -559,6 +559,48 @@ with the gate source (the gate runs bare `mutmut run`; every scope decision live
 cost us" paragraph above should now read: realized, mildly — shipped shell code sits outside code
 mutation behind a green 100.0%, on design grounds the entry anticipated.
 
+#### Four analysis gates scope to `src` alone, so step definitions are outside static, size, complexity and duplication
+
+**What happened.** `gates/base.py::GateContext.tool_targets` hands external tools `[str(self.src)]`
+on a full run, and `python_files()` filters even a `--changed` run to paths under `self.src`.
+`static`, `size`, `complexity` and `duplication` all take their targets from those two methods.
+Nothing under the configured `tests` directory is analyzed by any of them; the `boundary` gate is
+the only gate that reads step-definition files at all, and it reads them for imports only.
+
+On ClaimGate item 5d (2026-08-24) the advisor asserted that the duplication gate — configured at
+`max_duplicate_blocks = 0`, `min_lines = 6` — would refuse a second step module that copied the
+first's shared `Background` steps, and instructed the agent to move the shared definitions into
+`tests/acceptance/conftest.py` on that basis. The agent repeated the claim in its report, and the
+gated project's `docs/harness-findings.md` recorded it as the reason the move was required. The
+assertion was made from the `tests = "tests/"` key in `gauntlet.toml`, not from the gate's source;
+read from source the same day, it is false. The consolidation itself was still the right design for
+two locked specs sharing a Background, but the gate did not force it and would not have caught the
+alternative.
+
+**Why it matters.** Step definitions are the binding layer of every locked specification: the layer
+where a phrase acquires its meaning, and where the same phrase acquiring two meanings in two modules
+is the specific hazard. That hazard is exactly a duplication finding, and it is the one place in the
+tree the duplication gate does not look. More generally, the gate names read as project-wide
+("static", "size", "complexity", "duplication") while their scope is `src`-wide, and two readers who
+knew the tool well were both wrong about it in the same direction.
+
+**What would address it.** At minimum, give the `duplication` gate the steps directory the
+`boundary` gate already knows (`gates.boundary.steps`), since duplicated step blocks are the concrete
+hazard. Whether `static`, `size` and `complexity` should also cover tests is a maintainer's call —
+there may be a deliberate reason tests are exempt, in which case this entry belongs under *Designed
+boundaries* and the gate names or the README should say so. Either way, state the scope where the
+gate is described.
+
+**What the gap cost us.** No shipped defect — the move happened anyway. The realized cost is a
+false mechanism claim in the gated project's findings document, corrected the same day by prompt, and
+one more instance of the pattern the *Properties to preserve* section names below: a claim about how
+a gate behaves written from configuration rather than from source, wrong on first check. This time
+the author was the advisor, not the agent.
+
+**Routes to.** `BACKLOG.md` for the duplication-scope change; README for the scope statement.
+
+**Status.** Open.
+
 #### The mutation gate reports one project-wide total with no per-module attribution
 
 **What happened.** `gates/mutation.py::_summary` renders `score N%, K killed`, plus optional
@@ -609,6 +651,37 @@ from reasoning about how a tool must work, rather than from running it, has been
 has been right yet. That is not a reason to stop writing claims — it is a reason every one of them
 stays provisional until it has actually been run, which is the discipline this document tries to
 enforce on itself as much as on the harness it describes.
+
+#### The acceptance gate's green summary omits the killed count, so a newly bound spec's clean result is inferred from absence
+
+**What happened.** `gates/acceptance.py::_summary` renders `N spec(s)` and then appends parts only
+for what is wrong or reviewed: surviving mutants if any, reviewed-equivalent if any, stale approvals
+if any. Killed mutants are never printed. On ClaimGate item 5d (2026-08-24) a new spec with 40
+mutants was bound and gated for the first time, and the gate's whole report on it was the summary
+`8 spec(s), 69 reviewed-equivalent` — the same reviewed-equivalent figure the branch had started
+with. That 40 of 40 were killed was inferred from two absences: no survivor part in the summary,
+and no new entry against the spec in `gauntlet.lock.json`. The agent then re-ran
+`gauntlet.acceptance.mutation.mutants()` directly to confirm the 40 existed at all.
+
+**Why it matters.** This is the acceptance-side twin of the entry above. A spec that is approved
+and bound but produces no mutants (see "An approved spec no test module binds" for the unbound case,
+and "Background steps are invisible to acceptance mutation" for a spec whose content is all
+Background) reports identically to one whose forty mutants were all killed. A green result is the
+one the human is asked to trust without reading anything, and it currently carries no evidence of
+work done — "8 spec(s)" is true of a run that mutated nothing.
+
+**What would address it.** Print killed/total per spec on the green path, the way the mutation
+gate prints `K killed` project-wide. The counts exist: the outcome object already distinguishes
+killed from surviving from equivalent to build the parts it does print.
+
+**What the gap cost us.** One extra measurement per newly bound spec, and a verification that
+rests on absence. Nothing shipped wrong; the inference happened to be correct because the direct
+measurement agreed.
+
+**Routes to.** `BACKLOG.md`, alongside the per-module mutation attribution above — same change,
+other gate.
+
+**Status.** Open.
 
 #### Retry loop burns attempts on non-agent-actionable failures
 
@@ -2169,6 +2242,14 @@ exist.
 under "What building this taught us" — the engine being usable outside the gate is a feature, not an
 implementation detail.
 
+**Third match, 2026-08-24, item 5d.** An amended spec was built as a string from anchored
+replacements on the draft, measured at 40 mutants (12/6/6/4/6/6 by rule, all `example`), and
+simulated against the decided rules at 0 survivors — before the agent had the text. The agent
+landed the edits byte-identically (same SHA-256), measured 40, and the gate killed 40 with no
+approval created. That is the third time a simulation recorded as a simulation has matched the
+gate exactly on implementation; the property that makes it possible is still that `parse` takes a
+string.
+
 ### The approval stage short-circuits before the expensive one
 
 When a spec is unapproved or modified, the acceptance gate reports and returns in about a
@@ -2203,6 +2284,12 @@ pre-amendment locators survived the amendment, harmless only because none was ye
 a subsequent round of comment rewrites, placeholder quoting, and a symbol removed from a comment
 left all 48 locators *and* signatures byte-identical — verified by direct comparison at both refs,
 twice, independently by advisor and agent.
+
+**Two more cases, 2026-08-24, item 5d.** Rewording two fixed `Then` steps (not comments —
+step text) and rewriting two comment paragraphs left all 20 pre-amendment locators and signatures
+byte-identical; inserting one row into the middle of a three-column Examples table added four
+locators and moved none of the existing ones. Both verified by set comparison of locators at the two
+refs, by advisor before drafting and by agent after landing.
 
 ### An approval's digest is independent of its key
 
