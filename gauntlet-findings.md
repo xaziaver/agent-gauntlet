@@ -99,6 +99,28 @@ merged). Item 5c added `features/notice_intake.feature`, `src/claimgate/shell/` 
 its own feature file were corrected during drafting, before anything cited them. Nothing this
 document cites was renamed or removed. Sweep clean.
 
+**Vocabulary sweep, 2026-08-26.** Re-run against ClaimGate at `origin/main` (`96a5e9e`, items 5d, 5e
+and 5f merged). Nothing this document cites was renamed or removed. Items 5d and 5e added
+`features/idempotency.feature`, `features/resolution.feature` and six modules under
+`src/claimgate/shell/` (`schema.py`, `records.py`, `messages.py`, `idempotency.py`, `payloads.py`,
+`rules.py`); item 5f added `features/siu_separation.feature`, `src/claimgate/domain/ruleset.py`
+(`RULESET_VERSION`), and `audit.py`, `serialization.py`, `siu.py` and `siu_events.py` under the
+shell. Item 5e moved code out of `store.py` and `notice_intake.py` into `payloads.py` and `rules.py`
+and renamed nothing. Sweep clean by name.
+
+**One entry is stale by line number, and it is this document doing the thing it warns others about.**
+"Acceptance mutation cannot distinguish a deliberately inert value from an untested one" locates its
+survivors as `siu_indicators.feature` "lines 84 and 134" and "lines 147, 148, 167, 168". Checked
+against ClaimGate `origin/main` at `96a5e9e`: line 84 is now an `Examples` date row and line 134 is a
+comment. That file has been through item 2's rename, item 4d's column rename and item 4k's added
+scenario since those numbers were written. The entry's *argument* — that three different causes
+produce survivors the gate reports identically — is unaffected and still correct. Not repaired here,
+because recovering which survivor each number meant needs a gate run against a contemporaneous ref
+and guessing would be worse than the stale number. Whoever next has that gate output should relocate
+them by scenario name and by the values that make each one inert, per this document's own convention
+under "Approval reasons go stale silently where the key does not" — the same rule, written about
+someone else.
+
 ### v1 — finish line
 
 #### The blast radius of a spec change cannot be measured before making it
@@ -298,6 +320,33 @@ unchanged spec whose suite fingerprint is unchanged is re-mutated in full every 
 fingerprint), invalidating per spec; or a `--changed` analogue that mutates only specs whose digest
 or bound step modules moved. The digests already exist in the ledger; the missing piece is a suite
 fingerprint.
+
+**Figure update, 2026-08-26: 893.841s, so "eight minutes" is now fifteen.** Measured on ClaimGate
+`main` at `96a5e9e` — ten specs, a 397-test suite, 71 reviewed-equivalent, everything green:
+**893.841s**. The mutant total is **708**, measured directly against
+`gauntlet.acceptance.mutation.mutants()` because the green summary prints no count, giving about
+1.26s per mutant. The same ten specs and the same 708 mutants measured **866.202s** two days earlier,
+when two of the 71 were still unapproved; the 27.6s between the runs is unexplained and inside
+ordinary variance. Both are datapoints, and neither is evidence that approving a survivor costs
+time — see the constraint below for why it cannot.
+
+**Constraint on any fix here, and it is not visible from this entry alone.** The cheapest-looking
+optimization is to skip the mutants whose outcome the ledger already records — at ClaimGate's current
+size, 71 of 708. **Do not.** `gates/acceptance.py`'s `_survivors` applies every mutant and runs the
+suite for each one *before* the ledger is consulted at all; `mutants.classify` runs afterwards and
+only sorts the survivors. That ordering is load-bearing. It is what makes an approved equivalent
+mutant a regression test for its own justification — the property recorded under *Properties to
+preserve* — because an implementation change that makes an approved mutant killable is detected as a
+stale approval only if the mutant is still executed. Skip them and that detection stops, silently,
+with no change to any output.
+
+The same constraint binds the two remedies proposed above, and only one of them satisfies it as
+worded. A cache keyed on (spec digest, suite fingerprint) is safe **only if the fingerprint covers the
+code under test**. The `--changed` analogue as worded — "specs whose digest or bound step modules
+moved" — does not: under it, editing an implementation module to delete a guard would not re-mutate
+the spec whose approval defends that guard, and the stale-approval check would quietly stop working
+for exactly the case it exists to catch. If the `--changed` variant is the one built, its trigger set
+must include the code-mutation gate's own `source_paths`.
 
 **What it cost us.** Roughly eight minutes per full check at current size, several times per
 session, growing monotonically. No correctness cost.
@@ -1454,6 +1503,89 @@ and only reading the step code tells the two apart. Any diagnostic built for thi
 classify by failure locus — step resolution, step-body exception, assertion — not by the first two
 alone; the cheap approximation is marking any kill whose exception is not `AssertionError`.
 
+#### Acceptance mutant locators are not unique, so the ledger cannot address every mutant
+
+**What happened.** `Mutant.locator` is `f"{scenario}|{kind}|{context}"`
+(`acceptance/mutation.py`). For `kind == "example"`, `context` is the column header plus the whole
+row, which is unique. For `kind == "literal"`, `context` is the step line and nothing else — while
+`LITERAL_PATTERN` matches quoted strings *and* bare numbers, so a single step line carrying two or
+more literals produces two or more mutants that share one locator. Their signatures differ; their
+identity does not.
+
+The locator is the ledger key (`mutants.key_for`), and every structure built from it is a dict
+comprehension keyed on it: `mutants.subjects()`, `classify()`'s `by_key`, and the loop in
+`approve()`. So when two mutants at one locator both survive:
+
+1. `subjects()` and `by_key` keep whichever came last. The other is absent from the mapping handed to
+   `registry.verify_namespace`, so no finding is produced for it: it is not `unreviewed`, it does not
+   fail the gate, and it appears in no diagnostic. **A surviving mutant becomes invisible.**
+2. `approve()` writes both judgments under the same key, the second overwriting the first's digest.
+   Two human judgments are recorded as one, under whichever signature came last.
+3. A third outcome is reachable: if the retained survivor's signature is not the approved one, the
+   entry reports `MODIFIED` — a lapsed judgment — and points the reviewer at a reason written about a
+   different mutant.
+
+Which of the three you get is decided by list ordering, not by anything a reviewer can see.
+
+**Measured on ClaimGate `main` at `96a5e9e`, all ten specs: 708 mutants, 681 unique locators — 27
+mutants the ledger has no way to address.** Concentrated rather than spread: `duplicates.feature`
+57/42, with a worst case of **four** mutants on one locator (a `Given` step naming a claim id, a
+policy number, a date and a peril, all quoted); `carrier_configuration.feature` 84/75;
+`siu_separation.feature` 53/50. The other seven specs are clean. **One of the 71 live approvals
+already sits on a colliding locator** — a step reading `And "AAAA" configures a duplicate match window
+of 60 days` yields both `"AAAA"->"AAAA"_gauntlet` and `60->61` under one key; the stored digest pairs
+to `60->61`, and the other mutant has no representable identity in the ledger at all.
+
+**Why it matters, and why it has not bitten yet.** Every one of the 27 collisions pairs a quoted-
+literal marker mutant with something else, and marker mutants in plain scenarios die vacuously at step
+resolution — the defect recorded directly above, where a mutated line binds to no step pattern. So
+only one survivor exists per colliding locator today, and the ledger stays consistent by accident.
+**The vacuity defect is the only thing currently masking this one.** Anything that makes marker
+mutants bind — a step pattern capturing to end of line, which is already required in at least one
+ClaimGate spec for an unrelated mutant to stay real — converts a vacuous kill into either a silently
+dropped survivor or a misattributed stale approval. These two entries must be read together, and
+closing the one above without this one makes this one manifest.
+
+**What would address it.** Give `literal`-kind mutants a locator that distinguishes literals on the
+same line. `Mutant.column` is already `step.column + match.start()`, the character offset of the
+literal within the step, which is unique even when the same literal appears twice on one line:
+
+```python
+    @property
+    def locator(self) -> str:
+        base = f"{self.scenario}|{self.kind}|{self.context}"
+        # `literal` context is the step line, shared by every literal on it.
+        # `example` context already carries the column header and is unique.
+        return base if self.kind == KIND_EXAMPLE else f"{base}|@{self.column}"
+```
+
+This does not weaken the structural-identity property recorded under *Properties to preserve*
+("Mutant locators are structural, not positional"). That property is about locators surviving
+unrelated edits, which is a different axis from uniqueness; and the offset introduces no new
+instability, because it can only move when the step text itself moves, in which case `context` has
+already changed and the locator moves regardless. It is emphatically not a line number.
+
+**Cost, and why the timing argument points at v1.** The code is one property and three lines.
+Everything else is migration: every existing `literal`-kind approval key changes once, restaling on
+the first run after the patch. On ClaimGate that is **8 of 71** approvals — measured by parsing the
+kind out of each ledger key — and because the digests are unchanged, it is a re-approval pass rather
+than a re-review, or a mechanical key rewrite in the ledger. Gauntlet's own suite carries 11 locator
+assertions across `tests/test_acceptance_mutation.py` and `tests/test_mutmut_parsing.py`. The reason
+this belongs before v1 rather than after: the ledger is a persisted, version-controlled artifact in
+every downstream project, so changing the key format after v1 is a breaking change to every consumer's
+lock file, and the migration cost only grows with the number of approvals in the world.
+
+**What the gap cost us.** Nothing yet, in the sense that no wrong result has been produced. It has
+already cost one uncontrolled state: an approval on ClaimGate `main` today covers one of two mutants
+and cannot say which, and no output anywhere reports that.
+
+**Routes to.** `BACKLOG.md`, v1 — alongside the contract defects rather than under mutation cost
+management, since this is a correctness question about the ledger's addressing scheme.
+
+**Status.** Open. Found 2026-08-26 by measuring locator counts against mutant counts per spec; there
+was no prior art in this document or in ClaimGate's `harness-findings.md`, and the uniqueness of a
+locator had been checked once, for one file, and never recorded as not guaranteed.
+
 #### `LITERAL_PATTERN`'s single-quote alternative matches English possessives
 
 **What happened.** `LITERAL_PATTERN` is `\"[^\"]*\"|'[^']*'|\b\d+\.\d+\b|\b\d+\b`. The second
@@ -1673,6 +1805,59 @@ was measured at 423.6s (24 mutants, item 5c pre-binding), and the green full pas
 (48 mutants). The window this entry describes — each retry a chance for an interrupt to strand an
 injected mutant — is now roughly twice as long per attempt as when it was written, and it grows
 with every spec added.
+
+**Second cost update, 2026-08-26, and it changes the shape of this finding.** What this entry
+describes as a *window* was, for a period, a *certainty*. ClaimGate measured a green acceptance gate
+at 693–759s (nine specs) and then 866–894s (ten specs) against a Stop hook timeout of 600s — the
+scaffolded default. The hook was not occasionally interrupting a mutation run; it killed every one,
+on every stop, by construction, for as long as those two numbers stayed in that order.
+
+Three details worth carrying, all measured on the ClaimGate side:
+
+- **The stranded file is deterministic.** Specs are mutated in path order, so the file left carrying
+  an injected `_gauntlet` line is always the alphabetically first spec — the same file every time.
+  The restore is a Python `finally`, which a signal skips.
+- **The next run misdiagnoses it.** The marker fails the `tests` gate, and the spec is then reported
+  as "changed since it was approved" — false, and it prescribes re-approval where the correct remedy
+  is `git checkout --`. The tell that distinguishes the two: a file under `.gauntlet/mutation-backup/`
+  newer than the commit and differing from the spec beside it.
+- **Run pairing cannot detect it.** `stop-check` emits neither `run.started` nor `run.finished`, so a
+  killed stop-check leaves those counts balanced. Any check keyed on that pairing reports a clean log.
+
+The project mitigated by raising the hook timeout to 1800s on 2026-08-25. That buys roughly a factor
+of two at current size and does not touch the cause, since the cost is mutant count times suite time
+and both keep growing. Of the two remedies above, the crash-safe mutation pass restoring from
+`.gauntlet/mutation-backup/` on startup is the one that survives the timeout being outgrown again;
+a per-gate attempt limit does not, because the killer here is the hook's own timeout rather than the
+retry loop.
+
+*Provenance note: this half of the finding was written on 2026-08-26 for events of 2026-08-25. The
+ClaimGate-facing half was recorded there at the time and pointed here for the cause; the commit it
+named did not exist. Findings banked on the project side do not reach this file by themselves.*
+
+**Correction, 2026-08-26, the same day — two claims above were wrong within hours, falsified by a
+kill of a class this entry did not name.** A stop-check was killed not by any timeout but by the
+user's next message to the session: in interactive use, a reply landing anywhere inside the
+acceptance gate's window kills the run, so with the gate near 900s and the hook firing on every
+turn, **interruption is the normal case rather than the exception, and no timeout raise touches
+it.** The stranded file this time was `carrier_configuration.feature` — not "the alphabetically
+first spec — the same file every time" as claimed above. The mechanism, now read from source rather
+than glossed: `specs.discover` returns paths sorted, and the stranded spec is whichever one's
+mutation window spans the kill instant. That is deterministic only while the instant is fixed — the
+constant 600s timeout always landed inside `validation.feature`'s window because it is the last and
+largest file, a property of the instant that the earlier account mistook for a property of the
+file — and it is arbitrary for an interrupt kill. Second, the artifact is not always "an injected
+`_gauntlet` line": the marker is the string-substitution form only, and a numeric mutant strands as
+an incremented number (`60 days` became `61 days`, live) with no marker anywhere, so detection keyed
+on the marker misses the numeric class entirely. The detection that survives both classes is the one
+the diagnosis bullets above already use — a modified spec in `git status` plus a differing file
+under `.gauntlet/mutation-backup/` — and it is the only shape test worth trusting. The crash-safe
+restore-on-startup remedy now answers two kill classes rather than one, which settles the choice
+between the two remedies more firmly than the timeout argument did. (The stranded mutant happened to
+be `60->61` in `carrier_configuration.feature` — the numeric member of the exact colliding pair the
+locator entry above documents, struck live while the commit recording it was being written.
+Coincidence, carrying no evidence weight; noted only so the log does not read as significant to a
+later reader.)
 
 #### Approval scope is coarser than the judgments it records, and it is now shaping the Gherkin
 
@@ -2353,6 +2538,14 @@ describes is unaffected — an approval still defends the code property that mak
 bound is now defended twice over, not only by its approval.
 
 **Routes to:** Gauntlet's README, "What building this taught us" — it is the strongest available answer to what stops human approvals rotting as the code moves beneath them.
+
+**Cross-reference added 2026-08-26.** This property is what forbids the most obvious optimization of
+the acceptance gate's wall time, which is now the only gate in ClaimGate that costs anything (893.841s
+of a roughly 900s run). See *Proposed changes*, "The acceptance gate re-runs every mutant on every
+check," and specifically its constraint paragraph. Any change that skips mutants because the ledger
+already knows their outcome, or that caches on a fingerprint not covering the code under test, deletes
+this property without changing a single line of output. The two entries have to be read together
+before either is acted on.
 
 ### Acceptance failures are diagnosed as three distinct states
 
