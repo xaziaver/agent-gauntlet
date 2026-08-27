@@ -330,6 +330,15 @@ when two of the 71 were still unapproved; the 27.6s between the runs is unexplai
 ordinary variance. Both are datapoints, and neither is evidence that approving a survivor costs
 time — see the constraint below for why it cannot.
 
+**Figure update, 2026-08-27: 996s at 744 mutants, so fifteen minutes is nearly seventeen.**
+Agent-reported at ClaimGate `ef0d906` rather than measured by the advisory session directly — the
+mutant total was re-measured against the engine independently, the wall time was not. Eleven specs,
+744 mutants, a 433-test suite, everything green: **996s**, about 1.34s per mutant against 1.26s at
+708, with the suite 36 tests larger. The ledger's 71 approvals now sit among 744 mutants, updating
+the "71 of 708" in the constraint below. Same trajectory, no new mechanism — and see the second
+event under "Interrupted mutation runs leave corrupted source" for what a seventeen-minute gate
+invites.
+
 **Constraint on any fix here, and it is not visible from this entry alone.** The cheapest-looking
 optimization is to skip the mutants whose outcome the ledger already records — at ClaimGate's current
 size, 71 of 708. **Do not.** `gates/acceptance.py`'s `_survivors` applies every mutant and runs the
@@ -385,6 +394,20 @@ happened to run `git diff` before the next commit; nothing in the harness itself
 **Routes to:** BACKLOG.md, v1.
 
 **Status.** Open.
+
+**Second event, 2026-08-27 — a numeric strand, from a run killed by no agent.** A session-start
+check found `siu_indicators.feature` carrying `45 -> 46` in its working tree: an in-place numeric
+mutation stranded by an acceptance run killed *between* sessions, when no agent was running.
+Operator interruption at the terminal is the plausible cause and is unconfirmed. Recovery worked
+exactly as prescribed — `git diff`, comparison against `.gauntlet/mutation-backup/`
+(byte-identical to `HEAD`), no live gauntlet process, restore, digest re-verified against the
+ledger. Two sharpenings. A numeric strand is stronger evidence for the "indistinguishable from a
+real edit" claim above than the original marker was: `45 -> 46` in a threshold row reads as a
+deliberate edit, with no `_gauntlet` token to give it away — only the digest check catches it. And
+the class is not confined to agent sessions: any operator who runs a gate that now costs seventeen
+minutes and interrupts it strands the tree, so the clean-tree-before and digest-check-after
+disciplines are operator discipline, not just agent discipline. Restore-on-interrupt remains the
+fix; a second occurrence, from a distinct cause, moves this from possible to recurring.
 
 #### Run pairing in the event log is unreliable in two directions
 
@@ -1503,6 +1526,64 @@ and only reading the step code tells the two apart. Any diagnostic built for thi
 classify by failure locus — step resolution, step-body exception, assertion — not by the first two
 alone; the cheap approximation is marking any kill whose exception is not `AssertionError`.
 
+**Vocabulary note, 2026-08-27.** The illustrative literal above has left the gated project: item 5g
+removed the caller-supplied timezone, and no ClaimGate step line now carries `"America/New_York"`.
+The mechanism and the dated figures stand as recorded.
+
+#### The boolean substitution is lowercased and preemptive, so a case-different enumeration is unprotected
+
+**What happened.** `mutation.mutate_value` checks `BOOLEANS.get(stripped.lower())` — case-folding
+the cell it reads — but returns the dictionary's own value, which is always lower-case, and it
+returns before `_swap` is ever consulted. A cell reading `TRUE` therefore becomes `false`, never a
+sibling value from its own column. In a specification whose outcome vocabulary is upper-case —
+ClaimGate's `TRUE` / `FALSE` / `NOT_EVALUATED` three-valued indicators — the substituted token is
+outside the enumeration entirely: no implementation, correct or broken, can produce it, an
+exact-string step assertion kills it unconditionally, and the kill is recorded indistinguishably
+from a real one.
+
+Measured 2026-08-26 on ClaimGate `main` at `ca0dc3a`: **30 of the ledger's 708 acceptance mutants
+were this class** — `triage.feature` 15, `siu_indicators.feature` 10, `siu_separation.feature` 5,
+every signature `TRUE->false` or `FALSE->true` — plus 6 of 48 in the item 5g spec that followed.
+The kills were confirmed vacuous against the real step definitions (`assert ... == expected` on
+exact strings), not argued from pattern analysis.
+
+**Why it matters.** Twice over. The kills inflate the score while testing nothing, like the
+resolution-death class above — but these die at the *assertion* locus, so the cheap diagnostic that
+entry proposes (flag any kill whose exception is not `AssertionError`) cannot see them. The
+assertion locus is not uniformly real: a kill whose substituted token lies outside its column's
+value set is vacuous too, and detecting it means comparing the token against the enumeration, not
+classifying the exception. Worse, the boolean branch *steals* the discriminating mutation: absent
+it, `_swap` would have offered the column's sibling. In `triage.feature`'s `recent_inception`
+column the sibling is `NOT_EVALUATED`, so the distinction ClaimGate's item 2 exists to protect — a
+missing input never read as a negative determination — was never once exercised by acceptance
+mutation, across the entire project, with every gate green.
+
+**What would address it.** Return the flip in the original's case, which alone converts every such
+mutant into a real test; better, also fall through to `_swap` when the column offers an
+alternative, so a three-valued column gets its cross-enumeration swap rather than only a flip. One
+line each; patch withheld under the freeze.
+
+**What the project could do meanwhile, and did.** Unlike the resolution-death class — where the
+honest position is that no project-side workaround exists — this one has one: parse the *expected*
+token case-insensitively in the step definition. The mutated line then binds and asserts the
+flipped value, which a correct implementation fails and a broken one can pass — a real test, not a
+loosened step, because the token must still be a case-variant of the enumeration. ClaimGate item 5g
+shipped exactly this for all three affected step families: 36 vacuous kills became real tests with
+no locator, approval, or digest movement, verified by the gate staying green.
+
+**What the gap cost us.** 30 of 708 kills that tested nothing, and one project-central invariant
+never touched by mutation. Caught by reading the substituted token against the spec's own
+vocabulary during an item 5g pre-approval review, not by any gate — a gate cannot flag a kill that
+should not have counted.
+
+**Routes to.** `BACKLOG.md`, v1, beside "Every quoted-literal mutant is vacuous under a well-formed
+step pattern" — the same false-positive-kill family, and any diagnostic built for that entry needs
+this class in its taxonomy.
+
+**Status.** Open, deliberately not patched under the freeze. Recorded here the day it was measured,
+2026-08-26 in the session artifact and now placed — the process failure noted under the
+quoted-literal entry's Status did not repeat.
+
 #### Acceptance mutant locators are not unique, so the ledger cannot address every mutant
 
 **What happened.** `Mutant.locator` is `f"{scenario}|{kind}|{context}"`
@@ -2565,6 +2646,16 @@ cannot find a guard no test exercises" under Designed boundaries, and
 layers are not redundant. A refactor that folds spec mutation into code
 mutation, or drops it as duplicative, loses the only mechanism that found that
 class of defect.
+
+**Addition, 2026-08-27 — the code layer returned the favor, and the survivor was a policy
+question.** ClaimGate item 5g's first implementation defaulted the timezone when a jurisdiction map
+entry was malformed; code mutation left three survivors on the default. What killed them was not a
+test but an escalation — a third `select_jurisdiction` outcome carrying a `NotImplementedError`
+whose message says the status code for a deployment's own misconfiguration is an unratified
+question. No scenario could have forced this: specifications describe the product's behaviour, not
+the deployment's defects. Read survivors on a defaulted value as a possible policy question wearing
+a test-gap costume before writing the test that buries it. Narrative evidence for the README's
+"What building this taught us", same as the entry above.
 
 ## Note for the v1 effort
 
