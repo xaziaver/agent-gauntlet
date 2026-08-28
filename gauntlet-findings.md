@@ -303,6 +303,19 @@ reported number — not by anything in the harness flagging it.
 
 **Status.** Open.
 
+**First in-the-wild occurrence, 2026-08-27 — a stale figure served, and passed, during real item
+work rather than a reproduction.** During ClaimGate item 5h's implementation a full `gauntlet
+check` reported `mutation ... 6 unresolved` and PASSED — six survivors under a 90% threshold leave
+the score above it. The 6 was a cache figure from an earlier tree state, under-reporting in the
+passing direction: cold (`mutants/` deleted first), the true state was 0 unresolved with the
+session's new unit test in place, and 12 without it (6 in `_check_loss_date_present`, 6 in
+`_determine_future_dated_loss`), established by remove-test / cold-run / restore. Everything above
+this line was deliberate experiment; this was the staleness surfacing unprompted, in the false-PASS
+direction the entry predicts goes unnoticed, and it was caught only because the agent distrusted a
+figure on a test-only change. The gated project's convention since: delete `mutants/` before any
+run whose number will be recorded. That is mitigation by operator habit, not the freshness check
+proposed above — status unchanged, open.
+
 #### The acceptance gate re-runs every mutant on every check, and the green path now costs eight minutes
 
 **What happened.** A passing `gauntlet check` on ClaimGate main measured the acceptance gate at
@@ -338,6 +351,13 @@ mutant total was re-measured against the engine independently, the wall time was
 the "71 of 708" in the constraint below. Same trajectory, no new mechanism — and see the second
 event under "Interrupted mutation runs leave corrupted source" for what a seventeen-minute gate
 invites.
+
+**Figure update, 2026-08-28: 1439.7s at 813 mutants, so seventeen minutes is now twenty-four.**
+Two more datapoints a day apart as the gated project's items 5h and 5i landed: 1233s at 756 mutants
+(post-5h merge, eleven specs, 439 tests), then **1439.7s** at 813 mutants, a 453-test suite, 75
+reviewed-equivalent, cold cache, everything green (post-5i merge). About 1.77s per mutant against
+1.26s at 708 and 1.34s at 744 — the per-mutant price rises with the suite, as this entry's cost
+model says it must, and the full amount is now paid by every stop event on a clean tree.
 
 **Constraint on any fix here, and it is not visible from this entry alone.** The cheapest-looking
 optimization is to skip the mutants whose outcome the ledger already records — at ClaimGate's current
@@ -408,6 +428,22 @@ the class is not confined to agent sessions: any operator who runs a gate that n
 minutes and interrupts it strands the tree, so the clean-tree-before and digest-check-after
 disciplines are operator discipline, not just agent discipline. Restore-on-interrupt remains the
 fix; a second occurrence, from a distinct cause, moves this from possible to recurring.
+
+**Third event, 2026-08-27 — the marker class again, stranded by a stop-check killed seconds after
+its own trigger.** A session-start digest check found `carrier_configuration.feature` carrying
+`"AAAA"` -> `"AAAA"_gauntlet` in the working tree. The event log pins the producer: a gate sequence
+at 13:40:39Z with no acceptance `gate.finished` and no `run.finished` — a stop-check that fired 25
+seconds after a commit and died inside the first spec in sorted order, the only file carrying a
+backup mtime from it. The backup was byte-identical to `HEAD`, so the tree was the strand; restore
+and digest re-verification proceeded as prescribed. Cause of the kill unconfirmed, and recorded as
+such. Three events now, from three distinct trigger contexts — a tool timeout mid-run, a
+between-sessions kill with no agent running, and a stop-check interrupted within half a minute of
+firing — so the class recurs across every way the gate gets invoked, and its frequency tracks the
+gate's growing wall time (see the figure updates under "The acceptance gate re-runs every mutant on
+every check"). On the mitigation side: the third strand was caught *mechanically*, by the
+session-start digest check the gated project adopted after the second — operator discipline is
+holding the line, which lowers realized cost without touching the fix. Restore-on-interrupt remains
+the change.
 
 #### Run pairing in the event log is unreliable in two directions
 
@@ -2593,6 +2629,28 @@ other rows, an edit anywhere in a column changes the signature of every mutant i
 leaving untouched rows' locators byte-identical — see the addition under "Mutant approval keys are
 content-addressed on the whole row". Both directions are load-bearing. A reader who takes only the
 sentence above will underestimate what a column edit disturbs, and will do so in the unsafe direction.
+
+**Addition, 2026-08-28 — the digest is compared, not merely stored, and the two failure directions
+are deliberately asymmetric.** Read from source after a wrong inference about exactly this nearly
+reached the gated project's documentation. At a key that still resolves, `registry.verify` compares
+the entry's digest against the current survivor's signature (`actual == entry.digest`) and a
+mismatch is `MODIFIED`, which `mutants._bucket_for` places in `changed`, part of
+`Classification.failing` — the list the acceptance gate reports and goes red on. An approved reason
+therefore cannot silently attach to a substitution nobody approved; the gate demands re-approval by
+name. An approval whose mutant no longer survives goes `MISSING` and is reported without failing,
+under the source's own comment: "Stale approvals are housekeeping, not a defect: report, do not
+fail." Both directions surface; only one blocks — and the asymmetry is a stance, worth preserving
+as deliberately as the digest itself. The sentence in the base entry that the gate "does not
+currently use it to classify stale approvals" is about the rename case — pairing an orphaned
+`MISSING` key to its new `UNAPPROVED` address is still manual — not about same-key verification,
+which is live. The scenario where this earns its keep, measured on ClaimGate item 5i: deleting one
+Examples row re-aimed four surviving rows' substitutions under byte-identical locators (a sibling
+swap is generated from whatever the column still offers, and a two-value column that loses its last
+differing row falls back to the literal `_gauntlet` strand while still reporting a mutant). On a
+file carrying approvals that is a forced, named re-approval ceremony — a cost the gate collects,
+not drift that escapes it. The corrected inference — "the key resolves, so the old reason silently
+governs the new substitution" — is the natural reading of the key shape alone, which is why this
+addition exists.
 
 ### An approved equivalent mutant is a regression test for its own justification
 
