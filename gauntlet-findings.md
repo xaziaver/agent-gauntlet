@@ -121,6 +121,12 @@ them by scenario name and by the values that make each one inert, per this docum
 under "Approval reasons go stale silently where the key does not" — the same rule, written about
 someone else.
 
+**Vocabulary sweep, 2026-08-30.** Re-run against ClaimGate at `origin/main` (`9da9d1c`, item 5j
+merged and the phase-2 queue closed). Item 5j widened a table and added a row in
+`features/jurisdiction_selection.feature`, retitled that file's Rule 3 outline, gave
+`tests/acceptance/conftest.py`'s loss-date step an `absent` convention, and renamed no symbol.
+Nothing in this document cites that file, the old scenario title, or the step. Sweep clean by name.
+
 ### v1 — finish line
 
 #### The blast radius of a spec change cannot be measured before making it
@@ -880,6 +886,21 @@ monotonically and reads as thrash while describing the process working exactly a
 classification proposal above stands; this annotation records that the blunt setting is a working
 stopgap whose only cost is a misleading sentence.
 
+**Addition, 2026-08-30 — the second human-blocked state is the expensive one, measured.** Every
+reopening produces *two* human-blocked windows, not one, and they price differently. While the spec
+sits modified-awaiting-approval, each stop costs a millisecond-class approval-stage failure —
+0.003s, 0.003s, 0.004s across item 5j's consecutive stops. The moment the human approves the spec,
+the remaining red is the unreviewed survivor, the short-circuit no longer applies, and the same hook
+pays the full mutation stage per stop: 1384.778s observed, under `--max-attempts 1`, counter reading
+"after 3 attempts" for the session's third stop, consistent with the counter-counts-stops finding
+above. That window closes only at `gauntlet mutant approve`, so every agent turn inside it —
+including turns that only edit documentation — costs roughly twenty minutes of gate time. The gated
+project's own findings file records this window as unavoidable, reasoning that any short-circuit
+here weakens a threshold; the narrower proposal above does not: when the previous run in the same
+session failed with only human-blocked diagnostics and the tree digest is unchanged, re-emitting
+that verdict enforces exactly what re-running enforces, at none of the cost. This addition is the
+measured case for it.
+
 #### The Stop hook cannot be scoped, and the prescribed workflow produces a phase where it cannot pass
 
 **What happened.** ClaimGate's workflow, which Gauntlet's own design prescribes, commits the spec
@@ -1028,6 +1049,25 @@ proposal half had not crossed to this document until now.
 **Routes to:** BACKLOG.md, v1. Trade-off, not defect — over-invalidation is the safe direction and the fix must not weaken the self-verifying property described under Properties to preserve.
 
 **Status.** Open.
+
+**Addition, 2026-08-30 — the addition direction, measured, and a hazard the counts cannot show.**
+Adding one row to an approved scenario moves *both* channels for every sibling row at once: the keys,
+because each locator carries its whole row and item 5j's new `loss_date` column rewrote every row
+(48/48 → 55/55 against the lock: 8 keys lost, 15 gained, 40 kept — the losses confined to the one
+widened scenario); and the digests, because `_discriminating_alternatives`' most-different-first
+selection re-aims each surviving cell's swap at the new neighbour. One determination swap moved from
+`->TRUE` to `->NOT_EVALUATED:NO_LOSS_DATE` that way. Both substitutions happen to be discriminating
+here, so nothing was lost in fact — the first write-up of this said "destroyed a discriminating
+mutant" and was correctly narrowed by the implementing agent to the hazard: a re-aim can equally land
+on a sibling that shares the row's outcome, turning a killing mutant inert, and the mutant count reads
++7 either way. Harmless in this instance solely because the file carried 0 of the ledger's 76
+approvals — which is the general pricing rule showing through: locator churn costs whatever approvals
+exist at edit time, so structural edits (a 15-locator retitle included) are free early and never free
+again. ClaimGate records the operational half in `docs/harness-findings.md` at `84cf400`; the
+proposal this strengthens is the reporting one above, in the concrete form the workaround already
+uses: a signature/locator diff between two refs or candidate texts, which is also what the
+`mutant preview` command proposed under "The blast radius of a spec change cannot be measured before
+making it" should accept — two inputs, not one.
 
 #### Acceptance mutation cannot distinguish a deliberately inert value from an untested one
 
@@ -2333,6 +2373,41 @@ validating prose, and it covers the commonest case. Worth carrying to whoever im
 `--locator` scoping proposed under "Approval scope is coarser than the judgments it records": both
 want the same addressing.
 
+#### An Examples token with no producer in its bound step is invisible until the suite runs
+
+**What happened.** Two step phrasings existed for the same field: a shared step that assigns the raw
+string, and a file-local step in a different spec's module that maps the token `absent` to a true
+absence. A drafted row in ClaimGate item 5j used `absent` under the *first* phrasing, so it would
+have submitted the literal string — which the shell classifies as unparseable and refuses at the
+schema boundary with nothing persisted, while the row asserted a created, pended notice. Nothing
+before the acceptance run can see this: the boundary gate walks imports, the spec gate checks a
+digest, and mutation runs against the text. It was caught in review by reading the bound parser
+before approving the row, and confirmed the cheap way — the suite failed 453/454, exactly the new
+row, exactly that cause.
+
+**Why it matters.** The failure is loud when it arrives, but it arrives *after* the human locks the
+spec, and the lock is the expensive artifact — the counterfactual here was a hash-locked
+specification that cannot pass, which costs a reopening. The quieter version is worse: a passthrough
+token that happens to reach the asserted outcome by another path fails nothing and asserts nothing,
+which is the same shape as "Mutation cannot reach a fixed Given" — a spec stating a rule no mechanism
+protects.
+
+**What would address it / Proposed change.** Nothing enforceable for steps that do not exist yet,
+which on this workflow is most of them — a reopening's steps are written after the lock. Convention
+instead: one absence token per field, produced by exactly one step phrasing, and spec review reads
+the bound parser for every Examples token that is not literal data. The narrow checkable half is
+worth carrying to v3: when a spec's phrasings bind to steps that already exist, a linter could flag a
+token one bound step maps specially while a sibling phrasing for the same field captures it as an
+opaque string. That check would have caught this one, because both steps predated the row.
+
+**What it cost us.** Nothing — caught pre-lock. ClaimGate's `docs/harness-findings.md` carries the
+technique half (read the step's parser before specifying against it); this entry carries the
+convention and the reason it cannot be code today.
+
+**Routes to:** convention now; the existing-steps linter to v3.
+
+**Status.** Open.
+
 ## Designed boundaries
 
 Things the harness deliberately does not do. These are not work items — recorded so nobody mistakes
@@ -2552,6 +2627,22 @@ approval created. That is the third time a simulation recorded as a simulation h
 gate exactly on implementation; the property that makes it possible is still that `parse` takes a
 string.
 
+**Fourth match, 2026-08-30, item 5j — and the first time a simulation was calibrated before being
+believed.** Four candidate shapes for one reopening were measured as strings and their survivors
+simulated by driving each real mutant's row through the actual shell under the spec's own step
+readings. The simulator was validated first against the scenario already locked and green — it
+simulated 0 survivors there, matching the gate's known state — before its figures on the candidates
+were used. The chosen shape simulated exactly one survivor (`GA->FL` on the row carrying no loss
+date); the gate later measured exactly that one, on that row, in that direction. Two points beyond
+the fidelity record. First, the decision went *against* two zero-survivor shapes on the grounds that
+they bought zero by damaging the spec — one restated a neighbouring rule's subject to kill a mutant,
+one retreated the new fact into an unmutated fixed `Given` — and the surviving mutant was chosen on
+purpose, because its approval reason states the rule (see "An approved equivalent mutant is a
+regression test for its own justification"). A survivor count is not a quality score. Second, the
+calibration step is what makes a matched prediction evidence rather than luck, and it is free
+precisely because the engine runs against strings: the known-green scenario cost nothing to
+re-simulate.
+
 ### The approval stage short-circuits before the expensive one
 
 When a spec is unapproved or modified, the acceptance gate reports and returns in about a
@@ -2651,6 +2742,26 @@ file carrying approvals that is a forced, named re-approval ceremony — a cost 
 not drift that escapes it. The corrected inference — "the key resolves, so the old reason silently
 governs the new substitution" — is the natural reading of the key shape alone, which is why this
 addition exists.
+
+### `mutant approve` records what currently survives, not what was reported
+
+**What happened.** Read from `cli_mutants.py` on 2026-08-30, then observed: `mutant approve` does not
+trust any stored survivor list. `_current_survivors` re-runs the mutation loop for the named feature
+through the gate's own helper (`acceptance.survivors_for`), and `_record` approves that fresh result.
+In item 5j the approval run re-found exactly the one survivor a gate run had reported hours earlier —
+same row, same substitution — because it re-derived it, not because anything remembered it.
+
+**Why it matters.** An approval can never target a stale memo. If the tree moves between the gate's
+report and the human's judgment, the ceremony judges what is true now — and combined with the wide
+default recorded under "Mutant approval defaults to the widest scope," this is also why that default
+is dangerous: an unscoped approve sweeps in whatever survives *at approval time*, including survivors
+that appeared after the human last looked.
+
+The cost is the point, not a defect: the command pays a per-feature mutation pass, minutes of
+latency on a command a human runs interactively. A refactor that "fixes" that latency by reading
+survivors from the last gate run's artifacts would look like a pure optimization, pass every test,
+and quietly convert the approval ceremony from a judgment about the present into a signature on a
+cache. Recorded so the slowness is understood as load-bearing before anyone speeds it up.
 
 ### An approved equivalent mutant is a regression test for its own justification
 
