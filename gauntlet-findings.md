@@ -127,6 +127,16 @@ merged and the phase-2 queue closed). Item 5j widened a table and added a row in
 `tests/acceptance/conftest.py`'s loss-date step an `absent` convention, and renamed no symbol.
 Nothing in this document cites that file, the old scenario title, or the step. Sweep clean by name.
 
+**Vocabulary sweep, 2026-09-04.** Re-run against ClaimGate at `origin/main` (`de2262f`, item 7a
+merged; phase-3 planning ratified). Items 6 and 7a added `ROADMAP.md`, `PHASE3_DESIGN.md`,
+`features/coverage_verification.feature`, `src/claimgate/domain/coverage.py`, `tests/api/coverage.py`
+and renamed no symbol; sweep clean by name. One forward warning, dated now because no later sweep
+will know to look: ClaimGate's queued item 7d retires `recognized_policy_number_prefixes` and ends
+`POLICY_NUMBER_PATTERN`'s role as an intake blocker (ratified in `PHASE3_DESIGN.md`,
+"Identifiers"). Both names appear in this document's 2026-08-22 and 2026-08-23 sweep notes as
+existing-and-cited-correctly. When 7d lands, those notes stay correct as history, and the sweep
+that runs after it should say so rather than rediscover it.
+
 ### v1 — finish line
 
 #### The blast radius of a spec change cannot be measured before making it
@@ -322,6 +332,15 @@ figure on a test-only change. The gated project's convention since: delete `muta
 run whose number will be recorded. That is mitigation by operator habit, not the freshness check
 proposed above — status unchanged, open.
 
+**Second in-the-wild occurrence, 2026-09-04, in the false-survivor direction on a source-adding
+change — exactly the direction the third scenario above predicts.** ClaimGate item 7a's fix commit
+added a guard to a new domain module; the warm run reported three survivors on the new code.
+Hand-applying them failed 16 and 12 unit tests — impossible survivors, the same tell as the
+`_resolve_notice_type_exclusion` case above. Cold run after clearing `mutants/`: 100%, 560 killed.
+The agent recognised the pattern from the gated project's documentation, cleared, and recorded the
+cold figure; the narrow rule above — a mutation score on a commit that adds a function is only
+meaningful from a cold run — held on its second live test. Status unchanged, open.
+
 #### The acceptance gate re-runs every mutant on every check, and the green path now costs eight minutes
 
 **What happened.** A passing `gauntlet check` on ClaimGate main measured the acceptance gate at
@@ -450,6 +469,26 @@ every check"). On the mitigation side: the third strand was caught *mechanically
 session-start digest check the gated project adopted after the second — operator discipline is
 holding the line, which lowers realized cost without touching the fix. Restore-on-interrupt remains
 the change.
+
+**Events four through six, 2026-09-01, all in one calendar day — and the shape class closes an
+enumeration.** Three strands across two documentation-only sessions that touched no file any gate
+reads, each from a stop-check killed by the operator's next message: `carrier_configuration.feature`
+`absent ->` (empty cell), `resolution.feature` `REFUSED -> APPLIED`, then
+`carrier_configuration.feature` `30 -> 31`. The first two are a shape no prior event had shown: a
+**sibling-value swap**, no marker, not numeric, reading exactly like a deliberate edit — the engine
+confirms the class (`mutation.mutants()` over the file at `872f354` yields four `absent`-to-empty
+mutants in that scenario, all aimed at its blank loading row). The general point, which enumeration
+keeps missing one shape at a time: a strand's on-page form is whichever `mutate_value` branch fired
+— marker, numeric increment, boolean flip, sibling swap including swap-to-blank — so **the set of
+strand shapes equals the set of substitution rules, and every rule added to the engine adds a
+shape.** No textual test can identify a strand; the backup-diff-plus-digest check is the only one
+that does not depend on knowing the shape, which the 2026-08-26 correction under "An automatic
+retry loop repeats the one gate that rewrites the working tree" already argued from two shapes and
+now holds for four. ClaimGate's operator diagnosis rule was corrected accordingly (its `CLAUDE.md`,
+2026-09-01) to name the class and forbid identifying strands by text. Frequency confirms the cost
+model: the rate tracks the gate's wall time times the hook's per-turn firing, and it is now being
+paid on sessions where the gate has nothing to check. Restore-on-interrupt remains the change; six
+events from four distinct trigger contexts move it from recurring to routine.
 
 #### Run pairing in the event log is unreliable in two directions
 
@@ -796,6 +835,20 @@ measurement agreed.
 other gate.
 
 **Status.** Open.
+
+**Addition, 2026-09-04 — the missing count now has a second consumer: checking a simulation.**
+ClaimGate item 7a locked a spec whose survivor count had been *simulated at zero before
+implementation* (78 mutants enumerated pre-draft; see the fidelity record under "The acceptance
+mutation engine is importable as a plain library"). After implementation the gate went green — and
+the only per-spec evidence in its output was the same two absences this entry describes: no
+survivor part, no new ledger entry. Confirming the simulation actually held required re-deriving
+the kill set outside the gate, applying each of the 78 mutants via the engine's `apply()` and
+running the step file: 78 killed, 0 survivors, 69 unique locators (9 shared across two-literal
+step lines — the addressing defect recorded under "Acceptance mutant locators are not unique").
+If simulate-before-implement is worth institutionalising — five exact matches now — the green path
+must print killed/total and survivors per spec, so checking a simulation is a diff of two reports
+rather than a bespoke harness per item. Same proposed change as above; this is the second use case
+for it, and the stronger one.
 
 #### Retry loop burns attempts on non-agent-actionable failures
 
@@ -1384,6 +1437,46 @@ permission to walk away from a red gate that is waiting on exactly them.
 
 **Routes to.** `BACKLOG.md`, v1, beside the two remedy entries above — same family: the
 human-facing surface contradicting the state it reports.
+
+**Status.** Open.
+
+#### The two ledger figures most quoted in prose are the two no status surface reports
+
+**What happened.** ClaimGate's `README.md` at `3afdfb2` said "There are 67 such approvals today" and
+"Four specifications under `features/`, all hash-locked." The ledger at that ref held 76 mutant
+approvals and 11 approved specs. Both README figures were *exactly correct when written* — the
+README's last content commit is `0114b45` (2026-08-21), and the ledger at `0114b45` holds precisely
+`mutant: 67, spec: 4` — and both went false with nothing able to notice. The same class had already
+bitten this document from the other side: the 2026-08-22 sweep note above records "Ledger counts
+quoted inside entries were not re-verified against the current ledger this session," and no sweep
+since has re-verified them either, because every sweep is a name sweep.
+
+Read from source, 2026-09-01, not reasoned: `status.Status.to_dict` (`src/gauntlet/status.py`)
+emits `passed`, `locked`, `gates`, `pending`, `recent`, `disabled`. `pending()` returns only what
+is *owed* — `UNAPPROVED`, `MODIFIED`, `MISSING` — and excludes mutants by documented design. So the
+two numbers people actually copy into prose (approvals held, specs approved) are reportable from no
+invocation at any verbosity, while `--json` already exists on the status command as a
+machine-readable surface to carry them.
+
+**Why it matters.** Gauntlet is the sole writer of `gauntlet.lock.json` and the only authority for
+these figures, and it emits them nowhere quotable. Prose fills the gap by hand-counting, and
+hand-counted figures freeze while the ledger moves. The correct-when-written case is the worst one:
+nothing about the sentence invites checking, and no vocabulary sweep, name-based, will ever reach a
+number.
+
+**Proposed change.** A ledger census in `status`'s output — counts per namespace (`mutant:`,
+`spec:`, `config:`), at minimum in `--json` — so a document can cite "N approvals as of `<ref>`"
+from a command's output rather than a hand count. Convention until then, same family as the
+approval-reason conventions above: any ledger-derived figure quoted in prose carries its date and
+ref, because the figure is stale the moment another approval lands.
+
+**What it cost us.** One public README stale by an entire phase (fixed 2026-09-01, ClaimGate
+`c417ce5`, with the figure now dated), and this document's own quoted counts sitting unverifiable
+since 2026-08-22.
+
+**Routes to.** `BACKLOG.md`, v1, beside "`status --run` reports \"nothing needs your approval\"" —
+same surface, complementary gap: that entry is status omitting what is owed to a human; this is
+status omitting what is held.
 
 **Status.** Open.
 
@@ -2563,6 +2656,38 @@ redundancy. Tests guarding cross-module invariants should be judged on the coord
 catch, which is a question for a human, not for a score.
 
 
+### A fully gated rule can have no caller in the product, and every gate stays green
+
+**What happened.** Measured 2026-09-01 on ClaimGate at `4a42d2f`. `duplicates.feature` had been
+hash-locked, bound, and 100% mutation-killed since 2026-08-12, and its domain function
+`find_duplicates` had exactly two callers in the repository, both tests: the acceptance test API
+and the unit tests. Nothing under the product's shell called it. No notice had ever received a
+duplicate candidate — the existing-claims input has no source until an adapter exists — and every
+gate had been green the entire time. A second instance sat beside it: the SIU recent-inception
+input (`continuous_coverage_date`) has no shell producer either, so that indicator resolves
+`NOT_EVALUATED` on every real notice. The first was recorded nowhere and reached a *ratified
+roadmap* unplaced; it was caught by reading shell source for a design document, not by any gate or
+any document.
+
+**Why it matters.** The acceptance suite is the spec's only caller, and nothing distinguishes that
+from a real one: the gates check the domain against its specification, and whether the product
+*reaches* the domain is an integration question no gate is pointed at — the shell sits outside
+mutation scope by the project's own `pyproject.toml` and outside any scenario's reach by the
+no-tables-no-columns spec convention. This is a third seam in the same family as the two entries
+above: "Gates cannot check a specification against the world" (spec versus reality) and
+"Killed-count deltas cannot register a test that guards a cross-module invariant" (artifact versus
+artifact). This one is module versus its own product: a green, fully-mutated, hash-locked rule can
+be dead code in production, indefinitely, invisibly.
+
+**Why it is a boundary and not a defect.** Any gate that tried to close it would need to know what
+"the product calls it" means — an entry-point census — which is an architecture assertion, not a
+gate check; and the state is sometimes correct on purpose, as here, where the rule was built in
+dependency order ahead of its adapter. What the boundary implies for process: wiring is a scheduled
+deliverable with its own queue item, not an assumed side effect of a rule existing, and a roadmap
+review should ask "what calls this?" of every gated module. ClaimGate now carries the wiring as
+explicit items (7f, 7h) with the gap named in their entries.
+
+
 ## Properties to preserve
 
 Things the harness does well that a refactor could break without meaning to. A
@@ -2642,6 +2767,20 @@ regression test for its own justification"). A survivor count is not a quality s
 calibration step is what makes a matched prediction evidence rather than luck, and it is free
 precisely because the engine runs against strings: the known-green scenario cost nothing to
 re-simulate.
+
+**Fifth match, 2026-09-04, item 7a — the first carried through a full item lifecycle, and the first
+independently re-driven.** The term-in-force spec was measured as a string before drafting (78
+mutants, 40 swaps, 38 markers), its swaps simulated against a model of the rule at 0 survivors, and
+one scenario restructured *pre-lock* when simulation showed its uniform outcome column made three
+swaps unkillable by construction — the known loading-row/discrimination behaviour, applied before it
+could cost approvals rather than after. The coding agent transcribed the measured text
+byte-identically, independently re-enumerated 78/40/38 from its own checkout, and the human locked
+the digest the measurement was taken at. On implementation the gate found zero survivors, the
+out-of-band per-spec re-derivation found 78/78/0, and the advisory session separately re-drove all
+23 locked example rows directly against the shipped function — 23/23. The marker half of the
+simulation was conditional and stated as such: markers die only under strict date parsing and
+exact-string assertion in the step definitions, which the item carried as a written requirement.
+Five matches; the fidelity record still rests on `parse` taking a string.
 
 ### The approval stage short-circuits before the expensive one
 
