@@ -137,6 +137,18 @@ will know to look: ClaimGate's queued item 7d retires `recognized_policy_number_
 existing-and-cited-correctly. When 7d lands, those notes stay correct as history, and the sweep
 that runs after it should say so rather than rediscover it.
 
+**Vocabulary sweep, 2026-09-06.** Re-run against ClaimGate at `origin/main` after items 7b, 7c and
+7d's implementation (7d not yet merged at the time of the sweep; its branch is green). 7d landed as
+the 2026-09-04 warning said: `recognized_policy_number_prefixes`, `POLICY_NUMBER_MALFORMED`, the
+prefix Background step and the `POLICY_NUMBER_PATTERN` blocker are gone from ClaimGate, the
+`validation.feature` prefix outline and its three approvals with them. The 2026-08-22 and 2026-08-23
+sweep notes remain correct as history; the entry "Background steps are invisible to acceptance
+mutation entirely" now cites the retired step by its English text, deliberately, as the 7d case.
+New names since the last sweep, all cited only in entries dated on or after their creation:
+`features/continuous_coverage.feature` and `src/claimgate/domain/continuous_coverage.py` (7b),
+`features/policy_identification.feature` (7c, to be reopened by 7f), `NO_COVERAGE_ON_LOSS_DATE`,
+`HISTORY_MAY_PREDATE_SOURCE`, `POLICY_IDENTIFIERS_INSUFFICIENT`. Sweep clean by name.
+
 ### v1 — finish line
 
 #### The blast radius of a spec change cannot be measured before making it
@@ -489,6 +501,17 @@ now holds for four. ClaimGate's operator diagnosis rule was corrected accordingl
 model: the rate tracks the gate's wall time times the hook's per-turn firing, and it is now being
 paid on sessions where the gate has nothing to check. Restore-on-interrupt remains the change; six
 events from four distinct trigger contexts move it from recurring to routine.
+
+**Events seven through ten, 2026-09-04 to 2026-09-06 — one per session start, every one from the
+same trigger.** Four consecutive ClaimGate sessions (items 7b, 7c, 7c close-out, 7d) each opened by
+finding `features/validation.feature` carrying a strand from a stop-check that had been killed between
+turns, and each spent its first minutes on the backup-diff-plus-digest restore before doing anything
+else. No new shape; the significance is the trigger. Events one to six named several contexts. Seven
+to ten are all the Stop hook itself: the hook runs `gauntlet check`, the acceptance gate mutates the
+spec in place for ~30 minutes at current size (1,780–1,995s measured this span), the operator's next
+message kills it, and the tool strands its own working tree. That is the tool interrupting the tool,
+and it makes restore-on-interrupt a correctness property of the hook path rather than a nicety for
+external timeouts. Ten events; the change is unchanged and the case for it is no longer arguable.
 
 #### Run pairing in the event log is unreliable in two directions
 
@@ -1413,6 +1436,48 @@ judgment holds.
 **Status.** Open.
 
 
+#### `mutant prune` classifies against a survivor run with no baseline check, so a red suite marks every approval stale
+
+**What happened.** During ClaimGate item 7d the acceptance suite was legitimately red between a
+reopening's spec commit and its implementation commit — five amended specs, three deleted approvals,
+step glue not yet updated. The plan called for `gauntlet mutant prune features/validation.feature` to
+drop the three approvals whose scenario had been deleted. Before writing the command, the advisor read
+the path: `cli_mutants.mutant_prune -> _current_survivors -> gates.acceptance.survivors_for ->
+_survivors`, which applies each mutant and records a survivor when the suite *passes*. Nothing on that
+path runs the unmutated suite first. The gate's own path does — `_baseline_stage` refuses to classify
+when the baseline fails — but the CLI enters below it.
+
+**Why it matters.** With a red baseline every mutant "dies", every approved mutant is absent from the
+survivor list, `_classify` marks all of them stale, and `_prune_stale` drops them. On that file at that
+moment the ledger held 31 approvals, 28 of them correct judgments that would have been deleted without
+a diagnostic distinguishing them from the 3 that were actually stale. The gate would then have gone
+green on the next run with 28 mutants re-surviving and needing re-approval from memory — the
+"approval reason lost" failure this document already treats as the worst class, produced by the one
+command whose purpose is ledger hygiene.
+
+**What would address it.** `prune` (and `mutant approve`, which uses the same helper) should run the
+baseline first and refuse with a named reason when it fails — the same check the gate applies, reused
+rather than reimplemented. The 2026-09-06 run that did prune, at a green ref after the implementation
+landed, dropped exactly the three expected entries; the fix is a guard, not a redesign.
+
+**Proposed change.** In `cli_mutants._current_survivors`, call the gate's baseline stage (or
+`python_adapter.run_acceptance` directly) before `survivors_for`, and exit non-zero with "baseline suite
+failing; refusing to classify survivors" on failure. Cost: one suite run, which the survivor loop was
+about to pay hundreds of times over.
+
+**What it cost us.** Nothing realized: the command was not run on the red tree because the source was
+read first. The near-miss is the point — the brief's rule that every claim about a command must come
+from its source, not from what it "must" do, is what caught it, and an operator following the
+remedy text the gate itself prints (`Remove them with gauntlet mutant prune`) at the wrong moment has
+no such protection.
+
+**Routes to:** BACKLOG.md, v1, beside "The stale-approval remedy asserts one cause for a condition with
+two" — both are the ledger's hygiene commands doing the wrong thing on a state the gate would have
+recognized.
+
+**Status.** Open. Not patched: Gauntlet is frozen for the duration of the ClaimGate project. Read from
+source at `9afd421`, 2026-09-06; not exercised.
+
 #### `status --run` reports "nothing needs your approval" beside the survivors it just counted
 
 **What happened.** `gauntlet status --run` on ClaimGate printed the acceptance gate's result — "7
@@ -1533,6 +1598,22 @@ near-miss is real: the same content-addressed-locator mechanism already document
 approval keys are content-addressed on the whole row" would apply here too if it could, except worse
 in the opposite direction — a Background value can change silently, with no stale-approval signal at
 all, because no approval was ever keyed to it in the first place.
+
+**Realized cost, 2026-09-05/06, item 7d — the invisibility is also a blast-radius blind spot.**
+Retiring a configuration value (the policy-number prefix set) required finding every spec that
+depended on it. The engine-based radius method that has been exact on every prior reopening — enumerate
+mutants at the working ref, diff locators and signatures against the lock — found the files whose
+*scenarios* named the retired vocabulary and reported the cost as two specs. The actual cost was
+seven: five more files carried the value only as a Background step, which yields no mutant and so no
+locator to diff. Two of the five were missed twice, by an advisor grep that used the code identifiers
+(`recognized_policy_number_prefixes`) where the step text was hyphenated English ("policy-number
+prefixes"), and surfaced only when the step definition was deleted and thirty scenarios failed at
+resolution. Cost: one extra spec commit, two extra file approvals, one gate cycle. The generalization
+belongs here because it is the engine's, not the operator's: **an engine-based blast radius can never
+see a Background dependency**, so the reopening procedure has to pair the engine with a plain-word
+search across every feature file, and no lock-side tooling can replace the second half until
+Background steps generate locators. Recorded in ClaimGate's `QUEUE.md` and `docs/harness-findings.md`,
+2026-09-06.
 
 **Routes to:** BACKLOG.md, v1. Same family as "Mutant approval keys are content-addressed on the
 whole row" and "Acceptance mutation cannot distinguish a deliberately inert value from an untested
@@ -1699,6 +1780,21 @@ alone; the cheap approximation is marking any kill whose exception is not `Asser
 removed the caller-supplied timezone, and no ClaimGate step line now carries `"America/New_York"`.
 The mechanism and the dated figures stand as recorded.
 
+**The mechanism named, 2026-09-05 — it is the step library's matcher, not Gauntlet.** The coding
+agent observed directly, by calling `is_matching` on a marked step text, that a quoted-literal
+marker lands *outside* the quotes (`"HO-4471209"_gauntlet`) and dies only because pytest-bdd 8.1.0's
+`parsers.re` uses `fullmatch`. Under `re.match`, or any binding not anchored end-to-end, the greedy
+`.*` capture would return the unmarked value and every one of these mutants would survive. Two
+consequences. First, the vacuous-kill class this entry describes is a property of the gated project's
+step library and version, and a Gauntlet release note should say which matchers it assumes. Second,
+the same session found the pressure that pushes a project toward `parsers.re` in the first place:
+`parsers.parse` cannot bind an empty quoted value (a field needs at least one character), so any spec
+that states `""` as a value forces the `re` binding, which is also the one whose `fullmatch` makes the
+markers die. The two facts together mean the marker mechanism currently works by coincidence of
+library choice; a project on `parsers.parse` throughout would see a very different kill count for
+the same spec. Both facts are the coding agent's observations, recorded by ClaimGate in
+`docs/harness-findings.md` on 2026-09-05; not independently re-run here.
+
 #### The boolean substitution is lowercased and preemptive, so a case-different enumeration is unprotected
 
 **What happened.** `mutation.mutate_value` checks `BOOLEANS.get(stripped.lower())` — case-folding
@@ -1752,6 +1848,17 @@ this class in its taxonomy.
 **Status.** Open, deliberately not patched under the freeze. Recorded here the day it was measured,
 2026-08-26 in the session artifact and now placed — the process failure noted under the
 quoted-literal entry's Status did not repeat.
+
+**Sibling case, 2026-09-05: numeric preemption on a value with no numeric semantics.** A five-digit
+US postal code (`34287`) in an Examples cell takes `mutate_value`'s number branch (`34287 -> 34288`)
+ahead of the sibling swap, exactly as the boolean branch preempts above. For a postal code the result
+is an equivalent survivor by construction — a postal code is present either way, and presence was the
+rule under test — so the branch order silently converts a discriminating column into an approval
+ceremony. Measured against the engine at `9afd421` before drafting; ClaimGate's `policy_identification`
+spec (item 7c) carries a nine-digit code in that row for no domain reason, only to route the cell to
+the swap branch. Same fix family as above: a value's substitution rule should be decided by its
+column's alternatives before its surface shape, or the engine should emit both. Any identifier that
+happens to be digits — postal codes, claim numbers, account numbers — is exposed.
 
 #### Acceptance mutant locators are not unique, so the ledger cannot address every mutant
 
@@ -2371,6 +2478,16 @@ gate — the point is to make the scope decision visible while it is still a dec
 shipping item 2 alone would have left `main` red between two reopenings, breaking the constraint the
 branch discipline exists to protect.
 
+**A second shape of cross-spec impact, 2026-09-05, item 7d.** Retiring a validity check in one spec's
+domain changed what an Examples column in *another* spec could discriminate. `resolution.feature`'s
+partial-clearance outline used `HO-12` as a supplied policy number whose only work was to be malformed;
+with the shape check gone every value in that column becomes equivalent, and the engine-level diff
+showed it exactly — two mutants that die today (`HO-7654321 -> HO-12`) would have re-emerged as
+survivors with a changed signature. Caught pre-lock by re-simulating every spec whose columns carry the
+retired vocabulary, not just the ones that name the retired code; the row now uses an `absent` value
+that keeps the column load-bearing. This is impact the lock cannot see (no approval moved) and the
+engine can only see if someone points it at the other file — which is the check this entry proposes.
+
 **Routes to:** BACKLOG.md, v3. Cheap enough to land in v1 if convenient, but it only starts mattering at the scale v3's orchestration implies.
 
 **Status.** Open.
@@ -2534,6 +2651,15 @@ tool.
 
 **What would address it.** Nothing — this is a process boundary, not a fixable gap. Worth naming
 explicitly so it isn't mistaken for a guarantee the mechanism doesn't actually provide.
+
+**Procedural corollary, 2026-09-04 (read from `specs.approve`, not inferred).** `gauntlet spec
+approve <path>` hashes the file *in the working tree* — `path.read_bytes()` — not the content at any
+ref. A reviewer who exports and reads `git show <ref>:<path>` has verified the ref, not the thing the
+command will stamp; the two coincide only if the checkout is clean at that ref. ClaimGate's approval
+procedure now hashes both the export and the working-tree file and requires equality before the
+command runs, and it has been exact on every approval since. The boundary is unchanged — nothing can
+verify the reading — but the hashing gap between "what I read" and "what I stamped" is closable by
+procedure and is now closed.
 
 ### Blocking a file and verifying a file are different mechanisms, and the second is not a lock
 
@@ -2781,6 +2907,28 @@ out-of-band per-spec re-derivation found 78/78/0, and the advisory session separ
 simulation was conditional and stated as such: markers die only under strict date parsing and
 exact-string assertion in the step definitions, which the item carried as a written requirement.
 Five matches; the fidelity record still rests on `parse` taking a string.
+
+**Matches six to eight, 2026-09-04 to 2026-09-06 — three consecutive full lifecycles, and two
+blind spots of the technique named.** Item 7b (continuous coverage): 156 mutants, 10 swaps simulated
+at 0 survivors, gate and out-of-band re-derivation 156/156/0. Item 7c (identifier sufficiency): 54
+mutants, 12 example mutants simulated at 0, measured 54/54/0. Item 7d, a seven-spec reopening rather
+than a new spec: the lock-diff method (locator sets and signature digests at the working ref against
+the ledger) predicted 3 MISSING, 0 MODIFIED, 34 untouched across the files it could see; the
+implementation-time re-derivation matched, 28/2/2 surviving-and-approved, 0 new. Eight matches. Two
+limits found in the same span, both worth stating because a matched record invites over-trust. (1)
+*The simulation checks only what the spec exercises.* The 7b model tested one horizon case with
+strictly-before where the ratified rule was on-or-before; no scenario turned on it, so the simulation
+matched the gate regardless, and the gap surfaced only when the coding agent listed the cases the
+spec left unstated. A simulation is evidence about the scenarios, not about the rule. (2) *A naive
+outcome model reports plain-scenario markers as survivors.* Quoted-literal markers land outside the
+quotes and die at step resolution, which no model of the rule can see; the first 7c model counted 42
+false survivors before the distinction was applied. The working method: evaluate example mutants and
+in-cell markers against the model, count quoted-literal markers as vacuous kills conditional on
+anchored step patterns, and label the condition. And one method refinement from 7d: an approval's
+state after an edit is decidable offline as MISSING (locator gone), MODIFIED (signature digest moved
+because a sibling row changed the swap target), or UNCHANGED, plus the file-level approval always
+going MODIFIED — the formula `sha256(original->mutated)` was confirmed against the ledger before it
+was relied on.
 
 ### The approval stage short-circuits before the expensive one
 
