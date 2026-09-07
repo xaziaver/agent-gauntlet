@@ -149,6 +149,15 @@ New names since the last sweep, all cited only in entries dated on or after thei
 `features/policy_identification.feature` (7c, to be reopened by 7f), `NO_COVERAGE_ON_LOSS_DATE`,
 `HISTORY_MAY_PREDATE_SOURCE`, `POLICY_IDENTIFIERS_INSUFFICIENT`. Sweep clean by name.
 
+**Vocabulary sweep, 2026-09-07.** Re-run against ClaimGate at `origin/main` (`7400c71`, item 7e
+closed). 7e added `src/claimgate/shell/ports.py`, `bindings.py`, `live_query_source.py`,
+`live_query_ports.py` and `tests/fixtures/core_system.py`, plus the names
+`PORT_BINDING_UNRESOLVABLE`, `SOURCE_UNAVAILABLE`, `SOURCE_TIMEOUT`, `SOURCE_MALFORMED`,
+`IDENTIFIERS_INSUFFICIENT`; no rename, no spec change. None is cited here yet. One figure moved
+under existing entries: ClaimGate's Stop hook timeout in `.claude/settings.json` is 3600 as of
+`7400c71`, not the 1800 quoted in the entries below dated before 2026-09-07 — those remain correct as
+history. Sweep clean by name.
+
 ### v1 — finish line
 
 #### The blast radius of a spec change cannot be measured before making it
@@ -396,6 +405,22 @@ reviewed-equivalent, cold cache, everything green (post-5i merge). About 1.77s p
 1.26s at 708 and 1.34s at 744 — the per-mutant price rises with the suite, as this entry's cost
 model says it must, and the full amount is now paid by every stop event on a clean tree.
 
+**Figure update, 2026-09-06 and 2026-09-07 — the green run has outgrown the Stop hook's budget.**
+Fourteen specs, 73 reviewed-equivalent, cold cache, everything green: **2135s** on item 7e's
+implementation run (agent-measured) and **1993.92s** on 7e's close-out stop-check
+(`gate.finished`, run `20260907T064859-243081`, read from ClaimGate's `events.jsonl`). Two
+precisions on the cost model, both from source. First, the per-mutant price is the *acceptance*
+suite, not the whole suite: `_survivors` calls `run_acceptance`, which runs `pytest <steps dir>`
+and nothing else (`adapters/python.py`), so the 95 unit tests item 7e added did not enter the
+price at all. Growth is scenarios × mutants — quadratic in spec volume — which is why two items
+that added specs (7b, 7c) moved the figure and a shell-only item did not. Second, the figure
+crossed ClaimGate's 1800s hook timeout at fourteen specs, so from item 7c's merge to 7e's close
+every green `stop-check` was killed by its own hook (events eleven to thirteen under "Interrupted
+mutation runs leave corrupted source"), and ClaimGate raised the budget a second time, to 3600
+(`7400c71`). That is a race the growth curve wins again at roughly twenty specs. The
+content-keyed cache proposed above is also the `stop-check` fix — see the 2026-09-06 correction
+under "The Stop hook cannot be scoped" for why `--changed` is not.
+
 **Constraint on any fix here, and it is not visible from this entry alone.** The cheapest-looking
 optimization is to skip the mutants whose outcome the ledger already records — at ClaimGate's current
 size, 71 of 708. **Do not.** `gates/acceptance.py`'s `_survivors` applies every mutant and runs the
@@ -512,6 +537,22 @@ spec in place for ~30 minutes at current size (1,780–1,995s measured this span
 message kills it, and the tool strands its own working tree. That is the tool interrupting the tool,
 and it makes restore-on-interrupt a correctness property of the hook path rather than a nicety for
 external timeouts. Ten events; the change is unchanged and the case for it is no longer arguable.
+
+**Events eleven through thirteen, 2026-09-06 to 2026-09-07 — the trigger moves from the
+operator to the hook's own timeout.** Eleven: `validation.feature`, found at 7e's session start,
+from the stop-check that fired on 7d's close-out commit; consistent with a timeout kill (green
+runs that day took 1783–2135s against an 1800s hook) but not measured — the backup mtimes that
+would place it were overwritten by later runs. Twelve, measured: `triage.feature` line 99, a
+sibling swap of a loss date with no marker; the run entered the file at 15:09:28Z, the hook had
+fired at 14:41:06Z, and 1800s from firing is 15:11:06Z. Thirteen: `validation.feature`, a marker
+on the whitespace policy-number line, from the 16:05:39Z stop-check on 7e's ratification commit,
+killed 43s after entering the file. No new shape. The significance is that no operator was
+involved: at fourteen specs a green run exceeds the hook budget, so the hook strands the tree at
+*every* turn end until the budget is raised, and ClaimGate raised it to 3600 at `7400c71` — a
+mitigation the growth curve under "The acceptance gate re-runs every mutant on every check" will
+overtake again. Thirteen events. A `--max-attempts` of 1 does nothing here; the run never
+returns to count an attempt. Restore-on-interrupt remains the change, and the timeout path is now
+its most frequent trigger.
 
 #### Run pairing in the event log is unreliable in two directions
 
@@ -873,6 +914,17 @@ must print killed/total and survivors per spec, so checking a simulation is a di
 rather than a bespoke harness per item. Same proposed change as above; this is the second use case
 for it, and the stronger one.
 
+**Addition, 2026-09-07 — a third silence: `stop-check` prints nothing on a pass.** `cli.stop_check`
+exits 0 with no output when every gate passes; it writes a report only on failure (stderr, exit 2)
+and a `systemMessage` only on escalation. From the operator's main pane a passing run and a run
+killed by the hook timeout therefore differ only in whether Claude Code prints its timeout error —
+ClaimGate's operator noticed the "summary" disappear at 7e's close, when what had disappeared was
+the kill. The mechanism for a one-line pass message already exists in `_escalate_or_bounce`;
+emitting `{"systemMessage": "gauntlet passed — N gates, acceptance Ns, killed K"}` on the pass path
+would make the green path say something in the one place a human looks. Whether Claude Code
+surfaces `systemMessage` on exit 0 to the human was not verified this session. Same proposed change
+as above; third consumer.
+
 #### Retry loop burns attempts on non-agent-actionable failures
 
 **What happened.** The Stop hook's retry-capped `gauntlet stop-check` fired repeatedly against an
@@ -1032,6 +1084,21 @@ declared.
 add a spec-leads-implementation state to the acceptance gate's reporting, derived from spec approval
 postdating the last change to the code under test, that suppresses attempt-counting and reframes the
 remedy.
+
+**Correction, 2026-09-06 — the `--changed` half is withdrawn as worded, and the reason is in the
+source.** `runner.run_full_gauntlet`'s docstring rejects `--changed` for the Stop hook
+deliberately: with nothing changed it passes vacuously, which is right for edit-time feedback and
+wrong for "are you actually done". The objection is sound — `--changed` is a diff against HEAD, so a
+clean tree passes on no evidence — and it applies to the proposal above. What survives it is
+reuse keyed on *content* rather than on diff: the last passing verdict is recorded against a hash
+of the gate-relevant paths (the code-mutation gate's `source_paths`, the steps directory,
+`features/`, `gauntlet.toml`, the lock), `stop-check` recomputes the hash, and an equal hash
+reuses the verdict with a `run.reused` event naming the earlier run. That answers "are you done"
+with the earlier run as the evidence, needs no per-project gate selection, and is the same cache
+proposed under "The acceptance gate re-runs every mutant on every check" with the constraint that
+entry states. Observed cost this week: ClaimGate's 7d and 7e close-out turns, each editing only
+documents no gate reads, each paid a full run of 1994–2135s at turn end. The `--gates` half and the
+spec-leads-implementation state stand.
 
 **What it cost us.** Measured, not estimated: three sessions of item 4e, each burning the full
 acceptance gate at every turn end, three escalation messages framing intended states as convergence
@@ -2929,6 +2996,14 @@ state after an edit is decidable offline as MISSING (locator gone), MODIFIED (si
 because a sibling row changed the swap target), or UNCHANGED, plus the file-level approval always
 going MODIFIED — the formula `sha256(original->mutated)` was confirmed against the ledger before it
 was relied on.
+
+### The Stop hook never passes vacuously
+
+`runner.run_full_gauntlet` refuses `--changed` on the Stop hook path by design: a diff-scoped run
+on a clean tree passes with nothing executed, and a turn boundary is exactly where that is wrong.
+Recorded 2026-09-06 from the docstring, having first proposed the opposite under "The Stop hook
+cannot be scoped". Any speed fix on the stop path must carry evidence for its verdict — a prior run
+whose content hash matches, not the absence of a diff. See the correction under that entry.
 
 ### The approval stage short-circuits before the expensive one
 
