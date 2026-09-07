@@ -3192,6 +3192,19 @@ a test-gap costume before writing the test that buries it. Narrative evidence fo
 
 Two observations on `doc-updates.md`, from the side of the project being gated.
 
+**How to apply this file, decided 2026-09-07 with ClaimGate's owner.** During the build,
+Gauntlet was frozen and ClaimGate moved; when the prototype is complete the roles invert.
+ClaimGate is tagged at a green ledger and becomes the regression subject: one proposed change per
+commit, each validated by running the full gauntlet against the frozen tag and expecting either an
+identical verdict and ledger or a difference the entry *predicted* (restore-on-interrupt changes
+nothing green; the per-spec killed print adds output only; content-keyed reuse on `stop-check`
+changes wall time and emits `run.reused`, nothing else). Apply in the order this file sorts them
+— realized cost first. *Designed boundaries* and *Properties to preserve* are the regression
+checklist for that pass; that is why an entry mislabelled into either section costs more than one
+mislabelled out of them. ClaimGate's own document consolidation runs first, with no spec or
+approval change, so the tag's ledger is the clean one. The trigger is concrete: the last queued
+ClaimGate item closes with the ledger green and no open reopening.
+
 **The v1 backlog's root-cause-diagnostics item needs a fourth category.** It
 currently distinguishes "tool failed," "tool found nothing," and "nothing to
 measure." ClaimGate hit a fourth repeatedly: **blocked on a human decision.**
