@@ -158,6 +158,11 @@ under existing entries: ClaimGate's Stop hook timeout in `.claude/settings.json`
 `7400c71`, not the 1800 quoted in the entries below dated before 2026-09-07 — those remain correct as
 history. Sweep clean by name.
 
+**Session note, 2026-09-09.** Entries below dated 2026-09-09 were written against ClaimGate at
+`origin/main` `86cd32f` and branch `phase3/7h-duplicates-wired` at `bf7cbb4` (items 7f, 7g closed;
+7h spec approved), and Gauntlet at `4fc5c34`. No vocabulary sweep of older entries was re-run this
+session; their line references may have drifted and should be re-verified at the next sweep.
+
 ### v1 — finish line
 
 #### The blast radius of a spec change cannot be measured before making it
@@ -1068,6 +1073,101 @@ stands; this change does not touch it.
 **Status.** Applied. Property recorded under *Properties to preserve* as "A stop-check whose
 first red gate is cheap ends in seconds".
 
+#### The acceptance gate runs the entire steps directory once per mutant, so wall time is scenarios × mutants
+
+**What happened.** `gates/acceptance.py`'s `_survivors` calls `python_adapter.run_acceptance(root,
+steps, …)` for every mutant, and `steps` is the configured directory — on ClaimGate,
+`tests/acceptance`, every spec's scenarios. Each of a spec's mutants therefore re-runs every other
+spec's tests. Measured across the phase-3 items: one whole-directory run is 2.21 s; 1,155 mutants
+gave a modelled 2,553 s against observed 2,427–2,557 s (ratios 0.95–1.00 over three runs); 1,211
+mutants gave 2,630–3,149 s across five green runs of one lock. Item 7f added 8 % more mutants and
+cost 37 % more time, because it also added rows that every other file's mutants now run. The wall
+time has gone 150 → 260 → 473 → 894 → 1,630 → 2,427 → 2,937 s across the project.
+
+**Why it matters.** The cost is quadratic in the size of the specification set, and every symptom
+in this file's Stop-hook strand descends from it: three raises of the hook budget (600 → 1,800 →
+3,600 s), thirteen recorded timeout events, a per-spec pricing model the advisor now runs before
+drafting a scenario, and an interrupted run that left a mutated spec on disk. A project that keeps
+adding specs will outgrow any budget.
+
+**What would address it.** Scope the per-mutant run to the step module(s) that bind the mutated
+spec, keeping the whole-directory run once per gate at baseline. Cost becomes Σ (mutants of spec
+*i*) × (time of module *i*) — on ClaimGate, roughly 170–200 s for the same 1,211 mutants. Two
+design questions have to be answered first, not skipped. (1) A kill today can come from another
+spec's tests failing on shared fixtures; scoping turns those into survivors, which is arguably the
+right answer — a kill from spec B's tests is not evidence that spec A's rows protect A — but it can
+surface survivors the ledger has never seen, so the delta must be measured against a real lock
+before the change ships. ClaimGate's out-of-band per-spec kill runs, which are exactly the scoped
+measurement, have matched the gate at every close, so on that project the delta may be zero; that
+is a measurement, not an assumption. (2) The spec-to-module mapping must be rediscovered every run
+from what the step files bind, never cached — "Mutation's own coverage-guided test selection goes
+stale" above is the cautionary case.
+
+**Proposed change.** In `_survivors`, run the modules that bind the feature (discovered from
+`scenarios(...)` targets or a `-k`/feature-path filter) instead of `steps`; record in the
+`gate.finished` line which modules each feature's mutants ran against; keep the baseline stage
+whole-directory. A `--scope=directory` escape hatch preserves today's behaviour for comparison.
+
+**What it cost us.** The whole Stop-hook strand: roughly nine hours of acceptance wall time across
+phase 3's green runs alone, three configuration raises each needing a human lock, and one corrupted
+working tree.
+
+**Routes to:** BACKLOG.md, v1. The largest single payoff in this file.
+
+**Status.** Open, deliberately deferred to the end of the ClaimGate build (human decision,
+2026-09-08).
+
+#### The stop-check records no tree hash, so a documents-only turn pays a full run
+
+**What happened.** Four documents-only commits in phase 3 (the 7f close-out, both 7g documents
+commits, the 7g close-out) each ended in a full stop-check of 2,557–3,149 s, though no byte in any
+gated path had changed since the previous green run. `events.py` records `run`, `at`, `gate`,
+`duration`, `passed` — nothing identifying the tree the run measured — and `stop-check` runs
+unconditionally.
+
+**Why it matters.** Once gate cost is measured in tens of minutes, an unconditional stop-check
+taxes every turn equally, and the turns it taxes hardest are the cheap ones. ClaimGate worked
+around it on 2026-09-08 with a wrapper (`.claude/hooks/stop-check.sh`) that hashes the gated tree
+(tracked and untracked contents under `src`, `tests`, `features`, `mutants`, the three config
+files and the hooks directory), skips when the hash equals the one saved at the last green run,
+and otherwise runs `stop-check` and saves the hash. Its first version had a defect worth
+recording: it wrote the record on exit 0 plus a passing acceptance line, and `stop-check` exits 0
+at its retry cap *with a red gate*, so a run with `protect` red and acceptance green was remembered
+as green. The fix requires every `gate.finished` line of the run to pass and the gate count to
+equal the last green's.
+
+**What would address it.** Gauntlet should do what the wrapper does: compute the gated-tree hash
+itself (it already knows every gated path), write it on a `run.finished` line — which
+`stop-check` does not emit today, see "Run pairing in the event log" — and skip the run when the
+hash equals the last wholly-green run's, printing which run it defers to. "Wholly green" means
+every gate passed in that run, not the exit code.
+
+**Proposed change.** `stop-check --skip-unchanged` (default on): hash, compare, skip or run; emit
+`run.started`/`run.finished` carrying the hash and the per-gate verdicts.
+
+**What it cost us.** Four runs, about three hours, and the wrapper's defect.
+
+**Routes to:** BACKLOG.md, v1, beside "Run pairing in the event log is unreliable in two
+directions", whose patch this depends on.
+
+**Status.** Open; worked around on the ClaimGate side.
+
+#### A stop-check's stderr on a broad failure exceeds the host's hook-output limit
+
+**What happened.** One unbound Background step made 83 acceptance tests fail with the same
+`StepDefinitionNotFoundError`. The stop-check's stderr was 12.7 KB (15.5 KB on a later,
+similar failure); Claude Code persisted it to a file and showed the agent a 2 KB preview.
+`max_diagnostics_per_gate` caps how many diagnostics a gate reports, but each diagnostic carries a
+25-line traceback tail, and one root cause is reported once per scenario.
+
+**What would address it.** Collapse diagnostics with an identical headline into one carrying the
+count and the first instance, before the per-gate cap applies; the tail lines add nothing when the
+headline is the whole story.
+
+**Routes to:** BACKLOG.md, v1, small.
+
+**Status.** Open.
+
 #### The Stop hook cannot be scoped, and the prescribed workflow produces a phase where it cannot pass
 
 **What happened.** ClaimGate's workflow, which Gauntlet's own design prescribes, commits the spec
@@ -1231,6 +1331,12 @@ proposal half had not crossed to this document until now.
 **Routes to:** BACKLOG.md, v1. Trade-off, not defect — over-invalidation is the safe direction and the fix must not weaken the self-verifying property described under Properties to preserve.
 
 **Status.** Open.
+
+**Addendum, 2026-09-09.** A second face of the same property: adding a row to
+`notice_intake.feature`'s deployment-fault table changed an existing row's sibling-swap
+*signature* (the most-different row is now the new one) while its *locator* held. At zero
+approvals the ledger did not move; with approvals it would have needed re-review of a judgment
+whose subject had changed under a stable key.
 
 **Addition, 2026-08-30 — the addition direction, measured, and a hazard the counts cannot show.**
 Adding one row to an approved scenario moves *both* channels for every sibling row at once: the keys,
@@ -1955,6 +2061,13 @@ this class in its taxonomy.
 2026-08-26 in the session artifact and now placed — the process failure noted under the
 quoted-literal entry's Status did not repeat.
 
+**Addendum, 2026-09-09.** The same pre-emption applies to numbers: `mutate_value` tries booleans,
+then `_mutate_number` (±1), then the sibling swap, so a numeric Examples cell is never swapped to
+a sibling's value. Where that cell is inert to the outcome — ClaimGate's 7g draft had a postal code
+beside an absent insured name, and the blocker names absent fields, not values — the ±1 mutant is
+a guaranteed survivor where a swap to `absent` would have killed. Designed around by dropping the
+row; the domain spec carries that case instead.
+
 **Sibling case, 2026-09-05: numeric preemption on a value with no numeric semantics.** A five-digit
 US postal code (`34287`) in an Examples cell takes `mutate_value`'s number branch (`34287 -> 34288`)
 ahead of the sibling swap, exactly as the boolean branch preempts above. For a postal code the result
@@ -2599,6 +2712,24 @@ engine can only see if someone points it at the other file — which is the chec
 **Status.** Open.
 
 ### Convention, not code
+
+#### Files written through shell heredocs never meet the edit-time size hook
+
+**What happened.** ClaimGate item 7g's first implementation cut failed the size gate on two
+functions at 28 and 26 lines. Both modules had been written with `cat > file << 'EOF'` in bash;
+the `PostToolUse` hook that reports size and complexity is bound to the editor tools, so nothing
+ran on them, and the agent's prediction repeated the previous run's "worst function 25". The cold
+gate caught it — which is the `protect` argument again, in a different gate: the hook is
+route-dependent and the gate is not.
+
+**What would address it.** Either bind the fast gates' hook to `Bash` as well, diffing the tree
+after the call, or say in the scaffolded `CLAUDE.md` block that files written through the shell are
+unchecked until the gate runs. The second is a sentence; the first is a design choice about hook
+cost.
+
+**Routes to:** README agent-integration section, and the scaffold's `CLAUDE.md` block.
+
+**Status.** Open.
 
 #### Approval reasons go stale silently where the key does not
 
