@@ -216,10 +216,25 @@ def init(
         typer.echo("\nReview gauntlet.toml, then run `gauntlet lock` to approve it.")
 
 
+def _stop_gates(
+    root: Path, cfg: config_mod.Config, log: events.Log, fail_fast: bool
+) -> list[base.GateResult]:
+    """The stop path's run: every enabled gate, whole tree, under the project lock."""
+    selected = _select_gates("", cfg)
+
+    def execute() -> list[base.GateResult]:
+        return runner.run_full_gauntlet(root, cfg, selected, log, fail_fast=fail_fast)
+
+    return _locked_run(root, execute)
+
+
 @app.command(name="stop-check")
 def stop_check(
     max_attempts: int = typer.Option(
         stop_mod.DEFAULT_MAX_ATTEMPTS, help="Bounce the agent at most this many times"
+    ),
+    fail_fast: bool = typer.Option(
+        True, "--fail-fast/--no-fail-fast", help="Stop at the first failing gate"
     ),
 ) -> None:
     """Stop hook: run the full gauntlet, bounded by a per-session retry cap.
@@ -231,8 +246,7 @@ def stop_check(
     root, cfg = _resolve_config()
     session = stop_mod.session_id(_read_stop_payload())
     log = events.Log(root)
-    selected = _select_gates("", cfg)
-    results = _locked_run(root, lambda: runner.run_full_gauntlet(root, cfg, selected, log))
+    results = _stop_gates(root, cfg, log, fail_fast)
     count = _stop_outcome(root, session, report.passed(results))
     if count == 0:
         raise typer.Exit(code=EXIT_OK)

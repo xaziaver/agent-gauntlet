@@ -110,11 +110,17 @@ def run_gates(
 
 
 def run_full_gauntlet(
-    root: Path, cfg: config_mod.Config, selected: list[str], log: events.Log | None = None
+    root: Path,
+    cfg: config_mod.Config,
+    selected: list[str],
+    log: events.Log | None = None,
+    *,
+    fail_fast: bool = False,
 ) -> list[base.GateResult]:
     """Every selected gate over the whole tree — never --changed.
 
     With nothing changed, --changed passes vacuously. That is right for edit-time
     feedback and wrong for "are you actually done".
     """
-    return run_gates(build_context(root, cfg, selected, changed=False), cfg, selected, False, log)
+    ctx = build_context(root, cfg, selected, changed=False)
+    return run_gates(ctx, cfg, selected, fail_fast, log)

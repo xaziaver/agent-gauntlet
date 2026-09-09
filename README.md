@@ -149,7 +149,7 @@ Each gate is opt-in: no `[gates.x]` table, no gate.
 | `gauntlet mutant approve[-code]` / `list` / `prune[-code]` | Classify surviving mutants |
 | `gauntlet events` | Recent activity: runs, gate results, approvals, escalations |
 | `gauntlet loop --cmd "..." --task "..."` | Drive an agent that can't be hooked |
-| `gauntlet guard` / `stop-check` | Hook entry points (not run by hand) |
+| `gauntlet guard` / `stop-check` | Hook entry points (not run by hand). `stop-check` stops at the first failing gate, in the fixed order cheap-first and acceptance last; `--no-fail-fast` runs them all |
 
 Exit codes are the contract everything shares: **0** passed, **1** Gauntlet couldn't run, **2** gates
 failed.
@@ -341,7 +341,9 @@ settings and replaces only its own entries):
   stderr reaches the model as an immediate correction signal.
 - **Stop → `gauntlet stop-check`.** The real gate. Exit 2 means "you're not done" and the report
   re-enters the agent's context. Bounded by a per-session retry cap that escalates to you, because an
-  agent that cannot fix the problem shouldn't loop forever.
+  agent that cannot fix the problem shouldn't loop forever. It stops at the first failing gate — the
+  order is fixed, cheap gates first and acceptance last, so a red `protect` or `static` never waits
+  on a mutation pass (`--no-fail-fast` runs every gate, as `gauntlet check` does).
 
 It also writes a marked block into `CLAUDE.md` — advisory context, never enforcement. Worth including
 anyway: capable models read ambient signals and raise their own bar. The gates remain the only thing

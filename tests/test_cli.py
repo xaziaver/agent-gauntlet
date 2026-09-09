@@ -230,6 +230,34 @@ def test_stop_check_escalates_to_the_human_at_the_cap(project: Path) -> None:
     assert "3 attempts" in _text(result)
 
 
+def test_stop_check_stops_at_the_first_failing_gate(project: Path) -> None:
+    """Two gates configured, the first red: the second never runs and the report omits it."""
+    (project / "src" / "a.py").write_text(LONG_FUNCTION)
+    result = runner.invoke(app, ["stop-check", "--max-attempts", "3"], input=STOP_PAYLOAD)
+    assert result.exit_code == EXIT_GATE_FAILURE
+    assert "size" in _text(result)
+    assert "complexity" not in _text(result)
+
+
+def test_stop_check_runs_every_gate_with_no_fail_fast(project: Path) -> None:
+    (project / "src" / "a.py").write_text(LONG_FUNCTION)
+    result = runner.invoke(
+        app, ["stop-check", "--max-attempts", "3", "--no-fail-fast"], input=STOP_PAYLOAD
+    )
+    assert result.exit_code == EXIT_GATE_FAILURE
+    assert "size" in _text(result)
+    assert "complexity" in _text(result)
+
+
+def test_a_fail_fast_stop_check_logs_only_the_gates_that_ran(project: Path) -> None:
+    (project / "src" / "a.py").write_text(LONG_FUNCTION)
+    runner.invoke(app, ["stop-check", "--max-attempts", "3"], input=STOP_PAYLOAD)
+    finished = [
+        i["gate"] for i in events.read(events.events_path(project)) if i["kind"] == "gate.finished"
+    ]
+    assert finished == ["size"]
+
+
 def test_a_passing_run_resets_the_attempt_count(project: Path) -> None:
     (project / "src" / "a.py").write_text(LONG_FUNCTION)
     runner.invoke(app, ["stop-check", "--max-attempts", "2"], input=STOP_PAYLOAD)

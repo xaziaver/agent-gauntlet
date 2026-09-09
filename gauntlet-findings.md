@@ -1029,6 +1029,45 @@ session failed with only human-blocked diagnostics and the tree digest is unchan
 that verdict enforces exactly what re-running enforces, at none of the cost. This addition is the
 measured case for it.
 
+#### The Stop hook runs every gate after the first failure, so a 1 ms `protect` red still waits on acceptance
+
+**What happened.** `cli.stop_check` called `runner.run_full_gauntlet`, which passed a hard-coded
+`fail_fast=False` to `run_gates` although `run_gates` has supported stopping at the first red gate
+since `gauntlet check --fail-fast` was added. On ClaimGate, reported 2026-09-08: `protect` failed in
+about a millisecond, the ten gates after it ran anyway, and the hook returned after **2630s** — the
+whole acceptance mutation pass spent producing a report whose first line the agent could have acted
+on at once. Nothing the later gates found could change the verdict; `protect` red is exit 2 on its
+own.
+
+**Why it matters.** The Stop hook is the one place where every second is wall time the human is
+waiting on. Gate order is fixed in `config.DEFAULT_GATE_ORDER` (verified 2026-09-08): `protect`,
+`static`, `size`, `complexity`, `boundary`, `tests`, `coverage`, `crap`, `duplication`, `mutation`,
+`acceptance`, filtered by which `[gates.*]` tables the project declares. A project cannot reorder
+them, so the cheap gates are always ahead of the expensive ones and stopping at the first red gate
+never skips a cheap check to reach a costly one. The stop path also has no reason to want the
+fuller report: an agent bounced on `protect` fixes `protect`, and the next turn end runs the rest.
+
+**Change, applied 2026-09-08.** `runner.run_full_gauntlet` gains `fail_fast: bool = False`,
+threaded to `run_gates` and otherwise unchanged; `stop-check` gains `--fail-fast/--no-fail-fast`,
+default on. `gauntlet check` keeps its default of running everything. Three tests in
+`tests/test_cli.py` pin it: with two gates configured and the first red, `stop-check` runs one,
+reports one, and exits 2 under the cap; `--no-fail-fast` runs both; the event log carries a
+`gate.finished` line for the gate that ran and none for the gate that did not.
+
+**Predicted effect on ClaimGate's ledger.** A green run is identical: every gate still runs, in the
+same order, with the same verdict. A red run differs only in wall time and in the report
+naming fewer gates — the first red one and everything green before it. That is the difference the
+regression pass should expect and nothing else.
+
+**What the tests could not pin.** A `run.finished` naming the failure, which the task asked for.
+`stop-check` emits no `run.finished`, and no `run.started` either — re-confirmed from source and
+from a scratch run's log on 2026-09-08, exactly as "Run pairing in the event log is unreliable in
+two directions" records. Only the runner's per-gate `gate.finished` lines appear. That entry's patch
+stands; this change does not touch it.
+
+**Status.** Applied. Property recorded under *Properties to preserve* as "A stop-check whose
+first red gate is cheap ends in seconds".
+
 #### The Stop hook cannot be scoped, and the prescribed workflow produces a phase where it cannot pass
 
 **What happened.** ClaimGate's workflow, which Gauntlet's own design prescribes, commits the spec
@@ -3020,6 +3059,17 @@ dangerous one.
 **Figure update, 2026-08-24.** Re-confirmed on item 5c: the modified-spec state failed in 0.002s
 while the same tree's full mutation pass ran 452.7–472.8s — the gap this property protects is now
 five orders of magnitude wide, up from the "~230s" quoted above.
+
+### A stop-check whose first red gate is cheap ends in seconds
+
+Since 2026-09-08 `stop-check` stops at the first failing gate by default, and gate order is fixed
+cheap-first with `acceptance` last. Together those mean the cost of a Stop-hook run is bounded by
+the first red gate, not by the most expensive enabled one: a `protect` or `static` failure returns
+in milliseconds regardless of how many specs the project has. The motivating run is under "The Stop
+hook runs every gate after the first failure" — 2630s to report a millisecond failure. Either half
+can break it on its own: reordering `DEFAULT_GATE_ORDER` to put an expensive gate early, or
+restoring the old default so the hook runs everything. A refactor that adds a gate must place it
+by cost, and one that touches the stop path must keep `fail_fast` on.
 
 ### Mutant locators are structural, not positional
 
