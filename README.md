@@ -516,7 +516,8 @@ other from mattering — and were classified rather than chased.
 
 The full list, with the evidence behind each, is in [BACKLOG.md](BACKLOG.md).
 Contributors and agents picking this up should start with
-[ARCHITECTURE.md](ARCHITECTURE.md).
+[ARCHITECTURE.md](ARCHITECTURE.md). For what each gate is for and how it is implemented,
+read [docs/GATES.md](docs/GATES.md).
 
 Real defects with workarounds, kept here rather than in an issue tracker because they are part of an
 honest picture of a v1.

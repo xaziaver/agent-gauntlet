@@ -245,6 +245,9 @@ deliberate and worth the cost — those tests have caught things no unit test co
 
 ## Where to look next
 
+`docs/GATES.md` explains each gate: why it exists, what it runs, how it decides, and the decisions
+inside it that are easy to misread from the source.
+
 `BACKLOG.md` holds known defects and planned work, each with the evidence that produced it. The
 README's roadmap sketches versions. Between them they should answer "what should I work on" without
 anyone having to reconstruct the reasoning.
