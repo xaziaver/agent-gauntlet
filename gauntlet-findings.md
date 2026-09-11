@@ -163,6 +163,13 @@ history. Sweep clean by name.
 7h spec approved), and Gauntlet at `4fc5c34`. No vocabulary sweep of older entries was re-run this
 session; their line references may have drifted and should be re-verified at the next sweep.
 
+**Vocabulary sweep, 2026-09-11.** Re-run at ClaimGate `prototype-1` (`be87d38`, items 7h and 7i
+closed, the build over). Grep over `EVALUATED`, `OBTAINED`, `find_duplicates`, `duplicate_evaluation`,
+`extract_ports`, `extract_source`: no rename since 2026-08-22 reaches this file. One stale factual
+claim, the caller count under "A fully gated rule can have no caller in the product", is annotated in
+place. Entries dated 2026-09-10 and 2026-09-11 were written against ClaimGate `main` from `fc479e3`
+to `be87d38` and Gauntlet at `7020637`.
+
 ### v1 — finish line
 
 #### The blast radius of a spec change cannot be measured before making it
@@ -1111,6 +1118,23 @@ whole-directory. A `--scope=directory` escape hatch preserves today's behaviour 
 **What it cost us.** The whole Stop-hook strand: roughly nine hours of acceptance wall time across
 phase 3's green runs alone, three configuration raises each needing a human lock, and one corrupted
 working tree.
+
+**Figure update, 2026-09-11.** Items 7h and 7i, read from ClaimGate's events log. 1,257 mutants
+(16 specs): 3,169 s on the implementation run, 3,475 s on the stop-check of the identical tree two
+hours later. 1,263 mutants: 3,405 s, then 3,691 s on a tree differing by one shell module. Per-mutant
+cost 2.52 → 2.77 → 2.70 → 2.92 s with the mutant count flat and the steps directory unchanged
+between the paired runs — a 16 % same-day band that the scenarios × mutants model cannot predict,
+because nothing in its inputs moved. The Stop-hook budget was raised a fourth time (3,600 → 7,200 s,
+ClaimGate `08f084a`, 2026-09-10) on the variance alone: the 3,691 s run would have fired the old hook
+with no tree change to blame. The wall-time series is now … 2,937 → 3,169 → 3,691 s. Two consequences
+for the fix above. The budget any hook needs is the band, not the mean, until the per-mutant run is
+scoped. And 7i's swappability proof was designed around this cost: mutating under three port bindings
+would have cost an estimated 2.5× per mutant (agent-estimated from a 0.65 s fixed share), so the
+mutation gate runs under one binding and the swap proof is three plain runs of the directory at
+2.5–3.1 s each (measured) — the scoped shape, arrived at by avoiding the gate rather than fixing it.
+One radius calibration for the pricing model: the engine mutates `Examples` cells only, never a fixed
+Given or Then literal, so a two-row, three-column outline prices at exactly six mutants (measured at
+ClaimGate `c123151`); an estimate that counts step literals overprices.
 
 **Routes to:** BACKLOG.md, v1. The largest single payoff in this file.
 
@@ -3032,6 +3056,11 @@ input (`continuous_coverage_date`) has no shell producer either, so that indicat
 roadmap* unplaced; it was caught by reading shell source for a design document, not by any gate or
 any document.
 
+**Dated note, 2026-09-11.** "Exactly two callers, both tests" was true at `4a42d2f` and is false since
+ClaimGate `a1e3e28` (item 7h, 2026-09-10): `shell/duplicate_evaluations.py` calls `find_duplicates`
+on both transitions into TRIAGED. The argument stands as written — the gap was open for four weeks
+with every gate green — and the entry is the record of that period, not of the current tree.
+
 **Why it matters.** The acceptance suite is the spec's only caller, and nothing distinguishes that
 from a real one: the gates check the domain against its specification, and whether the product
 *reaches* the domain is an integration question no gate is pointed at — the shell sits outside
@@ -3190,6 +3219,17 @@ dangerous one.
 **Figure update, 2026-08-24.** Re-confirmed on item 5c: the modified-spec state failed in 0.002s
 while the same tree's full mutation pass ran 452.7–472.8s — the gap this property protects is now
 five orders of magnitude wide, up from the "~230s" quoted above.
+
+**Property qualification, 2026-09-10.** The short-circuit is reached only when the spec is a new
+file. A reopened spec that an existing test module already binds through `scenarios()` is collected
+before the acceptance gate runs, and its unbound rows fail the *tests* gate first
+(`StepDefinitionNotFoundError`, 7.9 s, ClaimGate `c123151`) — the approval short-circuit never fires
+because `stop-check` stops at the first red gate. Both reds are the same human-blocked condition the
+"Note for the v1 effort" names as the fourth category, but they present as different gates, and a
+retry loop that classifies by gate name will treat one as a code failure. The 7h spec (new file,
+`083362e`) hit the short-circuit in 0.004 s; the 7i reopening (bound file) hit `tests`. Safe in both
+cases — nothing is rewritten — but the diagnostics item's fourth category needs to key on the cause,
+not the gate.
 
 ### A stop-check whose first red gate is cheap ends in seconds
 
