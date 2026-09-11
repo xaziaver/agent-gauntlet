@@ -1136,6 +1136,15 @@ One radius calibration for the pricing model: the engine mutates `Examples` cell
 Given or Then literal, so a two-row, three-column outline prices at exactly six mutants (measured at
 ClaimGate `c123151`); an estimate that counts step literals overprices.
 
+**Figure update, 2026-09-11, second reading — the build's last two runs.** Read from ClaimGate's
+events log after the tag, and closing the series above. 1,263 mutants: 3,690.978 s on the run
+inside the turn that committed `be87d38`, then 3,736.757 s on that turn's stop-check of the same
+gated tree forty seconds later — 2.922 and 2.959 s per mutant, measured against a mutant count the
+advisor enumerated directly from the engine rather than inferring from the ledger. The same-day
+band is 2.52 → 2.96 s, 17.4 %, on trees that differ by nothing gated at all. The wall-time series
+closes at … 3,169 → 3,691 → 3,737 s, against the 7,200 s budget: 3,463 s of headroom at the tag,
+which is the number any v1 scoping change has to beat or preserve.
+
 **Routes to:** BACKLOG.md, v1. The largest single payoff in this file.
 
 **Status.** Open, deliberately deferred to the end of the ClaimGate build (human decision,
@@ -1171,10 +1180,71 @@ every gate passed in that run, not the exit code.
 
 **What it cost us.** Four runs, about three hours, and the wrapper's defect.
 
+**Second cost, larger, recorded 2026-09-11: the wrapper defers only to its own runs, so an
+implementation turn pays twice.** ClaimGate's `CLAUDE.md` instructs the agent to run `gauntlet
+check` itself before claiming to be done. At the build's last commit that instruction was
+followed: run `20260911T100212-1991987` went green at 11:04:11 UTC, `be87d38` was committed at
+11:04:35, and the wrapper then ran every gate again from 11:04:51 for a further 3,749 s.
+`.gauntlet/last-green-tree` names the second run, never the first, because the wrapper writes its
+record only after its own `run_full`. So the skip path can never be reached by a turn that did what
+the workflow asks; it is reachable only by a turn that ran nothing. Documents-only turns were the
+visible symptom, and they are the cheaper half: every implementation turn in the build paid for a
+second full acceptance run of an unchanged tree. That the two trees were identical is inferred here
+from the 24-second gap, which is the same missing-hash gap this entry is about. The fix is one
+clause wider than the entry above states: record the hash on every wholly green run, `check`
+included, and let `stop-check` defer to any of them.
+
+**A property the fix must keep, 2026-09-11.** The wrapper's hash is a shell pipeline in the gated
+repository, so a third party can recompute it from a clone with no gate run and no Gauntlet
+install. The advisor did exactly that to prove that ClaimGate's two-commit documents stage moved
+nothing gated: `e41d0a7c…` over 128 files at both the tag and the branch tip, in seconds, and again
+at each later stage. For a documents-only stage that is a stronger proof than re-running the gate,
+because it compares the tree rather than trusting a verdict about it. If Gauntlet takes the hash
+over, it should stay a documented function of a commit that anyone can recompute outside the tool,
+and should state how untracked-but-not-ignored files enter it — the wrapper hashes those too, and a
+clone cannot see them.
+
 **Routes to:** BACKLOG.md, v1, beside "Run pairing in the event log is unreliable in two
 directions", whose patch this depends on.
 
 **Status.** Open; worked around on the ClaimGate side.
+
+#### The only record of a verdict is a local log that is ignored by git and rotates destructively
+
+**What happened.** `gate.finished` lines are the process's sole authority on what a run decided,
+and they exist only in `.gauntlet/events.jsonl`. ClaimGate ignores `.gauntlet/` (`.gitignore`
+line 2), so no path under it is in any commit or in the `prototype-1` tag, though ClaimGate's
+`ROADMAP.md` step 1 and the tag's own message both said the logs were "retained as they stand at
+the tag". They were retained on one disk. `events.py`'s `_rotate` moves the file to `.jsonl.1` at
+`MAX_BYTES` (5,000,000) with `Path.replace`, which overwrites any earlier `.1`, so at most one
+generation survives even locally.
+
+**Why it matters.** The v1 plan validates each proposed change by running the full gauntlet
+against the frozen tag and comparing the verdict to the tag's own. That baseline is not in the
+tag. It is in a file the tag cannot carry, that no clone receives, and that deletes its own
+history on a size threshold nothing warns about.
+
+**What it cost us.** Measured on ClaimGate at the tag, 2026-09-11. The archived log holds 3,912
+lines from 2026-08-21T20:18:33Z to the tag. Everything from 2026-08-04 to 2026-08-21 — the whole
+of queue items 1 through 4j — exists nowhere: not in the log, not in git. An earlier 554-line
+stretch, 2026-08-02 to 08-04, survives only by accident, because the log was tracked until a
+"chore: untrack build artifacts" commit removed it. No document records what happened in between,
+and no `.jsonl.1` exists now. About three weeks of verdicts, including every run behind four closed
+queue items, are simply gone. The tag's own two final runs survived, so the v1 baseline is intact;
+that is luck, not design.
+
+**What would address it.** Either a command that writes a run's verdict lines to a committable
+path (`gauntlet verdict export`, or a `--record` flag on `check` and `stop-check`), or a rotation
+that appends a generation instead of overwriting one, or both. The narrow fix is the first: what
+the regression pass needs is not the whole log but the eleven `gate.finished` lines of a green run,
+in a file a tag can carry.
+
+**Routes to:** BACKLOG.md, v1, beside "The stop-check records no tree hash" and "Run pairing in the
+event log is unreliable in two directions" — all three are the event log not being a record.
+
+**Status.** Open. Worked around on the ClaimGate side: the log as it stood at the tag is committed
+at `docs/queue-history/events-prototype-1.jsonl` (836,642 bytes, sha256 `49395ea8c36d633f`), which
+fixes that one baseline and nothing else.
 
 #### A stop-check's stderr on a broad failure exceeds the host's hook-output limit
 
@@ -3425,6 +3495,34 @@ checklist for that pass; that is why an entry mislabelled into either section co
 mislabelled out of them. ClaimGate's own document consolidation runs first, with no spec or
 approval change, so the tag's ledger is the clean one. The trigger is concrete: the last queued
 ClaimGate item closes with the ledger green and no open reopening.
+
+**The order, written out 2026-09-11, before the first change lands.** "The order this file sorts
+them" was never an order: the v1 section is grouped by destination, and its first entry by position
+is a preview command whose realized cost is nothing. Realized cost first, as decided, gives the
+list below. Each entry is validated against the frozen tag as described above; a change that
+cannot be validated that way is not first.
+
+1. *The acceptance gate runs the entire steps directory once per mutant.* Nine hours of wall time
+   in phase 3 alone, four budget raises, one corrupted tree. Its two design questions are answered
+   by measurement against the tag, and the per-spec kill runs that would answer them already match
+   the gate at every close.
+2. *The stop-check records no tree hash*, with the 2026-09-11 addition that the wrapper defers only
+   to its own runs. Every implementation turn of the build paid a second full run. Cheap, and it
+   makes every later change cheaper to validate.
+3. *The only record of a verdict is a local log that is ignored by git and rotates destructively.*
+   Three weeks of verdicts already lost. This one is a precondition for the rest of the pass: the
+   regression baseline has to be a committed artifact before changes start being compared against
+   it.
+4. *Run pairing in the event log is unreliable in two directions.* Patch ready, and entries 2 and 3
+   both write to the boundary lines it fixes.
+5. *Interrupted mutation runs leave corrupted source.* A realized corruption inside an approved
+   spec, caught by a human's `git diff` and nothing else.
+6. *The acceptance gate short-circuits mutation on an approval failure*, then *The Stop hook cannot
+   be scoped*, then *Retry loop burns attempts on non-agent-actionable failures* — each cost
+   several sessions, none corrupted anything.
+7. Everything else in v1, in file order. The near-miss entries, ledger atomicity first, sit here:
+   the ledger is the one artifact no gate can rebuild, so its near miss outranks other near misses
+   without outranking realized cost.
 
 **The v1 backlog's root-cause-diagnostics item needs a fourth category.** It
 currently distinguishes "tool failed," "tool found nothing," and "nothing to
