@@ -24,6 +24,13 @@ results stop meaning what they appear to mean. If a finding becomes genuinely
 blocking rather than merely annoying, it is escalated, not worked around
 quietly. One has: see "Renaming a spec orphans its approval."
 
+*(Annotation, 2026-09-12: the freeze was broken once, at `4fc5c34` on 2026-09-08 — see "The Stop
+hook runs every gate after the first failure", the one entry applied, which recorded its predicted
+effect first. `a0ef78d`, the harness at the tag, has `src/`, `tests/` and `pyproject.toml` byte-
+identical to `4fc5c34`, so the tag's verdict was produced by exactly that source. Since 2026-09-12
+the roles are inverted: ClaimGate is frozen at `prototype-1` and this file is the work list, in
+the order the note at the end fixes; the live queue is `BACKLOG.md`.)*
+
 ## How to read this
 
 | Section | What it is | What to do with it |
@@ -626,6 +633,11 @@ harness change would land inside the gated project's own documentation. Apply af
 
 **Status.** Open, patch ready.
 
+*(Annotation, 2026-09-12: the patch's anchors checked at `a0ef78d`: `cli.py:151-152` are exactly
+the two lines it replaces, and it already threads `fail_fast`, so it postdates `4fc5c34`;
+`cli.py:235` for `stop_check` has drifted to 232. Re-derive by string before applying, not by
+these numbers.)*
+
 #### The acceptance gate short-circuits mutation on an approval failure
 
 **What happened.** One dangling approval key (`spec:features/siu_flags.feature`, see below) made
@@ -860,6 +872,12 @@ result when the artifact predates it.
 
 **What it cost us.** Nothing directly; the cost is the false signal.
 
+*(Annotation, 2026-09-12: "v1 item 2" is the numbering of `doc-updates.md` section 3, an August
+plan never applied to `BACKLOG.md`, whose item 2 is mutation cost. Root-cause diagnostics as a
+pattern is open: per-gate handling exists, there is no sweep, and `gate.finished` still omits
+`vacuous` — the third defect under `BACKLOG.md` item 1, and README "Known issues" as annotated in
+G2d.)*
+
 **Routes to:** BACKLOG.md, v1 item 2 (root-cause diagnostics). This is exactly that item's "nothing to measure" case reported as "measured, found nothing" — the clearest real instance of it found so far.
 
 **Status.** Open.
@@ -1007,6 +1025,10 @@ to keep tuning the loop around them. The narrower version, if classification is
 too large a change: when the previous run in the same session failed with only
 human-blocked diagnostics and nothing has changed since, re-emit that verdict
 instead of running again.
+
+*(Annotation, 2026-09-12: "v1 item 2" as above — `doc-updates.md` section 3's numbering, never
+applied. The fourth category lives in the note at the end of this file until the diagnostics sweep
+is queued.)*
 
 **Routes to:** BACKLOG.md, v1 item 2 AND v3. See the note for the v1 effort below — this adds a fourth category to that item's taxonomy, and the same distinction recurs in v3's transition query.
 
@@ -1245,6 +1267,13 @@ event log is unreliable in two directions" — all three are the event log not b
 **Status.** Open. Worked around on the ClaimGate side: the log as it stood at the tag is committed
 at `docs/queue-history/events-prototype-1.jsonl` (836,642 bytes, sha256 `49395ea8c36d633f`), which
 fixes that one baseline and nothing else.
+
+*(Annotation, 2026-09-12: the committed record must also name the harness. `gauntlet` on the
+owner's machine is `uv tool install --editable .` over the agent-gauntlet working tree, so the
+code that produced a verdict is whatever that tree held at the time; the archived baseline does
+not say, and it was established after the fact that `a0ef78d`'s source equals `4fc5c34`'s. Two
+fields for the record: the harness commit, and whether its tree was clean. Until this lands, every
+regression run states both immediately before it starts.)*
 
 #### A stop-check's stderr on a broad failure exceeds the host's hook-output limit
 
@@ -2061,6 +2090,13 @@ in this document for the length of the project — see **Status**.
 
 **Routes to.** `BACKLOG.md`, v1, beside "A ragged Examples row parses silently and under-generates
 mutants" — that entry's recommendation depends on the answer to this one.
+
+*(Annotation, 2026-09-12: the shorthand has leaked into a versioned prompt. ClaimGate's
+`docs/session-prompts/ADVISOR.md` says "the engine mutates `Examples` cells only" as a rule for
+pricing a reopening; measured at the tag with the engine at `a0ef78d`, 455 of 1263 mutants are
+kind `literal`. The shorthand is true of the ledger — literal mutants die at step resolution and
+never bear an approval — and false of the engine. agent-gauntlet's ADVISOR.md states the count by
+kind.)*
 
 **Status.** Open, and deliberately not patched: Gauntlet is frozen for the duration of the ClaimGate
 project, so the harness and the work it gates do not move at the same time. Recorded here on
@@ -3274,6 +3310,12 @@ Recorded 2026-09-06 from the docstring, having first proposed the opposite under
 cannot be scoped". Any speed fix on the stop path must carry evidence for its verdict — a prior run
 whose content hash matches, not the absence of a diff. See the correction under that entry.
 
+*(Annotation, 2026-09-12: on agent-gauntlet itself the checker is the code under change. A `stop-
+check` that crashes exits 1, which Claude Code treats as non-blocking by design, so a change to
+`cli.py` or the runner can turn the hook silent without turning it green. On this repository,
+silence at a turn end is confirmed from the `gate.finished` lines — nine of them, the tool's own
+baseline in `BACKLOG.md` — never inferred.)*
+
 ### The approval stage short-circuits before the expensive one
 
 When a spec is unapproved or modified, the acceptance gate reports and returns in about a
@@ -3483,6 +3525,14 @@ a test-gap costume before writing the test that buries it. Narrative evidence fo
 
 Two observations on `doc-updates.md`, from the side of the project being gated.
 
+*(Annotation, 2026-09-12: `doc-updates.md` was on the owner's disk and in no commit until
+`d49f259`, clean-up part G2a, where it is committed as found; its sections 1, 2 and 4 are applied
+in G2d and its section 3 is superseded by the order below. `docs/audit.md`, which it cites, is in
+no commit. `BACKLOG.md` at `751382c` (G2c) is the live queue and cites this note as the order
+rather than restating it; the clean-up stage precedes item 1. Each entry ordered below gains a
+"Predicted effect on the regression subject" paragraph, ratified by the owner, before its code
+moves — today only the applied entry has one.)*
+
 **How to apply this file, decided 2026-09-07 with ClaimGate's owner.** During the build,
 Gauntlet was frozen and ClaimGate moved; when the prototype is complete the roles invert.
 ClaimGate is tagged at a green ledger and becomes the regression subject: one proposed change per
@@ -3540,6 +3590,10 @@ in ARCHITECTURE.md means the workspace cannot read `.gauntlet/` artifacts to
 route around truncation, a missing per-mutant reason, or a missing un-approve
 path. The contract has to carry them first.
 
+*(Annotation, 2026-09-12: the workspace-as-client rule is not in `ARCHITECTURE.md` at `a0ef78d`;
+it is `doc-updates.md` section 1's v2 text and section 2's "The boundary above Gauntlet", applied
+in G2d. The reasoning stands; the citation was to a document that had not landed.)*
+
 **One observation outside the plan.** Gauntlet's published README says "Ten
 gates" while its own table lists eleven, and its Planned work section still
 describes the boundary gate as "designed in Phase 4 and never implemented" —
@@ -3548,3 +3602,8 @@ passing. The public README currently understates what has shipped.
 `doc-updates.md` section 1 (delete Planned work) and section 4 (consistency
 sweep) already cover this; recording it as confirmation that neither has been
 applied yet.
+
+*(Annotation, 2026-09-12: confirmed by the read-only inventory of that date. "Ten gates" landed in
+the same commit as the eleventh gate, `ad04f2e`, so the README was never right rather than out of
+date. Applied in G2d with one departure from section 1: "Planned work" is kept and annotated
+bullet by bullet, because this file cites it.)*

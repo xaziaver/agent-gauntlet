@@ -30,7 +30,7 @@ G1. **Baseline.** *(Nothing to run; recorded 2026-09-12.)* `a0ef78d` is the harn
     ClaimGate's verdict at `prototype-1`: its `src/`, `tests/` and `pyproject.toml` are byte-identical
     to `4fc5c34`, the last source commit before the tag. The verdict is committed in ClaimGate; the
     status section below records it. Tag `a0ef78d` as `prototype-1-harness` so the regression
-    comparison names two tags **[human]**.
+    comparison names two tags. *(Tagged and pushed 2026-09-13; the tag is annotated.)*
 
 G2. **Document consolidation.** Six parts, in order.
 
@@ -46,19 +46,24 @@ G2c. *(Closed 2026-09-12 — `751382c`.)* This file becomes the live queue:
     the seven August items. Produced by a tested script with every anchor asserted unique and the
     result pinned by sha256.
 
-G2d. *(This commit; its hash is recorded in G2e's status update.)* `README.md` and
+G2d. *(Closed 2026-09-13 — `d12e348`.)* `README.md` and
     `ARCHITECTURE.md` per `doc-updates.md` sections 1, 2 and 4, with two departures
     from section 1: "Planned work" and "Known issues" are kept and annotated in place — shipped, with
     the symbol, or open — because the findings cite both by name; and the "one small project" claim
     in "Planned work" is annotated, not deleted. After the roadmap replacement the C# adapter is named
     once, which is what section 4 asks.
 
-G2e. `CLAUDE.md` gains session start-up, save-point and environment sections outside the scaffold
-    markers; the text between the markers stays byte-identical to what `scaffold.upsert_block` emits.
+G2e. *(Closed 2026-09-13 — `2fdc06d`.)* `CLAUDE.md` gains "Session
+    start-up", "Environment" and "Save point" sections above the scaffold block; the text between
+    the markers stays byte-identical to what `scaffold.upsert_block` emits. The sections sit above
+    the block because that is the side `tests/test_scaffold.py` pins, and the prose does not spell
+    the marker strings because `upsert_block` finds the block by their first occurrence
+    (advisor-measured 2026-09-13).
 
-G2f. `.gitignore` audited, last and alone: line 14, `.\#*mutants/`, split into the Emacs lock-file
-    rule it was meant to be, the duplicate `.mutmut-cache` on line 15 removed, every rule annotated
-    with what it hides. Checked by `git check-ignore -v .#x.py` naming a rule after and none before.
+G2f. *(This commit; closes G2.)* `.gitignore` audited, last and alone: line 14, `.\#*mutants/`,
+    split into the Emacs lock-file rule it was meant to be, the duplicate `.mutmut-cache` on line 15
+    removed, every rule annotated with what it hides. Checked by `git check-ignore -v .#x.py` naming
+    a rule after and none before, and by eighteen probe paths whose outcomes are otherwise unchanged.
 
 G3. **The harness moves against the frozen tag**, in the note's order, one entry per commit. Each
     entry gains a "Predicted effect on the regression subject" paragraph, ratified by the human,
@@ -97,24 +102,29 @@ Every session reads `CLAUDE.md` and this file. Then, per item:
 
 ## Status as of this handoff
 
-**2026-09-12** *(the session; the commits carry local time, and the hook lines below are stamped
-2026-09-13 UTC).* G2a and G2b are on `cleanup/documents` at `d49f259` and `a8b9034`, verified
-against `origin` by the advisor; the human merges each part to `main` after verification. G2c
-landed at `751382c`. G2d is this commit, with two further judgments inside `doc-updates.md`
-section 1, advisor-recommended, human-ratified 2026-09-13: the v1 paragraph keeps the README's
-"polish rather than capability — see `BACKLOG.md`" sentence in place of the plan's list, whose
-validation item is done; and "Also planned" is kept for broader agent support, with the C#
-adapter named only under "Planned work". The findings save point for the 2026-09-12 session is a
-separate human commit on this branch. Nothing under the gated tree has changed since `a0ef78d`.
-Next is G2e.
+**2026-09-13, later.** G2e landed at `2fdc06d`, verified against `origin` by the advisor: two
+files, `CLAUDE.md` purely additive (78/0) and `BACKLOG.md` pinned by sha256, the marked block
+byte-identical to `scaffold.guidance_block()` and `upsert_block` idempotent over the real file; the
+turn's own `gauntlet check` run `20260913T101908-2604278`, quoted by the agent, had nine gates green
+matching the baseline below except durations. G2f is this commit and closes the clean-up stage:
+`.gitignore` rewritten with every rule annotated, line 14 split into the lock-file rule `.\#*`, the
+duplicate `.mutmut-cache` dropped; measured before and after against eighteen probe paths, the only
+difference is that Emacs lock files are now ignored, and no tracked file is. Since the merge of
+G2a–G2d to `main` at `a3dc9fa` (with `a0ef78d` tagged `prototype-1-harness`), `cleanup/documents`
+carries `0449c6b` (the 2026-09-12 findings save point, a human commit), `2fdc06d` and this commit,
+all documents; the gated tree is unchanged since `a0ef78d`. The 2026-09-13 advisor session's
+findings save point is pending, a human commit. Next: merge `cleanup/documents` to `main`; then G3
+item 1 in the note's order, whose "Predicted effect on the regression subject" paragraph is drafted
+and ratified in the next advisor session before any code moves.
 
 **The regression subject.** ClaimGate at the annotated tag `prototype-1`, commit `be87d38`. Its
 `gauntlet.lock.json` is sha256 `61c2ac4d30025e8c`, 92 entries: 16 spec, 73 mutant, 3 config. The
 engine at `a0ef78d` enumerates 1263 acceptance mutants over the sixteen specs, 808 of kind `example`
 and 455 of kind `literal` (advisor-measured 2026-09-12 from `git archive prototype-1`). The sixteen
 locked spec digests are listed in ClaimGate's `QUEUE.md` status section. The verdict every G3 change
-is compared against is run `20260911T110451-2238600`, the tag's last stop-check, archived in
-ClaimGate at `docs/queue-history/events-prototype-1.jsonl` (3912 lines, 836,642 bytes, sha256
+is compared against is run `20260911T110451-2238600`, the tag's last stop-check, archived on
+ClaimGate's `main` at `docs/queue-history/events-prototype-1.jsonl` — first committed at `de2c23a`,
+after the tag, so `git archive prototype-1` does not contain it — (3912 lines, 836,642 bytes, sha256
 `49395ea8c36d633f`): eleven `gate.finished` lines, all `passed: true`, `diagnostics: 0`, `error:
 null` — protect 3/3 paths unchanged; static 0 findings; size worst function 25; complexity 6;
 boundary 18 step file(s), 0 direct import(s); tests 966/966 passing; coverage line 100.0, branch
@@ -129,12 +139,13 @@ this working tree is the tool, and a checkout here changes what every ClaimGate 
 
 **This repository's own baseline.** Nine gates configured: protect, static, size, complexity, tests,
 coverage, crap, duplication, acceptance; no `[gates.boundary]` or `[gates.mutation]`. The turn-end
-stop-check after G2b, stamped 2026-09-13T01:29:28Z to 01:30:03Z, read by the human from
-`.gauntlet/events.jsonl`: protect 3/3 paths unchanged; static 0 findings; size worst function 25;
-complexity 6; tests 498/498 passing in 34.641 s; coverage line 96.54, branch 91.75 against floors of
-95, 90 and per-file 80; crap 9.32; duplication 0; acceptance "no feature files" (vacuous).
-Diagnostics 0 and error null on all nine. Stop hook budget 600 s; a full own-run is about 35 s by
-the timestamps. The suite is `.venv/bin/pytest tests -q -p no:cacheprovider`; the `pytest` on PATH
+stop-check after G2d, run `20260913T093143-2601684`, stamped 2026-09-13T09:31:43Z to 09:32:20Z, read
+by the human from `.gauntlet/events.jsonl` and by the advisor from the pasted lines: protect 3/3
+paths unchanged; static 0 findings; size worst function 25; complexity 6; tests 498/498 passing in
+36.328 s; coverage line 96.54, branch 91.75 against floors of 95, 90 and per-file 80; crap 9.32;
+duplication 0; acceptance "no feature files" (vacuous). Diagnostics 0 and error null on all nine,
+identical to the run after G2b except the tests duration (34.641 s). Stop hook budget 600 s; a full
+own-run is about 37 s by the timestamps. The suite is `.venv/bin/pytest tests -q -p no:cacheprovider`; the `pytest` on PATH
 is not the venv's and collects nothing. Branch coverage has 1.75 points of headroom over its floor:
 a G3 change that adds an untested branch goes red here before it reaches the subject.
 
@@ -142,8 +153,9 @@ a G3 change that adds an untested branch goes red here before it reaches the sub
 Three source-line citations in the findings resolve at `a0ef78d` (`cli.py:151` and `cli.py:151-152`
 exactly; `cli.py:235` has drifted to 232). "v1 item 2 (root-cause diagnostics)" at findings lines
 863 and 1011 means `doc-updates.md` section 3's item 2, which was never applied here; item 2 of this
-file is mutation cost. `CLAUDE.md` and `.claude/settings.json` are byte-identical to the scaffold's
-output. All three lock digests match. CI runs `uv run gauntlet check --json` on push to `main`, on
+file is mutation cost. `.claude/settings.json` is byte-identical to the scaffold's output, and
+`CLAUDE.md` was until G2e; its marked block still is. All three lock digests match. CI runs
+`uv run gauntlet check --json` on push to `main`, on
 pull requests and on dispatch, and uploads `.gauntlet/`. The remote branches `audit` and
 `v2-workspace` are both at `5b9c0b5`, 0 ahead of `main` and 26 behind. `docs/audit.md`, cited by
 `doc-updates.md`, is in no commit.
