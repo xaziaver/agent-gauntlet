@@ -1234,8 +1234,8 @@ directory as `scoped-results.jsonl`, sha256 `1defb33befa81e1c`.)*
 
 **Routes to:** BACKLOG.md, v1. The largest single payoff in this file.
 
-**Status.** Open, deliberately deferred to the end of the ClaimGate build (human decision,
-2026-09-08).
+**Status.** In flight on `v1/item-1-per-mutant-scoping` — design decisions and prediction ratified
+2026-09-13; deferred to the end of the ClaimGate build by human decision, 2026-09-08.
 
 #### The stop-check records no tree hash, so a documents-only turn pays a full run
 

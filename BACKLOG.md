@@ -73,6 +73,21 @@ G3. **The harness moves against the frozen tag**, in the note's order, one entry
 
 G4. **ClaimGate phase 4 opens on the harness G3 produces.** Not this repository's work.
 
+## G3 stage
+
+The harness moves against the frozen tag, in the note's order, one findings entry per item, each on
+its own `v1/item-<n>-<name>` branch. What stays fixed: this repository's own protected paths and its
+build metadata — `git diff --name-only a0ef78d HEAD -- gauntlet.toml gauntlet.lock.json
+pyproject.toml .claude` prints nothing after every commit — and ClaimGate, which is never edited,
+approved, or run except for the one regression run per item. Per item: the entry's "Predicted
+effect on the regression subject" paragraph is ratified before code moves; the tool's own nine gates
+are green at every turn end; the regression run is `gauntlet check` in a clean clone of `be87d38`
+with this repository's commit and an empty `git status --porcelain` recorded immediately before it;
+and the verdict is compared line by line with the prediction. A difference the prediction did not
+name is a stop, not a correction. Item 1 additionally leaves `src/gauntlet/acceptance/mutation.py`,
+`src/gauntlet/acceptance/gherkin.py`, `src/gauntlet/mutants.py` and `src/gauntlet/registry.py`
+untouched, so the engine's enumeration at the tag (1263 = 808 `example` + 455 `literal`) cannot move.
+
 ## Not in the order
 
 Open at `a0ef78d` per the inventory of 2026-09-12, and not sequenced by the note. **[human]** marks a
@@ -98,7 +113,7 @@ Every session reads `CLAUDE.md` and this file. Then, per item:
 | G2d | `doc-updates.md` sections 1, 2 and 4; `README.md` "Known issues", "Planned work", "Roadmap"; `ARCHITECTURE.md` "Contracts you must not break" |
 | G2e | `CLAUDE.md`; `src/gauntlet/scaffold.py` `upsert_block` and `guidance_block`; `tests/test_scaffold.py` |
 | G2f | `.gitignore`; `ARCHITECTURE.md` "Known sharp edges" |
-| G3 item 1 | the entry "The acceptance gate re-runs every mutant on every check" in full, its "Constraint on any fix here" paragraph twice; *Properties to preserve* "An approved equivalent mutant is a regression test for its own justification"; `src/gauntlet/gates/acceptance.py` `_survivors`; `src/gauntlet/mutants.py` `classify`; `src/gauntlet/acceptance/mutation.py`; `gauntlet.toml` `[project]` and `[gates.acceptance]` |
+| G3 item 1 | the entry "The acceptance gate runs the entire steps directory once per mutant, so wall time is scenarios × mutants" in full — its design-decisions and prediction paragraphs are the brief; then "The acceptance gate re-runs every mutant on every check", its "Constraint on any fix here" paragraph twice; *Properties to preserve* "An approved equivalent mutant is a regression test for its own justification"; `src/gauntlet/gates/acceptance.py` `survivors_for` and `_survivors`; `src/gauntlet/adapters/python.py` `run_acceptance`; `src/gauntlet/mutants.py` `classify`; `gauntlet.toml` `[project]` and `[gates.acceptance]`; `docs/GATES.md` "acceptance" |
 | G3, any entry | `gauntlet-findings.md` "Note for the v1 effort", then the entry in full; `ARCHITECTURE.md` "Contracts you must not break" and "Conventions"; `docs/GATES.md` for the gate touched |
 
 ## Status as of this handoff
