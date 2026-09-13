@@ -458,6 +458,15 @@ the spec whose approval defends that guard, and the stale-approval check would q
 for exactly the case it exists to catch. If the `--changed` variant is the one built, its trigger set
 must include the code-mutation gate's own `source_paths`.
 
+*(Annotation, 2026-09-13: `source_paths` is mutmut's key, not Gauntlet's — its only occurrence under
+`src/` is a commented `[tool.mutmut]` sample inside the `gauntlet.toml` template
+(`templates.py:129`), and no module under `src/gauntlet/` reads it. The code-mutation gate reads
+`scope`, `min_score`, `require_review`, `timeout` and `ctx.src`; the acceptance gate reads neither
+`ctx.src` nor `ctx.tests`. A fingerprint built for this entry must therefore define its own scope —
+at minimum the steps directory and `[project] src` — because the code-mutation gate's scope is
+mutmut's own, read from the project's `pyproject.toml`, and Gauntlet never sees it. Measured at
+`9adf07f`.)*
+
 **What it cost us.** Roughly eight minutes per full check at current size, several times per
 session, growing monotonically. No correctness cost.
 
@@ -1176,6 +1185,52 @@ advisor enumerated directly from the engine rather than inferring from the ledge
 band is 2.52 → 2.96 s, 17.4 %, on trees that differ by nothing gated at all. The wall-time series
 closes at … 3,169 → 3,691 → 3,737 s, against the 7,200 s budget: 3,463 s of headroom at the tag,
 which is the number any v1 scoping change has to beat or preserve.
+
+**Design decisions, advisor-recommended, human-ratified 2026-09-13.** (1) The modules that bind a
+feature are discovered on every call by reading each `test_*.py` under the configured steps
+directory for `scenarios(...)` and `scenario(...)` calls and resolving their string argument against
+the module's own directory; a directory argument binds every feature beneath it. Nothing is cached,
+in memory or on disk. The discovery lives in a new pure module, `acceptance/binding.py`, so
+`gates/acceptance.py` grows by a few lines and `_column_mutants`, the one function at the size
+ceiling, is untouched. (2) A feature no module binds runs the whole directory, as today — more
+enforcement, not less. (3) A feature bound by several modules runs all of them in one pytest
+invocation. (4) A new key, `[gates.acceptance] scope`, takes `"module"` (the default) or
+`"directory"`, which restores today's behaviour for comparison; the key name is the code-mutation
+gate's. (5) Departing from the proposed change above, the record of which paths each feature's
+mutants ran against is written to `.gauntlet/acceptance-scope.json` on every mutation stage and
+never read: a gate has no event sink, `GateResult` has no free field, and the runner owns the
+`gate.finished` line, so recording it there would carry this change into `gates/base.py`,
+`runner.py` and the report for every gate. The cost is a per-run file rather than a log line; the
+committed-verdict entry (item 3 of the order) is where it gets a durable home. (6) The baseline
+stage still runs the whole directory once, and every chosen mutant is still executed before the
+ledger is consulted — the constraint under "The acceptance gate re-runs every mutant on every check"
+binds this change too. (7) `gauntlet mutant approve` and `prune` inherit the scoping through
+`survivors_for`, by design, and a test pins it.
+
+**Predicted effect on the regression subject, 2026-09-13.** The verdict is identical. All eleven
+`gate.finished` lines carry the same `gate`, `passed`, `error`, `diagnostics` and `actual` as run
+`20260911T110451-2238600`; the acceptance line stays `16 spec(s), 73 reviewed-equivalent` with
+`diagnostics: 0`, because the scoped survivor set is the whole-directory survivor set — measured
+2026-09-13 in a clean clone of `be87d38` with the gate's own `_survivors` at `9adf07f` and `steps`
+replaced by the bound module, all 1,263 mutants classified against the tag's lock: 73 survivors, all
+73 approved, 0 unreviewed, 0 stale, every spec restored byte-for-byte. The one difference is that
+line's `duration`: 3,736.757 s at the tag against 772 s scoped in a sandbox that reproduced the
+tag's whole-directory cost within 2 % (3.0 s × 1,263 ≈ 3,790 s), so 700–1,000 s on the owner's
+machine is a floor to check against, not a target. `gauntlet.lock.json` is byte-identical — no gate
+writes it. The subject's tree is clean after the run: `.gauntlet/mutation-backup/` holds the same
+sixteen files, and a new `.gauntlet/acceptance-scope.json` appears under a directory `.gitignore`
+already covers. No new event kind is emitted, no other event line changes, and the baseline stage
+still runs the whole directory once. And nothing else.
+
+*(Annotation, 2026-09-13: both design questions above were answered by measurement against the tag
+before the prediction was drafted. (2) Sixteen step modules bind sixteen specs one-to-one, each
+through a single `scenarios("../../features/<name>.feature")`, with the shared steps in
+`tests/acceptance/conftest.py`; the sixteen modules' collected counts sum to the directory's 317 and
+each is green alone. (1) The scoped survivor set equals the whole-directory set — 73 of 1,263, all
+approved — so the delta on this subject is zero. The cost estimate above, 170–200 s, was about four
+times low: pytest start-up is a ~0.4 s floor per mutant, so scoping saves roughly four-fifths of the
+wall time, not nineteen twentieths. The measurement's per-spec results are in the owner's review
+directory as `scoped-results.jsonl`, sha256 `1defb33befa81e1c`.)*
 
 **Routes to:** BACKLOG.md, v1. The largest single payoff in this file.
 
