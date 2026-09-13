@@ -53,16 +53,17 @@ G2d. *(Closed 2026-09-13 — `d12e348`.)* `README.md` and
     in "Planned work" is annotated, not deleted. After the roadmap replacement the C# adapter is named
     once, which is what section 4 asks.
 
-G2e. *(This commit; its hash is recorded in G2f's status update.)* `CLAUDE.md` gains "Session
+G2e. *(Closed 2026-09-13 — `2fdc06d`.)* `CLAUDE.md` gains "Session
     start-up", "Environment" and "Save point" sections above the scaffold block; the text between
     the markers stays byte-identical to what `scaffold.upsert_block` emits. The sections sit above
     the block because that is the side `tests/test_scaffold.py` pins, and the prose does not spell
     the marker strings because `upsert_block` finds the block by their first occurrence
     (advisor-measured 2026-09-13).
 
-G2f. `.gitignore` audited, last and alone: line 14, `.\#*mutants/`, split into the Emacs lock-file
-    rule it was meant to be, the duplicate `.mutmut-cache` on line 15 removed, every rule annotated
-    with what it hides. Checked by `git check-ignore -v .#x.py` naming a rule after and none before.
+G2f. *(This commit; closes G2.)* `.gitignore` audited, last and alone: line 14, `.\#*mutants/`,
+    split into the Emacs lock-file rule it was meant to be, the duplicate `.mutmut-cache` on line 15
+    removed, every rule annotated with what it hides. Checked by `git check-ignore -v .#x.py` naming
+    a rule after and none before, and by eighteen probe paths whose outcomes are otherwise unchanged.
 
 G3. **The harness moves against the frozen tag**, in the note's order, one entry per commit. Each
     entry gains a "Predicted effect on the regression subject" paragraph, ratified by the human,
@@ -101,14 +102,20 @@ Every session reads `CLAUDE.md` and this file. Then, per item:
 
 ## Status as of this handoff
 
-**2026-09-13.** G2d landed at `d12e348` (2026-09-13 05:31 local) and was verified against `origin`
-by the advisor: footprint of three files, the three sha256 pins, and the turn-end stop-check read
-from the event lines (run `20260913T093143-2601684`, recorded below). G2a–G2d were merged to
-`main` at `a3dc9fa`, one `--no-ff` merge, and `cleanup/documents` fast-forwarded to it; `a0ef78d`
-was tagged `prototype-1-harness` and pushed, closing G1. The 2026-09-12 advisor session's
-findings save point, ten annotations, landed at `0449c6b`, a human commit; the 2026-09-13
-session's is pending. G2e is this commit. Nothing under the gated tree has changed since
-`a0ef78d`. Next is G2f.
+**2026-09-13, later.** G2e landed at `2fdc06d`, verified against `origin` by the advisor: two
+files, `CLAUDE.md` purely additive (78/0) and `BACKLOG.md` pinned by sha256, the marked block
+byte-identical to `scaffold.guidance_block()` and `upsert_block` idempotent over the real file; the
+turn's own `gauntlet check` run `20260913T101908-2604278`, quoted by the agent, had nine gates green
+matching the baseline below except durations. G2f is this commit and closes the clean-up stage:
+`.gitignore` rewritten with every rule annotated, line 14 split into the lock-file rule `.\#*`, the
+duplicate `.mutmut-cache` dropped; measured before and after against eighteen probe paths, the only
+difference is that Emacs lock files are now ignored, and no tracked file is. Since the merge of
+G2a–G2d to `main` at `a3dc9fa` (with `a0ef78d` tagged `prototype-1-harness`), `cleanup/documents`
+carries `0449c6b` (the 2026-09-12 findings save point, a human commit), `2fdc06d` and this commit,
+all documents; the gated tree is unchanged since `a0ef78d`. The 2026-09-13 advisor session's
+findings save point is pending, a human commit. Next: merge `cleanup/documents` to `main`; then G3
+item 1 in the note's order, whose "Predicted effect on the regression subject" paragraph is drafted
+and ratified in the next advisor session before any code moves.
 
 **The regression subject.** ClaimGate at the annotated tag `prototype-1`, commit `be87d38`. Its
 `gauntlet.lock.json` is sha256 `61c2ac4d30025e8c`, 92 entries: 16 spec, 73 mutant, 3 config. The

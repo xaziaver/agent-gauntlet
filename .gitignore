@@ -1,15 +1,24 @@
+# Gauntlet's run artifacts: events.jsonl, stop-attempts.json, junit.xml and coverage.json.
+# The event log is the only record of a verdict and it lives here, uncommitted.
 .gauntlet/
+# mutmut's working copy of the source tree; left behind, it collides with pytest collection.
 mutants/
+# mutmut's cache.
 .mutmut-cache
+# pytest-cov's data file, written at the project root by the tests gate's --cov.
 .coverage
+# Written by no gate — the tests gate's JSON report goes to .gauntlet/coverage.json.
+# A hand-run `pytest --cov-report=json` lands here.
 coverage.json
+# Tool caches.
 .pytest_cache/
 __pycache__/
 .mypy_cache/
 .ruff_cache/
+# Not produced by this project's build backend (hatchling); a setuptools-style install would.
 *.egg-info/
-# Emacs
+# Emacs: backup files, auto-save files, and lock files. A lock file is a dangling symlink,
+# which mutmut's tree copy dies on; gates/mutation.py names it in the remedy.
 *~
 \#*\#
-.\#*mutants/
-.mutmut-cache
+.\#*
