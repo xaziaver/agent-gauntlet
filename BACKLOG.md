@@ -98,24 +98,24 @@ Every session reads `CLAUDE.md` and this file. Then, per item:
 | G2d | `doc-updates.md` sections 1, 2 and 4; `README.md` "Known issues", "Planned work", "Roadmap"; `ARCHITECTURE.md` "Contracts you must not break" |
 | G2e | `CLAUDE.md`; `src/gauntlet/scaffold.py` `upsert_block` and `guidance_block`; `tests/test_scaffold.py` |
 | G2f | `.gitignore`; `ARCHITECTURE.md` "Known sharp edges" |
+| G3 item 1 | the entry "The acceptance gate re-runs every mutant on every check" in full, its "Constraint on any fix here" paragraph twice; *Properties to preserve* "An approved equivalent mutant is a regression test for its own justification"; `src/gauntlet/gates/acceptance.py` `_survivors`; `src/gauntlet/mutants.py` `classify`; `src/gauntlet/acceptance/mutation.py`; `gauntlet.toml` `[project]` and `[gates.acceptance]` |
 | G3, any entry | `gauntlet-findings.md` "Note for the v1 effort", then the entry in full; `ARCHITECTURE.md` "Contracts you must not break" and "Conventions"; `docs/GATES.md` for the gate touched |
 
 ## Status as of this handoff
 
-**2026-09-13, later.** G2e landed at `2fdc06d`, verified against `origin` by the advisor: two
-files, `CLAUDE.md` purely additive (78/0) and `BACKLOG.md` pinned by sha256, the marked block
-byte-identical to `scaffold.guidance_block()` and `upsert_block` idempotent over the real file; the
-turn's own `gauntlet check` run `20260913T101908-2604278`, quoted by the agent, had nine gates green
-matching the baseline below except durations. G2f is this commit and closes the clean-up stage:
-`.gitignore` rewritten with every rule annotated, line 14 split into the lock-file rule `.\#*`, the
-duplicate `.mutmut-cache` dropped; measured before and after against eighteen probe paths, the only
-difference is that Emacs lock files are now ignored, and no tracked file is. Since the merge of
-G2a–G2d to `main` at `a3dc9fa` (with `a0ef78d` tagged `prototype-1-harness`), `cleanup/documents`
-carries `0449c6b` (the 2026-09-12 findings save point, a human commit), `2fdc06d` and this commit,
-all documents; the gated tree is unchanged since `a0ef78d`. The 2026-09-13 advisor session's
-findings save point is pending, a human commit. Next: merge `cleanup/documents` to `main`; then G3
-item 1 in the note's order, whose "Predicted effect on the regression subject" paragraph is drafted
-and ratified in the next advisor session before any code moves.
+**2026-09-13, close of clean-up.** G2f landed at `1539205`, verified against `origin` by the advisor;
+`0449c6b`, `2fdc06d` and `1539205` were merged to `main` at `c6c22da`, one `--no-ff` merge with
+`cleanup/documents` fast-forwarded to it. The 2026-09-13 advisor session's findings save point is
+`a543e89`, a human commit that also corrects three passages of `docs/session-prompts/ADVISOR.md`;
+`main` was fast-forwarded to it. The Stop hook's own runs after G2e (`20260913T102023-2604660`) and
+G2f (`20260913T104021-2606400`) were read by the human from the event lines: nine gates green each,
+actuals identical to the baseline below. The clean-up stage is closed and `cleanup/documents` is
+finished. G3 opens on `v1/item-1-per-mutant-scoping`. This commit is housekeeping only, paired with
+a read-only report on item 1's ground — its anchors located by string at this ref, module and
+function sizes against the size gate's ceilings, the tests that exercise them — written to the
+owner's review directory for the next advisor session, which drafts item 1's "Predicted effect on
+the regression subject" paragraph and has it ratified before any code moves. The gated tree is
+unchanged since `a0ef78d`.
 
 **The regression subject.** ClaimGate at the annotated tag `prototype-1`, commit `be87d38`. Its
 `gauntlet.lock.json` is sha256 `61c2ac4d30025e8c`, 92 entries: 16 spec, 73 mutant, 3 config. The
