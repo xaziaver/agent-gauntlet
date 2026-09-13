@@ -41,12 +41,13 @@ G2a. *(Closed 2026-09-12 — `d49f259`.)* `doc-updates.md`, the August 2026 docu
 G2b. *(Closed 2026-09-12 — `a8b9034`.)* `docs/session-prompts/ADVISOR.md`, the advisor start-up
     prompt (sha256 `2b7ae3793e0aea70`). Not in the coding agent's reading list.
 
-G2c. *(This commit; its hash is recorded in G2d's status update.)* This file becomes the live queue:
+G2c. *(Closed 2026-09-12 — `751382c`.)* This file becomes the live queue:
     the clean-up stage, a reading table, a memoryless status section, and a dated note under each of
     the seven August items. Produced by a tested script with every anchor asserted unique and the
     result pinned by sha256.
 
-G2d. `README.md` and `ARCHITECTURE.md` per `doc-updates.md` sections 1, 2 and 4, with two departures
+G2d. *(This commit; its hash is recorded in G2e's status update.)* `README.md` and
+    `ARCHITECTURE.md` per `doc-updates.md` sections 1, 2 and 4, with two departures
     from section 1: "Planned work" and "Known issues" are kept and annotated in place — shipped, with
     the symbol, or open — because the findings cite both by name; and the "one small project" claim
     in "Planned work" is annotated, not deleted. After the roadmap replacement the C# adapter is named
@@ -98,8 +99,14 @@ Every session reads `CLAUDE.md` and this file. Then, per item:
 
 **2026-09-12** *(the session; the commits carry local time, and the hook lines below are stamped
 2026-09-13 UTC).* G2a and G2b are on `cleanup/documents` at `d49f259` and `a8b9034`, verified
-against `origin` by the advisor; the human merges each part to `main` after verification. G2c is
-this commit. Nothing under the gated tree has changed since `a0ef78d`. Next is G2d.
+against `origin` by the advisor; the human merges each part to `main` after verification. G2c
+landed at `751382c`. G2d is this commit, with two further judgments inside `doc-updates.md`
+section 1, advisor-recommended, human-ratified 2026-09-13: the v1 paragraph keeps the README's
+"polish rather than capability — see `BACKLOG.md`" sentence in place of the plan's list, whose
+validation item is done; and "Also planned" is kept for broader agent support, with the C#
+adapter named only under "Planned work". The findings save point for the 2026-09-12 session is a
+separate human commit on this branch. Nothing under the gated tree has changed since `a0ef78d`.
+Next is G2e.
 
 **The regression subject.** ClaimGate at the annotated tag `prototype-1`, commit `be87d38`. Its
 `gauntlet.lock.json` is sha256 `61c2ac4d30025e8c`, 92 entries: 16 spec, 73 mutant, 3 config. The

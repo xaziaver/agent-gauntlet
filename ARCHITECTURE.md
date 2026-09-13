@@ -100,6 +100,21 @@ Append-only JSONL at `.gauntlet/events.jsonl`. Envelope fields (`v`, `at`, `run`
 written **last** so a payload key can never shadow them. Writing an event must never raise: a lost
 line beats a broken gate.
 
+### The boundary above Gauntlet
+
+An orchestrator — anything that schedules agents, runs state machines, applies watchdogs, or
+manages roles and handoffs — is a separate application that consumes Gauntlet. It talks to
+Gauntlet only through the public contract: exit codes, the JSON report, the event log, and (once
+v3 lands) named profiles and the transition query.
+
+Two rules follow, for anyone tempted to blur the line. Nothing in this repository may take a
+dependency on any particular orchestrator, and no gate may behave differently because an
+orchestrator invoked it — a verdict that depends on the caller is not a verdict. And when an
+orchestrator needs something Gauntlet does not expose, the answer is to extend the contract
+(an event kind, a JSON field, a query), never to import Gauntlet's internals. `loop.py` is the
+deliberate ceiling of orchestration inside this repo: one prompt in, files out, no memory, no
+roles.
+
 ---
 
 ## Conventions
