@@ -96,9 +96,10 @@ truncated terminal paste.
 
 Open every task prompt you write with `Session start-up per CLAUDE.md, then:`
 rather than restating the environment notes and verification steps — they live
-in `CLAUDE.md` and the agent reads it every session. Until `CLAUDE.md` carries a
-start-up section, that line has nothing behind it; writing that section is
-clean-up work, and until it lands the prompt must carry the steps itself.
+in `CLAUDE.md` — its "Session start-up", "Environment" and "Save point"
+sections, since clean-up G2e at `2fdc06d` — and the agent reads it every
+session. *(Until 2026-09-13 that line had nothing behind it and each prompt
+carried the steps itself.)*
 
 That opening line is also the signal for where a Claude Code session begins. A
 prompt that opens a queue item carries it and is meant for a **fresh** coding
@@ -189,12 +190,15 @@ rule in a versioned advisor prompt that the tool's own source contradicts.
 **The regression baseline is measurable from a clone.** Everything the proof
 compares against is committed: the tag carries `gauntlet.lock.json`; the event
 log as it stood at the tag is ClaimGate's
-`docs/queue-history/events-prototype-1.jsonl` (3912 lines, sha256 prefix
-`49395ea8c36d633f`), ending on the acceptance line of run
+`docs/queue-history/events-prototype-1.jsonl` on `main` — first committed at
+`de2c23a`, after the tag, so `git archive prototype-1` does not contain it
+(corrected 2026-09-13) — (3912 lines, sha256 prefix `49395ea8c36d633f`),
+ending on the acceptance line of run
 `20260911T110451-2238600`, whose eleven `gate.finished` lines are the baseline
 verdict; and the sixteen locked spec digests are listed in ClaimGate's
 `QUEUE.md` status section. Recompute them rather than quoting them: a clone,
-`git archive prototype-1`, `sha256sum`, and eleven `grep`s.
+`git archive prototype-1` for the lock and the specs, `git show main:<path>`
+for the log, `sha256sum`, and eleven `grep`s.
 
 **The single most useful technique carries over.** The acceptance mutation
 engine is importable and pure-stdlib, so any change to `acceptance/` can be
@@ -284,8 +288,10 @@ under histogram. Pin content by sha256; `numstat` is safe only for a purely
 additive edit, where the deletion count is zero under any algorithm. Naming a
 file in a prompt without saying what a missing one means — the agent stopped
 that step, correctly, and had nothing to tell it whether to wait or route
-around; `doc-updates.md`, cited three times in the findings, exists in no
-commit of either repository, and a prompt that names it must say so. Marking a
+around; `doc-updates.md`, cited three times in the findings, existed in no
+commit until clean-up G2a committed it at `d49f259` (corrected 2026-09-13;
+`docs/audit.md`, which it cites, is still in no commit), and a prompt that
+names a file must say what a missing one means. Marking a
 negative grep "checked" without stating its case and pattern — "the string
 `toml` occurs nowhere under `src/`" was a case-sensitive search past a
 docstring naming TOML twice. Dating every edit with the day the session began.

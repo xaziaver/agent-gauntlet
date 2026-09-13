@@ -955,6 +955,16 @@ would make the green path say something in the one place a human looks. Whether 
 surfaces `systemMessage` on exit 0 to the human was not verified this session. Same proposed change
 as above; third consumer.
 
+*(Annotation, 2026-09-13: a second reading of the silence. During clean-up on agent-gauntlet
+itself, where the Stop hook is bare `gauntlet stop-check` with no wrapper, the owner asked where
+the summary had gone. From source, `cli.stop_check`'s pass path has been the same four lines since
+`5b9c0b5` (2026-08-05): nothing was ever printed on a pass. The two messages the owner remembers
+are the hook-timeout error above and the skip line of ClaimGate's wrapper `.claude/hooks/stop-
+check.sh` (`housekeeping/stop-check-skip`, `206911d`), which prints `gauntlet stop-check skipped:
+gated tree unchanged since green run …` on a skip and nothing on a full pass. The wrapper is
+ClaimGate's alone; agent-gauntlet's hook settings are the scaffold's. Two readings of one silence
+as a lost summary is the case for the pass-path `systemMessage`.)*
+
 #### Retry loop burns attempts on non-agent-actionable failures
 
 **What happened.** The Stop hook's retry-capped `gauntlet stop-check` fired repeatedly against an
@@ -1274,6 +1284,13 @@ code that produced a verdict is whatever that tree held at the time; the archive
 not say, and it was established after the fact that `a0ef78d`'s source equals `4fc5c34`'s. Two
 fields for the record: the harness commit, and whether its tree was clean. Until this lands, every
 regression run states both immediately before it starts.)*
+
+*(Annotation, 2026-09-13: the archived baseline is not in the tag. `docs/queue-history/events-
+prototype-1.jsonl` fails `git show prototype-1:<path>`; it was first committed at ClaimGate
+`de2c23a` on `main`, twenty-two commits past `prototype-1`, so `git archive prototype-1` yields
+the lock and the specs but not the log. Recomputed from a clone of `main`: 3912 lines, 836,642
+bytes, sha256 `49395ea8c36d633f`, ending on the acceptance line of run `20260911T110451-2238600`,
+and the eleven `gate.finished` tuples match `BACKLOG.md`'s status paragraph.)*
 
 #### A stop-check's stderr on a broad failure exceeds the host's hook-output limit
 
@@ -2416,6 +2433,16 @@ covers agent-context cost, if such an item exists.
 
 **Status.** Open.
 
+*(Annotation, 2026-09-13: the other file `init` rewrites behaves better. `scaffold.upsert_block`
+keeps the text on both sides of the marked block byte for byte, so the hand-written sections
+`CLAUDE.md` gained in clean-up G2e (`2fdc06d`) survive regeneration — measured against `src` at
+`a0ef78d`, which is the source at every ref since. Two edges: the tests pin only text before the
+block (`test_upsert_appends_to_an_existing_file`, `test_upsert_replaces_only_the_marked_region`)
+and nothing pins text after the end marker; and the block is located by `str.find` on the marker
+strings, so prose that quotes a marker literally moves the region the next `init` replaces. G2e
+put the sections above the block and spelled neither marker. Recorded under *Properties to
+preserve*.)*
+
 #### Interpreter fallback lands on Gauntlet's own venv silently, and the error names the wrong thing
 
 **What happened.** `interpreter()` resolves in order: explicit `python` in `gauntlet.toml`, the
@@ -3302,6 +3329,17 @@ because a sibling row changed the swap target), or UNCHANGED, plus the file-leve
 going MODIFIED — the formula `sha256(original->mutated)` was confirmed against the ledger before it
 was relied on.
 
+### Hand-written text outside the marked block in `CLAUDE.md` survives `init`
+
+`scaffold.upsert_block` replaces exactly the span from the first begin marker to the first end
+marker and returns the text on both sides byte for byte; with no markers present it appends the
+block. Since clean-up G2e (`2fdc06d`) the file's start-up, environment and save-point sections sit
+above the block and depend on this. Measured 2026-09-13 against `src` at `a0ef78d`: a re-run over
+the real file is idempotent. The tests pin less than the property — text before the block only —
+and the marker lookup is a first-occurrence `str.find`, so a `CLAUDE.md` that quotes a marker in
+prose is rewritten at the next `init`; the file's lead paragraph says so. A change to `upsert_block`
+adds a test for the after side; a quoted marker stays a documented constraint, not a supported case.
+
 ### The Stop hook never passes vacuously
 
 `runner.run_full_gauntlet` refuses `--changed` on the Stop hook path by design: a diff-scoped run
@@ -3533,6 +3571,15 @@ rather than restating it; the clean-up stage precedes item 1. Each entry ordered
 "Predicted effect on the regression subject" paragraph, ratified by the owner, before its code
 moves — today only the applied entry has one.)*
 
+*(Annotation, 2026-09-13: the clean-up stage closed at `1539205` (G2f): six parts on
+`cleanup/documents`, the gated tree byte-unchanged from `a0ef78d` throughout. The 2026-09-12 save
+point that wrote the annotation above existed only as a script on the owner's disk until it was
+found and banked at `0449c6b` on 2026-09-13 — the failure the advisor prompt's artifact paragraph
+describes, caught because the committed file still carried the script's expected input digest.
+`CLAUDE.md` carries start-up, environment and save-point sections since `2fdc06d`, so a prompt
+opening `Session start-up per CLAUDE.md, then:` now has something behind it. Next is item 1 below;
+its prediction paragraph is drafted and ratified before any code moves.)*
+
 **How to apply this file, decided 2026-09-07 with ClaimGate's owner.** During the build,
 Gauntlet was frozen and ClaimGate moved; when the prototype is complete the roles invert.
 ClaimGate is tagged at a green ledger and becomes the regression subject: one proposed change per
@@ -3607,3 +3654,7 @@ applied yet.
 the same commit as the eleventh gate, `ad04f2e`, so the README was never right rather than out of
 date. Applied in G2d with one departure from section 1: "Planned work" is kept and annotated
 bullet by bullet, because this file cites it.)*
+
+*(Correction, 2026-09-13: two departures, not one. "Known issues" was also kept and annotated in
+place, and the "one small project" claim under "Planned work" was annotated rather than deleted;
+`BACKLOG.md` G2d records both.)*
