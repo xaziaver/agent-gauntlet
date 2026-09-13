@@ -30,6 +30,24 @@ def test_collecting_nothing_is_a_failure_not_a_pass(tmp_path: Path) -> None:
     assert adapter.run_acceptance(tmp_path, steps, sys.executable).passed is False
 
 
+def test_run_acceptance_accepts_several_targets(tmp_path: Path) -> None:
+    """Only the named modules run, and a collection failure names them all."""
+    steps = tmp_path / "steps"
+    steps.mkdir()
+    (steps / "test_a.py").write_text("def test_a():\n    assert True\n")
+    (steps / "test_b.py").write_text("def test_b():\n    assert True\n")
+    (steps / "test_bad.py").write_text("def test_bad():\n    assert 1 == 2\n")
+    (steps / "empty.py").write_text("")
+    chosen = [steps / "test_a.py", steps / "test_b.py"]
+    assert adapter.run_acceptance(tmp_path, chosen, sys.executable).passed is True
+    assert adapter.run_acceptance(tmp_path, steps, sys.executable).passed is False
+    empty = adapter.run_acceptance(
+        tmp_path, [steps / "empty.py", steps / "empty.py"], sys.executable
+    )
+    assert empty.passed is False
+    assert empty.output == f"no scenarios collected from {steps / 'empty.py'}, {steps / 'empty.py'}"
+
+
 def test_interpreter_prefers_an_explicit_configuration(tmp_path: Path) -> None:
     assert adapter.interpreter(tmp_path, "/usr/bin/python3") == "/usr/bin/python3"
 

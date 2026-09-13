@@ -13,6 +13,8 @@ from gauntlet import mutants as mutants_mod
 from gauntlet.adapters.python import CodeMutant
 from gauntlet.cli import app
 from gauntlet.cli_support import EXIT_CONFIG_ERROR, EXIT_OK
+from gauntlet.gates import acceptance
+from gauntlet.gates.base import GateContext
 from gauntlet.gates.mutation import SUBJECT, MutmutError
 
 runner = CliRunner()
@@ -65,6 +67,17 @@ def _check(amount: int, expected: str) -> None:
     assert tier(amount) == expected
 """
 
+# A plain test in a second module that fails on any mutation of tiering.feature.
+CROSS_FILE_KILL = f'''\
+from pathlib import Path
+
+PRISTINE = """{FEATURE}"""
+
+
+def test_the_tiering_spec_is_untouched() -> None:
+    assert (Path(__file__).parents[2] / "features" / "tiering.feature").read_text() == PRISTINE
+'''
+
 CODE_MUTANT = CodeMutant(
     name="m.x_f__mutmut_2",
     module="pkg.rating",
@@ -112,6 +125,25 @@ def test_approve_records_the_surviving_mutants(project: Path) -> None:
     )
     assert result.exit_code == EXIT_OK
     assert _mutant_keys(project)
+
+
+def test_mutant_approve_scopes_like_the_gate(project: Path) -> None:
+    """A second module that would kill tiering's mutants cross-file does not run for them,
+    so `approve` records exactly the survivors the scoped gate reports."""
+    (project / "tests" / "steps" / "test_other.py").write_text(CROSS_FILE_KILL)
+    config = {"features": "features/", "steps": "tests/steps"}
+    ctx = GateContext(project_root=project, src=project / "src", tests=project / "tests")
+    feature, steps = project / "features" / "tiering.feature", project / "tests" / "steps"
+    scoped = acceptance.survivors_for(ctx, config, feature, steps)
+    assert scoped
+    assert acceptance.survivors_for(ctx, {**config, "scope": "directory"}, feature, steps) == []
+    result = runner.invoke(app, ["mutant", "approve", "features/tiering.feature", "--reason", "x"])
+    assert result.exit_code == EXIT_OK
+    key = specs.key_for(project, feature)
+    assert _mutant_keys(project) == {
+        registry.namespaced(mutants_mod.MUTANT_NAMESPACE, mutants_mod.key_for(key, m))
+        for m in scoped
+    }
 
 
 def test_approve_requires_a_reason(project: Path) -> None:
