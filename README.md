@@ -528,11 +528,19 @@ honest picture of a v1.
 cause. *Workaround:* create a package `__init__.py`, one trivial module, and one test before the
 first `gauntlet check`. *Fix:* `init` should scaffold those, and the gates should name the real
 cause.
+*(2026-09-12: fixed — `init` scaffolds the package, module and test (`scaffold.py`,
+`baseline_files`), and `static` and `complexity` name an empty `src/` (`gates/static.py`
+`_no_source`; `gates/complexity.py`). Kept as the first instance of the pattern below.)*
 
 **Gates report downstream symptoms.** The pattern above is the third instance of the same class:
 mypy's absence once parsed as "no findings"; a resolved symlink once produced an interpreter with no
 packages. Each was diagnosed by hand and fixed individually. The general improvement — gates that
 distinguish "the tool failed" from "the tool found nothing" consistently — is not done.
+*(2026-09-12: still open as a pattern. `GateResult` carries `error` and `vacuous` (`gates/base.py`),
+and `static`, `complexity`, `coverage` and `acceptance` distinguish their own cases; there is no
+gate-by-gate sweep, and `gate.finished` does not carry `vacuous` (`runner.py`) — the third defect
+under `BACKLOG.md` item 1. A fourth category, blocked on a human decision, is recorded in `gauntlet-
+findings.md`'s note for the v1 effort.)*
 
 **Mutation testing is impractical on integration-heavy suites.** Cost scales with test-suite
 runtime; a suite that spawns subprocesses can push a full run past an hour. *Workaround:* keep pure
@@ -554,65 +562,87 @@ than guessing — but the diff is unavailable for uncommitted or untracked files
 
 **Not yet built, in rough priority order.**
 
+*(2026-09-12: two of these are built and one is done; each bullet says which. Open work is sequenced
+in `BACKLOG.md`, not here; this list is kept because `gauntlet-findings.md` cites it.)*
+
 - **The test API boundary gate.** Step definitions should only reach the system through a stable
   `tests/api/` layer — an AST check on imports. This was designed in Phase 4 and never implemented,
   which makes it exactly the kind of rule that decays: currently it can only live in a prompt.
+  *(2026-09-12: built — `gates/boundary.py`, in `DEFAULT_GATE_ORDER` in `config.py`; green on every
+  ClaimGate run.)*
 - **Root-cause diagnostics** across the gates, per the known issue above.
+  *(2026-09-12: open; see that issue's note.)*
 - **`init` scaffolding** so a new project is green by construction.
+  *(2026-09-12: built — `scaffold.py`, `baseline_files`.)*
 - **A second language adapter** (C#: coverlet, Roslyn, Stryker.NET, Reqnroll) — what turns the
   adapter seam from a claim into a fact.
+  *(2026-09-12: open; `adapters/` holds `base.py` and `python.py`.)*
 - **A dashboard** over the event log: live gate progress, the approval inbox, one-click review. The
   log and the JSON contract exist so this can be a client rather than a rewrite.
+  *(2026-09-12: open on `main`; the `v2-workspace` branch is at `5b9c0b5`, nothing ahead of `main`.
+  The rules it must obey are in the roadmap's v2 section.)*
 - **Real-world validation.** Everything here has been proven on one small project. The tool has not
   yet been used to build something someone actually wanted, which is the next thing being done with
   it.
+  *(2026-09-12: done — ClaimGate, an FNOL intake service, phases 1–3, frozen at `prototype-1`. What
+  broke is `gauntlet-findings.md`, and it is folded into `BACKLOG.md`'s order.)*
 
 ## Roadmap
 
-### v1 — a usable single-agent harness for Python (where this is now)
+Open work lives in [BACKLOG.md](BACKLOG.md), with the evidence behind each item. This section
+only describes where each version line is going and where the product's boundary sits.
 
-Ten gates, the approval ledger, hooks, status and review, the event log. Proven on two projects:
-this repository, and an FNOL intake service built end to end under the gates. What remains for the
-v1 line is polish rather than capability — see `BACKLOG.md`.
+### v1 — a usable single-agent harness for Python (current)
+
+Eleven gates, the approval ledger, hooks, status and review, the event log. Proven on two
+projects: this repository, and an FNOL intake service built end to end under the gates and frozen
+at its `prototype-1` tag as the regression subject for every change made here. What remains for
+the v1 line is polish rather than capability — see `BACKLOG.md`, which sequences it. The v1 line
+is done when every gate can run on a project it fits without being weakened to pass.
 
 ### v2 — the workspace
 
-The bottleneck today is not enforcement, it is the human's surface. Setup is a dozen manual steps;
-review is a terminal walk; "what is waiting on me" is a command you have to think to run. A
-workspace — live gate progress, the approval inbox, diffs in context, one-click approve — is the
-next real gain, and the event log and JSON contract exist so it can be a *client* of the existing
-tool rather than a rewrite of it.
+The bottleneck today is the human's surface, not enforcement. Review is a terminal walk, and
+"what is waiting on me" is a command you must think to run. The workspace shows live gate
+progress, the approval inbox, and diffs in context, with one-click approve.
+
+Two rules make it safe to build. The workspace is a **client**: it reads the event log and the
+JSON contract, and nothing else. If it needs data the contract does not provide, the contract
+grows — the workspace never gets a private path into internals. And the workspace **approves
+through the same ledger operations** as the CLI, with the same required reason and reviewer. A
+surface that could approve without the ceremony would turn the ledger into a rubber stamp.
 
 ### v3 — the substrate for orchestration
 
-Multi-agent harnesses describe a fixed workflow as a state machine: themes to stories, stories to
-specifications, specifications to code, code to cleaned, cleaned to hardened, hardened to accepted.
-That structure needs an answer to *"has this transition actually happened?"* — and a supervisor
-agent that answers by inspection inherits exactly the prompt decay the gates exist to eliminate.
+Multi-agent harnesses describe workflows as state machines, and every transition needs an
+answer to "has this actually happened?" A supervisor agent that answers by inspection inherits
+the prompt decay the gates exist to eliminate. Gauntlet already answers most transition
+questions deterministically. Three small additions make that explicit:
 
-Gauntlet already answers most of those questions deterministically. A state's exit criteria is a set
-of gates; a human-in-the-loop state is an entry in the approval ledger; the event log is the
-observability substrate, and it records real per-gate durations, which is what a simulation of such
-a workflow would need in order to jitter anything meaningfully.
-
-Three additions would make that substrate explicit:
-
-- **Work-item identity** — an ID threaded through every event, so the log is per-story rather than
-  per-project.
-- **Named gate profiles** — `[profiles] cleaning = [...]`, so a workflow state's exit criteria has a
-  name rather than an ad-hoc gate list.
+- **Named gate profiles** — `[profiles] cleaning = [...]` — so a workflow state's exit criteria
+  has a name instead of an ad-hoc gate list.
+- **Work-item identity** — an ID threaded through every event, so the log reads per-story
+  rather than per-project.
 - **A transition query** — which profiles currently pass, as JSON.
 
-That is deliberately *not* orchestration. Scheduling, worktrees, role prompts, and handoff protocols
-belong to whatever sits on top. The claim here is narrower and, hopefully, more durable: a workflow
-engine is only as trustworthy as its transition predicates, and deterministic predicates are what
-this tool makes.
+### The orchestrator is a separate application
+
+Everything above the substrate — scheduling, finite-state machines that direct agents, watchdog
+timers, transient agent lifecycles, roles and constitutions, squad leaders, worktrees, and
+concurrency — belongs to an orchestrator that **uses** Gauntlet and does not live in it. This is
+a boundary, not a deferral.
+
+The reason is the same ownership rule that shapes everything else here: anything a supervisor
+must *trust* has to be deterministic, so it lives in Gauntlet. Everything that is judgment,
+sequencing, or conversation lives above. Gauntlet's commitments to whatever sits on top: the
+exit-code contract, the JSON report, the versioned event log, and (in v3) profiles and the
+transition query. Gates stay non-interactive and route-independent, so a verdict never depends
+on who — or what — asked for it.
 
 ### Also planned
 
-A second language adapter (C#: coverlet, Roslyn, Stryker.NET, Reqnroll) — what turns the adapter
-seam from a claim into a fact — and broader agent support beyond Claude Code's hooks, for which
-`gauntlet loop` is already the generic fallback.
+Broader agent support beyond Claude Code's hooks, for which `gauntlet loop` is already the
+generic fallback.
 
 ## Credits
 
