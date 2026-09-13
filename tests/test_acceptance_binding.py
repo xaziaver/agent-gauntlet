@@ -60,6 +60,15 @@ def test_a_directory_argument_binds_every_feature_beneath_it(layout: tuple[Path,
     assert binding.bound_modules(steps, features / "sub" / "b.feature") == [steps / "test_all.py"]
 
 
+def test_an_unparsable_step_file_binds_nothing(layout: tuple[Path, Path]) -> None:
+    """A file pytest never collects must not crash the gate: it binds nothing."""
+    features, steps = layout
+    (steps / "test_a.py").write_text(SCENARIOS.format(target="../../features/a.feature"))
+    (steps / "test_broken.py").write_text('scenarios("../../features/a.feature"\ndef (:\n')
+    (steps / "test_binary.py").write_bytes(b'scenarios("../../features/a.feature")\n\xff\xfe')
+    assert binding.bound_modules(steps, features / "a.feature") == [steps / "test_a.py"]
+
+
 def test_binding_is_reread_from_the_step_files_on_every_call(layout: tuple[Path, Path]) -> None:
     """Nothing is cached: editing a step file between two calls changes the answer."""
     features, steps = layout

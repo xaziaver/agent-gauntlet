@@ -39,8 +39,16 @@ def _literal_targets(tree: ast.AST) -> list[str]:
 
 
 def bound_targets(module: Path) -> list[Path]:
-    """Every path a step module binds, resolved against the module's own directory."""
-    tree = ast.parse(module.read_text(encoding="utf-8"), str(module))
+    """Every path a step module binds, resolved against the module's own directory.
+
+    A file that cannot be read as UTF-8 or parsed binds nothing rather than
+    raising: pytest never collects it, and nothing between a gate and the exit
+    code catches an exception, so a raise here would fail the Stop hook open.
+    """
+    try:
+        tree = ast.parse(module.read_text(encoding="utf-8"), str(module))
+    except (SyntaxError, UnicodeDecodeError):
+        return []
     return [(module.parent / target).resolve() for target in _literal_targets(tree)]
 
 
