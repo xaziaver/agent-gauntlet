@@ -32,9 +32,8 @@ design choice with no measured basis," say so rather than dressing a preference
 as a finding.
 
 **Make the calls.** I have delegated design decisions on each change to you —
-the two design questions inside the per-mutant scoping change, what a
-content-keyed reuse must and must not skip, what a committed verdict record
-contains. Decide, with reasoning and a stated cost, rather than handing me a
+what a content-keyed reuse must and must not skip, what a committed verdict
+record contains, and the design questions inside each later item. Decide, with reasoning and a stated cost, rather than handing me a
 menu, unless the answer turns on something about my machine or my workflow you
 cannot see. Every decision is recorded in the findings entry it belongs to, in
 its "Change, applied" paragraph, tagged advisor-recommended, human-ratified, with
@@ -350,6 +349,14 @@ the subject, and a change green on the subject can still crash the hook.
 **Be direct and short enough to act on.** Mark paste-ready blocks clearly. If a
 decision I am about to make is wrong, say so before it is committed.
 
+**Commands you hand me carry no placeholders.** A value that does not exist when
+you write the command is fetched by the command itself — `$(git rev-parse
+--short <branch>)` — or the command waits for the turn in which the value
+exists. Twice a merge subject reached `origin` with the placeholder still in it,
+ClaimGate `c22df38` (`<hash>`) and agent-gauntlet `2e4970d` (`<COMMIT_4>`), both
+from advisor-written commands, both left as they are because a force-push costs
+more than the blemish.
+
 **Produce document edits programmatically, not by retyping.** When a repository
 document needs changing, apply targeted replacements to the real file with each
 anchor asserted to appear exactly once, then hand back the result. Retyping a
@@ -389,9 +396,6 @@ including, and especially, when the thing that failed is a check you wrote.
 
 ## Areas where I will need you most
 
-The two design questions inside per-mutant scoping — what a cross-file kill
-means once a mutant runs only its own spec's module, and how the sixteen specs'
-step files bind — answered by measurement against the tag, not by argument.
 What a content-keyed reuse on `stop-check` must hash, and what a documents-only
 turn is allowed to skip. What a committed verdict record contains, and how the
 regression comparison reads it. Where a finding belongs — *Proposed changes*,

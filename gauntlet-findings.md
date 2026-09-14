@@ -467,6 +467,17 @@ at minimum the steps directory and `[project] src` — because the code-mutation
 mutmut's own, read from the project's `pyproject.toml`, and Gauntlet never sees it. Measured at
 `9adf07f`.)*
 
+*(Annotation, 2026-09-14, on where a cache could live. `.gauntlet/` is in `DEFAULT_PROTECTED_PATHS`
+(`config.py:31-35`), which feeds only the PreToolUse guard (`cli.py:182`): the agent's editor calls
+are refused there, nothing verifies the directory, and gates write under it freely —
+`mutation-backup/`, and since item 1 `acceptance-scope.json`. The protect gate verifies the lock's
+config entries only, three on ClaimGate. A cache under `.gauntlet/` is therefore a gate-writable,
+unverified file: the right shape for a skip record that must never be trusted over a run, and the
+wrong shape for anything a verdict depends on. Also for item 2: `stop-check` and bare `check` both
+reach `run_full_gauntlet(..., changed=False)`, so their eleven gate results are one computation;
+`check` adds `run.started` and `run.finished`, `stop-check` emits neither — read from the source at
+`3ef2745` for item 1's comparison.)*
+
 **What it cost us.** Roughly eight minutes per full check at current size, several times per
 session, growing monotonically. No correctness cost.
 
@@ -500,6 +511,17 @@ killed mid-run.
 **What it cost us.** A real corruption, not a hypothetical one — a literal `"_gauntlet"` string
 landed inside a step definition in an already-approved spec file. It was caught only because a human
 happened to run `git diff` before the next commit; nothing in the harness itself flagged it.
+
+*(Annotation, 2026-09-14: reproduced twice while applying item 1, both times by a process kill
+rather than a crash. In the advisor's sandbox a backgrounded measurement that used the gate's own
+`_survivors` was killed when its parent returned; the `finally` never ran and
+`continuous_coverage.feature` was left one line mutated, with the copy in
+`.gauntlet/mutation-backup/` intact — recovered with `git checkout -- features/`. On the owner's
+machine the agent stopped a regression launch with SIGTERM seventeen seconds in, during the mutation
+gate, which left mutmut's `mutants/` working copy behind; the next run's mutation gate ran warm off
+it (3.988 s, against 20.458 s cold once it was removed) with an identical tuple. Per-mutant scoping
+shortens each window on ClaimGate from about 3 s to about 0.6 s and does not close it; the backup
+directory is the recovery path, and it worked.)*
 
 **Routes to:** BACKLOG.md, v1.
 
@@ -1267,6 +1289,13 @@ agent seventeen seconds in, during the mutation gate, and left mutmut's `mutants
 disk before the completed run's mutation gate ran; that gate's line matched the baseline, and the
 caveat was retired by removing the directory and re-running the gate alone in the clone (run
 `20260914T105020-2707417`, score 100.0 %, 757 killed).
+
+*(Annotation, 2026-09-14, on predicting durations. The sandbox's whole-directory cost matched the
+owner's machine within 2 % (3.0 s × 1,263 against 3,691–3,737 s) while its scoped cost was 26 %
+under it (772 s against 1,042 s): a start-up-dominated run does not transfer between machines the
+way a suite-dominated one does, because interpreter and pytest start-up scale differently from test
+execution. A duration prediction should say which regime it is in and widen accordingly; this one
+said "floor to check" and was still 4 % under.)*
 
 **Routes to:** BACKLOG.md, v1. The largest single payoff in this file.
 
