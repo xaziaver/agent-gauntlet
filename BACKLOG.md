@@ -114,6 +114,7 @@ Every session reads `CLAUDE.md` and this file. Then, per item:
 | G2e | `CLAUDE.md`; `src/gauntlet/scaffold.py` `upsert_block` and `guidance_block`; `tests/test_scaffold.py` |
 | G2f | `.gitignore`; `ARCHITECTURE.md` "Known sharp edges" |
 | G3 item 1 | the entry "The acceptance gate runs the entire steps directory once per mutant, so wall time is scenarios × mutants" in full — its design-decisions and prediction paragraphs are the brief; then "The acceptance gate re-runs every mutant on every check", its "Constraint on any fix here" paragraph twice; *Properties to preserve* "An approved equivalent mutant is a regression test for its own justification"; `src/gauntlet/gates/acceptance.py` `survivors_for` and `_survivors`; `src/gauntlet/adapters/python.py` `run_acceptance`; `src/gauntlet/mutants.py` `classify`; `gauntlet.toml` `[project]` and `[gates.acceptance]`; `docs/GATES.md` "acceptance" |
+| G3 item 2 | the entry "The stop-check records no tree hash, so a documents-only turn pays a full run" in full, including its 2026-09-11 paragraphs — the property paragraph is a constraint, not advice; "Run pairing in the event log is unreliable in two directions" and its ready patch; "The acceptance gate re-runs every mutant on every check" with its 2026-09-13 and 2026-09-14 annotations (its cache remedy folds in here); "The Stop hook cannot be scoped, and the prescribed workflow produces a phase where it cannot pass" with its 2026-09-06 correction; `src/gauntlet/cli.py` `check`, `stop_check` and `_finish`; `src/gauntlet/runner.py` `run_full_gauntlet` and `build_context`; `src/gauntlet/events.py`; `src/gauntlet/config.py` (which paths Gauntlet knows as gated); ClaimGate's `.claude/hooks/stop-check.sh` and `.claude/settings.json` at `be87d38`, read-only, for the hash the wrapper computes and what calls it |
 | G3, any entry | `gauntlet-findings.md` "Note for the v1 effort", then the entry in full; `ARCHITECTURE.md` "Contracts you must not break" and "Conventions"; `docs/GATES.md` for the gate touched |
 
 ## Status as of this handoff
@@ -131,8 +132,9 @@ one module per feature, `scope: module`. Acceptance 1,042.331 s against the base
 — the figure every later G3 run should expect from that gate. A first launch,
 `20260913T222806-2655353`, was stopped seventeen seconds in during the mutation gate; its leftover
 `mutants/` was removed and that gate re-run alone (run `20260914T105020-2707417`: score 100.0 %, 757 killed).
-Own baseline updated below. Next: the branch merges to `main` (`--no-ff`, human), then item 2 of
-the note's order on its own `v1/item-2-<name>` branch.
+Own baseline updated below. Merged to `main` at `2e4970d` (`--no-ff`, human; the merge subject
+carries a literal `<COMMIT_4>` from an advisor-written command, left as is). Item 2 opens on
+`v1/item-2-tree-hash-skip`; its design and prediction are the next advisor session's first job.
 
 **2026-09-13, close of clean-up.** G2f landed at `1539205`, verified against `origin` by the advisor;
 `0449c6b`, `2fdc06d` and `1539205` were merged to `main` at `c6c22da`, one `--no-ff` merge with
