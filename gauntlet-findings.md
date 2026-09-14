@@ -458,6 +458,15 @@ the spec whose approval defends that guard, and the stale-approval check would q
 for exactly the case it exists to catch. If the `--changed` variant is the one built, its trigger set
 must include the code-mutation gate's own `source_paths`.
 
+*(Annotation, 2026-09-13: `source_paths` is mutmut's key, not Gauntlet's — its only occurrence under
+`src/` is a commented `[tool.mutmut]` sample inside the `gauntlet.toml` template
+(`templates.py:129`), and no module under `src/gauntlet/` reads it. The code-mutation gate reads
+`scope`, `min_score`, `require_review`, `timeout` and `ctx.src`; the acceptance gate reads neither
+`ctx.src` nor `ctx.tests`. A fingerprint built for this entry must therefore define its own scope —
+at minimum the steps directory and `[project] src` — because the code-mutation gate's scope is
+mutmut's own, read from the project's `pyproject.toml`, and Gauntlet never sees it. Measured at
+`9adf07f`.)*
+
 **What it cost us.** Roughly eight minutes per full check at current size, several times per
 session, growing monotonically. No correctness cost.
 
@@ -1177,10 +1186,94 @@ band is 2.52 → 2.96 s, 17.4 %, on trees that differ by nothing gated at all. T
 closes at … 3,169 → 3,691 → 3,737 s, against the 7,200 s budget: 3,463 s of headroom at the tag,
 which is the number any v1 scoping change has to beat or preserve.
 
+**Design decisions, advisor-recommended, human-ratified 2026-09-13.** (1) The modules that bind a
+feature are discovered on every call by reading each `test_*.py` under the configured steps
+directory for `scenarios(...)` and `scenario(...)` calls and resolving their string argument against
+the module's own directory; a directory argument binds every feature beneath it. Nothing is cached,
+in memory or on disk. The discovery lives in a new pure module, `acceptance/binding.py`, so
+`gates/acceptance.py` grows by a few lines and `_column_mutants`, the one function at the size
+ceiling, is untouched. (2) A feature no module binds runs the whole directory, as today — more
+enforcement, not less. (3) A feature bound by several modules runs all of them in one pytest
+invocation. (4) A new key, `[gates.acceptance] scope`, takes `"module"` (the default) or
+`"directory"`, which restores today's behaviour for comparison; the key name is the code-mutation
+gate's. (5) Departing from the proposed change above, the record of which paths each feature's
+mutants ran against is written to `.gauntlet/acceptance-scope.json` on every mutation stage and
+never read: a gate has no event sink, `GateResult` has no free field, and the runner owns the
+`gate.finished` line, so recording it there would carry this change into `gates/base.py`,
+`runner.py` and the report for every gate. The cost is a per-run file rather than a log line; the
+committed-verdict entry (item 3 of the order) is where it gets a durable home. (6) The baseline
+stage still runs the whole directory once, and every chosen mutant is still executed before the
+ledger is consulted — the constraint under "The acceptance gate re-runs every mutant on every check"
+binds this change too. (7) `gauntlet mutant approve` and `prune` inherit the scoping through
+`survivors_for`, by design, and a test pins it.
+
+*(Annotation, 2026-09-14, on decision (1) as built: the discovery reads every `.py` under the steps
+directory, recursively, not only `test_*.py` — the implementation prompt said `*.py` and the agent
+built to the prompt; the superset is the right reading, since it survives `*_test.py` and a custom
+`python_files`, and since the amendment at `3ef2745` a file that cannot be read as UTF-8 or parsed
+binds nothing instead of raising — nothing between a gate and the exit code catches an exception,
+and an exit 1 fails the Stop hook open, so this was an advisor reversal of an agent judgment that
+had let `ast.parse` raise. `pytest_bdd.scenarios(...)` binds like the bare name. Only the first
+string literal of a multi-argument `scenarios(...)` binds; a second feature named in the same call
+falls back to the whole directory, which is the safe side. The scope record recomputes the binding
+after the loop rather than capturing what `_survivors` received; the two agree because discovery is
+deterministic over files the run never writes.)*
+
+**Predicted effect on the regression subject, 2026-09-13.** The verdict is identical. All eleven
+`gate.finished` lines carry the same `gate`, `passed`, `error`, `diagnostics` and `actual` as run
+`20260911T110451-2238600`; the acceptance line stays `16 spec(s), 73 reviewed-equivalent` with
+`diagnostics: 0`, because the scoped survivor set is the whole-directory survivor set — measured
+2026-09-13 in a clean clone of `be87d38` with the gate's own `_survivors` at `9adf07f` and `steps`
+replaced by the bound module, all 1,263 mutants classified against the tag's lock: 73 survivors, all
+73 approved, 0 unreviewed, 0 stale, every spec restored byte-for-byte. The one difference is that
+line's `duration`: 3,736.757 s at the tag against 772 s scoped in a sandbox that reproduced the
+tag's whole-directory cost within 2 % (3.0 s × 1,263 ≈ 3,790 s), so 700–1,000 s on the owner's
+machine is a floor to check against, not a target. `gauntlet.lock.json` is byte-identical — no gate
+writes it. The subject's tree is clean after the run: `.gauntlet/mutation-backup/` holds the same
+sixteen files, and a new `.gauntlet/acceptance-scope.json` appears under a directory `.gitignore`
+already covers. No new event kind is emitted, no other event line changes, and the baseline stage
+still runs the whole directory once. And nothing else.
+
+*(Annotation, 2026-09-13: both design questions above were answered by measurement against the tag
+before the prediction was drafted. (2) Sixteen step modules bind sixteen specs one-to-one, each
+through a single `scenarios("../../features/<name>.feature")`, with the shared steps in
+`tests/acceptance/conftest.py`; the sixteen modules' collected counts sum to the directory's 317 and
+each is green alone. (1) The scoped survivor set equals the whole-directory set — 73 of 1,263, all
+approved — so the delta on this subject is zero. The cost estimate above, 170–200 s, was about four
+times low: pytest start-up is a ~0.4 s floor per mutant, so scoping saves roughly four-fifths of the
+wall time, not nineteen twentieths. The measurement's per-spec results are in the owner's review
+directory as `scoped-results.jsonl`, sha256 `1defb33befa81e1c`.)*
+
+**Change, applied 2026-09-13, amended 2026-09-14.** `acceptance/binding.py` (new, pure) discovers
+the step modules that bind a feature from the `scenarios(...)` and `scenario(...)` calls in every
+`.py` under the steps directory, on every call; `gates/acceptance.py` gains `targets_for(config,
+steps, feature)` — `[steps]` under `scope = "directory"`, else the bound modules or `[steps]` —
+which `survivors_for` passes to `_survivors` in place of the directory, and `_record_scope` writes
+`.gauntlet/acceptance-scope.json` after the mutation loop; `adapters/python.py` `run_acceptance`
+takes one path or several. The loop, the backup and the restore are unchanged, and every chosen
+mutant still runs before `classify` sees the ledger. Commits `ae591d5` (the change, twelve tests,
+`docs/GATES.md` cost paragraph, two `ARCHITECTURE.md` deliberate-oddities bullets) and `3ef2745`
+(an unparsable or non-UTF-8 step file binds nothing — advisor reversal of an agent judgment that
+let `ast.parse` raise, which would have exited 1 and failed the Stop hook open; one test).
+Regression run `20260913T222906-2657107`, `gauntlet check` in a fresh clone of `be87d38` with this
+repository at `3ef2745` and a clean tree recorded before it: all eleven `gate.finished` tuples
+identical to the baseline run `20260911T110451-2238600`, compared field by field by the agent and
+again by the advisor from the archived log; lock byte-identical (`61c2ac4d30025e8c`); clone tree
+clean after; sixteen backups; the scope record names one module per feature; the only other lines
+are the `run.started`/`run.finished` pair `check` emits. Acceptance duration 3,736.757 s →
+1,042.331 s, 72 % saved, 3.6×: above the prediction's 700–1,000 s, which was labelled a floor to
+check and was 4 % low. A first launch of the run, `20260913T222806-2655353`, was stopped by the
+agent seventeen seconds in, during the mutation gate, and left mutmut's `mutants/` working copy on
+disk before the completed run's mutation gate ran; that gate's line matched the baseline, and the
+caveat was retired by removing the directory and re-running the gate alone in the clone (run
+`20260914T105020-2707417`, score 100.0 %, 757 killed).
+
 **Routes to:** BACKLOG.md, v1. The largest single payoff in this file.
 
-**Status.** Open, deliberately deferred to the end of the ClaimGate build (human decision,
-2026-09-08).
+**Status.** Applied. `ae591d5` and `3ef2745` on `v1/item-1-per-mutant-scoping`; regression run
+`20260913T222906-2657107` identical to the baseline on all eleven tuples, compared by the advisor
+2026-09-14 from the archived log. Deferred to the end of the ClaimGate build by human decision,
+2026-09-08.
 
 #### The stop-check records no tree hash, so a documents-only turn pays a full run
 
@@ -2651,6 +2744,26 @@ exactly as mutable as the same line in a plain scenario, and mutating it is exac
 mutants covered rather than reading the count.
 
 **Routes to.** `BACKLOG.md`.
+
+**Status.** Open.
+
+#### `AcceptanceAdapter` in `adapters/base.py` is a protocol nothing implements or reads
+
+**What happened.** Found while applying item 1, 2026-09-13. `adapters/base.py` defines `class
+AcceptanceAdapter(Protocol)` with `run_acceptance(self, root, targets, timeout)`; the only
+`run_acceptance` in the tree is the module-level function in `adapters/python.py`, whose signature
+also carries `python: str`, and nothing in `src/` or `tests/` names the protocol except its
+definition. Item 1 mirrored its new `targets` type onto the protocol because the prompt asked it to,
+which kept a dead declaration in step with live code for no reader.
+
+**What would address it.** Delete the protocol, or make it true: give it the `python` parameter and
+have the gate depend on it rather than on the module. Deletion is a line count. The second is the
+language-adapter seam `ARCHITECTURE.md`'s "How to add a language adapter" describes, and is worth
+doing only when a second adapter exists.
+
+**What it cost us.** Nothing; one line of an item-1 diff, and a sentence in its report.
+
+**Routes to.** `BACKLOG.md`, v1, "everything else".
 
 **Status.** Open.
 

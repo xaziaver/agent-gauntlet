@@ -73,6 +73,21 @@ G3. **The harness moves against the frozen tag**, in the note's order, one entry
 
 G4. **ClaimGate phase 4 opens on the harness G3 produces.** Not this repository's work.
 
+## G3 stage
+
+The harness moves against the frozen tag, in the note's order, one findings entry per item, each on
+its own `v1/item-<n>-<name>` branch. What stays fixed: this repository's own protected paths and its
+build metadata — `git diff --name-only a0ef78d HEAD -- gauntlet.toml gauntlet.lock.json
+pyproject.toml .claude` prints nothing after every commit — and ClaimGate, which is never edited,
+approved, or run except for the one regression run per item. Per item: the entry's "Predicted
+effect on the regression subject" paragraph is ratified before code moves; the tool's own nine gates
+are green at every turn end; the regression run is `gauntlet check` in a clean clone of `be87d38`
+with this repository's commit and an empty `git status --porcelain` recorded immediately before it;
+and the verdict is compared line by line with the prediction. A difference the prediction did not
+name is a stop, not a correction. Item 1 additionally leaves `src/gauntlet/acceptance/mutation.py`,
+`src/gauntlet/acceptance/gherkin.py`, `src/gauntlet/mutants.py` and `src/gauntlet/registry.py`
+untouched, so the engine's enumeration at the tag (1263 = 808 `example` + 455 `literal`) cannot move.
+
 ## Not in the order
 
 Open at `a0ef78d` per the inventory of 2026-09-12, and not sequenced by the note. **[human]** marks a
@@ -98,24 +113,40 @@ Every session reads `CLAUDE.md` and this file. Then, per item:
 | G2d | `doc-updates.md` sections 1, 2 and 4; `README.md` "Known issues", "Planned work", "Roadmap"; `ARCHITECTURE.md` "Contracts you must not break" |
 | G2e | `CLAUDE.md`; `src/gauntlet/scaffold.py` `upsert_block` and `guidance_block`; `tests/test_scaffold.py` |
 | G2f | `.gitignore`; `ARCHITECTURE.md` "Known sharp edges" |
+| G3 item 1 | the entry "The acceptance gate runs the entire steps directory once per mutant, so wall time is scenarios × mutants" in full — its design-decisions and prediction paragraphs are the brief; then "The acceptance gate re-runs every mutant on every check", its "Constraint on any fix here" paragraph twice; *Properties to preserve* "An approved equivalent mutant is a regression test for its own justification"; `src/gauntlet/gates/acceptance.py` `survivors_for` and `_survivors`; `src/gauntlet/adapters/python.py` `run_acceptance`; `src/gauntlet/mutants.py` `classify`; `gauntlet.toml` `[project]` and `[gates.acceptance]`; `docs/GATES.md` "acceptance" |
 | G3, any entry | `gauntlet-findings.md` "Note for the v1 effort", then the entry in full; `ARCHITECTURE.md` "Contracts you must not break" and "Conventions"; `docs/GATES.md` for the gate touched |
 
 ## Status as of this handoff
 
-**2026-09-13, later.** G2e landed at `2fdc06d`, verified against `origin` by the advisor: two
-files, `CLAUDE.md` purely additive (78/0) and `BACKLOG.md` pinned by sha256, the marked block
-byte-identical to `scaffold.guidance_block()` and `upsert_block` idempotent over the real file; the
-turn's own `gauntlet check` run `20260913T101908-2604278`, quoted by the agent, had nine gates green
-matching the baseline below except durations. G2f is this commit and closes the clean-up stage:
-`.gitignore` rewritten with every rule annotated, line 14 split into the lock-file rule `.\#*`, the
-duplicate `.mutmut-cache` dropped; measured before and after against eighteen probe paths, the only
-difference is that Emacs lock files are now ignored, and no tracked file is. Since the merge of
-G2a–G2d to `main` at `a3dc9fa` (with `a0ef78d` tagged `prototype-1-harness`), `cleanup/documents`
-carries `0449c6b` (the 2026-09-12 findings save point, a human commit), `2fdc06d` and this commit,
-all documents; the gated tree is unchanged since `a0ef78d`. The 2026-09-13 advisor session's
-findings save point is pending, a human commit. Next: merge `cleanup/documents` to `main`; then G3
-item 1 in the note's order, whose "Predicted effect on the regression subject" paragraph is drafted
-and ratified in the next advisor session before any code moves.
+**2026-09-14, G3 item 1 applied.** `ae591d5` and `3ef2745` on `v1/item-1-per-mutant-scoping`, on
+top of the human findings commits `675dd9f` and `e8b5370` and the housekeeping `0f2a5ff`;
+verified against `origin` by the advisor: footprint, digests, every transcribed passage, sizes
+from `ast`, twelve tests plus one. Regression run `20260913T222906-2657107`, `gauntlet check` in a
+fresh clone of `be87d38` (`~/gauntlet-review/claimgate-item1`, toolchain from
+`requirements-dev.txt`, `gauntlet doctor` clean) with this repository at `3ef2745` and porcelain
+empty recorded before it: exit 0; all eleven `gate.finished` tuples identical to
+`20260911T110451-2238600`, compared by the agent and again by the advisor from the archived log;
+lock `61c2ac4d30025e8c` unchanged; clone tree clean after; `.gauntlet/acceptance-scope.json` names
+one module per feature, `scope: module`. Acceptance 1,042.331 s against the baseline's 3,736.757 s
+— the figure every later G3 run should expect from that gate. A first launch,
+`20260913T222806-2655353`, was stopped seventeen seconds in during the mutation gate; its leftover
+`mutants/` was removed and that gate re-run alone (run `20260914T105020-2707417`: score 100.0 %, 757 killed).
+Own baseline updated below. Next: the branch merges to `main` (`--no-ff`, human), then item 2 of
+the note's order on its own `v1/item-2-<name>` branch.
+
+**2026-09-13, close of clean-up.** G2f landed at `1539205`, verified against `origin` by the advisor;
+`0449c6b`, `2fdc06d` and `1539205` were merged to `main` at `c6c22da`, one `--no-ff` merge with
+`cleanup/documents` fast-forwarded to it. The 2026-09-13 advisor session's findings save point is
+`a543e89`, a human commit that also corrects three passages of `docs/session-prompts/ADVISOR.md`;
+`main` was fast-forwarded to it. The Stop hook's own runs after G2e (`20260913T102023-2604660`) and
+G2f (`20260913T104021-2606400`) were read by the human from the event lines: nine gates green each,
+actuals identical to the baseline below. The clean-up stage is closed and `cleanup/documents` is
+finished. G3 opens on `v1/item-1-per-mutant-scoping`. This commit is housekeeping only, paired with
+a read-only report on item 1's ground — its anchors located by string at this ref, module and
+function sizes against the size gate's ceilings, the tests that exercise them — written to the
+owner's review directory for the next advisor session, which drafts item 1's "Predicted effect on
+the regression subject" paragraph and has it ratified before any code moves. The gated tree is
+unchanged since `a0ef78d`.
 
 **The regression subject.** ClaimGate at the annotated tag `prototype-1`, commit `be87d38`. Its
 `gauntlet.lock.json` is sha256 `61c2ac4d30025e8c`, 92 entries: 16 spec, 73 mutant, 3 config. The
@@ -138,16 +169,18 @@ recorded immediately before it: `gauntlet` is installed with `uv tool install --
 this working tree is the tool, and a checkout here changes what every ClaimGate hook runs at once.
 
 **This repository's own baseline.** Nine gates configured: protect, static, size, complexity, tests,
-coverage, crap, duplication, acceptance; no `[gates.boundary]` or `[gates.mutation]`. The turn-end
-stop-check after G2d, run `20260913T093143-2601684`, stamped 2026-09-13T09:31:43Z to 09:32:20Z, read
-by the human from `.gauntlet/events.jsonl` and by the advisor from the pasted lines: protect 3/3
-paths unchanged; static 0 findings; size worst function 25; complexity 6; tests 498/498 passing in
-36.328 s; coverage line 96.54, branch 91.75 against floors of 95, 90 and per-file 80; crap 9.32;
-duplication 0; acceptance "no feature files" (vacuous). Diagnostics 0 and error null on all nine,
-identical to the run after G2b except the tests duration (34.641 s). Stop hook budget 600 s; a full
-own-run is about 37 s by the timestamps. The suite is `.venv/bin/pytest tests -q -p no:cacheprovider`; the `pytest` on PATH
-is not the venv's and collects nothing. Branch coverage has 1.75 points of headroom over its floor:
-a G3 change that adds an untested branch goes red here before it reaches the subject.
+coverage, crap, duplication, acceptance; no `[gates.boundary]` or `[gates.mutation]`. The `gauntlet
+check` after the item-1 amendment, run `20260913T222626-2654730`, stamped 2026-09-13T22:26:26Z to
+22:27:17Z, agent-quoted and read by the advisor from the paste: protect 3/3 paths unchanged; static
+0 findings; size worst function 25; complexity 6; tests 511/511 passing in 50.161 s; coverage line
+96.6, branch 91.89 against floors of 95, 90 and per-file 80; crap 9.32; duplication 0; acceptance
+"no feature files" (vacuous). Diagnostics 0 and error null on all nine. Before item 1 (run
+`20260913T093143-2601684`, after G2d) the suite was 498 tests in 36.328 s at 96.54 / 91.75; the two
+item-1 tests that run a real pytest-bdd project account for about 9 s of the difference. Stop hook
+budget 600 s; a full own-run is about 51 s by the timestamps. The suite is `.venv/bin/pytest tests
+-q -p no:cacheprovider`; the `pytest` on PATH is not the venv's and collects nothing. Branch
+coverage has 1.89 points of headroom over its floor: a G3 change that adds an untested branch goes
+red here before it reaches the subject.
 
 **The inventory of 2026-09-12**, read-only, agent-produced, from which this file was written.
 Three source-line citations in the findings resolve at `a0ef78d` (`cli.py:151` and `cli.py:151-152`

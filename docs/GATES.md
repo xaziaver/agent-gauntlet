@@ -426,12 +426,16 @@ row's values — deliberately not line-based, so inserting a scenario above does
 approval. Its *signature* (`old->new`) can change when a neighbouring row changes the sibling
 choice while the locator holds.
 
-*Cost:* each mutant runs the **entire steps directory**, not just the mutated spec's module. Wall
-time is therefore (total mutants) × (whole-suite time), and grows with every row added anywhere.
-On a fifteen-spec project this reached ~2,900 s. `mutation_sample = N` caps the mutants per feature
-(sampled with a fixed seed, `sample()`), trading completeness for time; the honest fix is scoping
-the per-mutant run to the mutated spec's module, which is an open design question because it
-changes what a cross-file kill means.
+*Cost:* each mutant runs the step module(s) that bind the mutated spec — discovered on every run
+from the `scenarios(...)` calls in the steps directory, never cached — so wall time is Σ (mutants
+of spec *i*) × (time of module *i*), with a ~0.4 s pytest start-up floor per mutant. A spec no
+module binds runs the whole directory, as every mutant did before 2026-09-13; `scope =
+"directory"` under `[gates.acceptance]` restores that for comparison. The baseline stage always
+runs the whole directory once. The paths each spec's mutants ran against are written to
+`.gauntlet/acceptance-scope.json` on every run. On the sixteen-spec regression subject the
+whole-directory run cost ~3,700 s; the scoped run is predicted at 700–1,000 s. `mutation_sample =
+N` still caps the mutants per feature (sampled with a fixed seed, `sample()`), trading
+completeness for time.
 
 *Safety of in-place mutation:* the original is written to `.gauntlet/mutation-backup/<file>`
 before the first mutant and restored in a `finally`. A clean interrupt (SIGINT) restores; a hard

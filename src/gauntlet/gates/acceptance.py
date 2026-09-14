@@ -8,6 +8,7 @@ to test, which makes it decorative.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -15,7 +16,7 @@ from typing import Any
 from gauntlet import config as config_mod
 from gauntlet import locking, registry, specs
 from gauntlet import mutants as mutants_mod
-from gauntlet.acceptance import gherkin, mutation
+from gauntlet.acceptance import binding, gherkin, mutation
 from gauntlet.acceptance.mutation import Mutant
 from gauntlet.adapters import python as python_adapter
 from gauntlet.gates.base import Diagnostic, GateContext, GateResult, timed
@@ -24,6 +25,7 @@ name = "acceptance"
 
 THRESHOLD = "approved, passing, and mutation-proof"
 BACKUP_DIR = Path(".gauntlet") / "mutation-backup"
+SCOPE_RECORD = Path(".gauntlet") / "acceptance-scope.json"
 MAX_LISTED = 6
 
 
@@ -45,9 +47,23 @@ def survivors_for(
     text = path.read_text(encoding="utf-8")
     candidates = mutation.mutants(gherkin.parse(text, str(path)))
     chosen = mutation.sample(candidates, int(config.get("mutation_sample", 0)))
+    targets = targets_for(config, steps, path)
     return _survivors(
-        ctx.project_root, steps, path, chosen, ctx.python, int(config.get("timeout", 600))
+        ctx.project_root, targets, path, chosen, ctx.python, int(config.get("timeout", 600))
     )
+
+
+def targets_for(config: dict[str, Any], steps: Path, feature: Path) -> list[Path]:
+    """The paths one feature's mutants run against.
+
+    The step module(s) that bind the feature, rediscovered from the step files on
+    every call; a feature no module binds runs the whole directory — more
+    enforcement, not less. `scope = "directory"` restores the whole-directory run
+    for every feature, for comparison.
+    """
+    if config.get("scope", "module") == "directory":
+        return [steps]
+    return binding.bound_modules(steps, feature) or [steps]
 
 
 def _classify_feature(
@@ -73,7 +89,28 @@ def _mutation_outcome(
         diagnostics.extend(found)
         equivalent += reviewed
         stale.extend(gone)
+    _record_scope(ctx, config, features, steps)
     return _MutationOutcome(diagnostics, equivalent, stale)
+
+
+def _record_scope(
+    ctx: GateContext, config: dict[str, Any], features: list[Path], steps: Path
+) -> None:
+    """Write which paths each feature's mutants ran against. Rewritten every mutation
+    stage and read by nothing: a gate has no event sink, so the record is a file."""
+    root = ctx.project_root
+    record = {
+        "scope": str(config.get("scope", "module")),
+        "features": {
+            specs.key_for(root, path): [
+                target.relative_to(root).as_posix() for target in targets_for(config, steps, path)
+            ]
+            for path in features
+        },
+    }
+    destination = root / SCOPE_RECORD
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def _approval_diagnostics(findings: list[registry.Finding]) -> list[Diagnostic]:
@@ -95,16 +132,21 @@ def _backup(root: Path, path: Path, text: str) -> None:
 
 
 def _survivors(
-    root: Path, steps: Path, path: Path, mutants: list[mutation.Mutant], python: str, timeout: int
+    root: Path,
+    targets: list[Path],
+    path: Path,
+    mutants: list[mutation.Mutant],
+    python: str,
+    timeout: int,
 ) -> list[mutation.Mutant]:
-    """Apply each mutant in place and demand the suite fails. Always restores."""
+    """Apply each mutant in place and demand the targets fail. Always restores."""
     original = path.read_text(encoding="utf-8")
     _backup(root, path, original)
     survived: list[mutation.Mutant] = []
     try:
         for mutant in mutants:
             path.write_text(mutation.apply(original, mutant), encoding="utf-8")
-            if python_adapter.run_acceptance(root, steps, python, timeout).passed:
+            if python_adapter.run_acceptance(root, targets, python, timeout).passed:
                 survived.append(mutant)
     finally:
         path.write_text(original, encoding="utf-8")

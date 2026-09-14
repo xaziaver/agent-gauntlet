@@ -241,6 +241,12 @@ deliberate and worth the cost — those tests have caught things no unit test co
 - **Mutation defaults to `require_review = false`** while acceptance mutation effectively requires
   review. Unit-test mutants number in the hundreds; acceptance mutants number in the dozens and each
   one means something.
+- **The acceptance gate's scope record is a file, not an event.** `.gauntlet/acceptance-scope.json`
+  names the paths each spec's mutants ran against; it is rewritten on every mutation stage and
+  never read. Gates have no event sink and the runner owns `gate.finished`, so putting it in the
+  log would have changed every gate's line for one gate's convenience (item 1, 2026-09-13).
+- **A spec no step module binds runs the whole steps directory.** The fallback is more enforcement,
+  not less; it is also what every mutant did before per-mutant scoping, so it needs no opt-in.
 
 ---
 

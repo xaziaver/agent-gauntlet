@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import re
 import sys
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -58,16 +59,19 @@ def _venv_python(root: Path) -> str | None:
     return _bin_python(root / ".venv")
 
 
-def run_acceptance(root: Path, steps: Path, python: str, timeout: int = 600) -> RunResult:
-    """Execute the bound scenarios. Collecting nothing is a failure, not a pass."""
+def run_acceptance(
+    root: Path, targets: Path | Sequence[Path], python: str, timeout: int = 600
+) -> RunResult:
+    """Execute the scenarios under the target(s). Collecting nothing is a failure, not a pass."""
+    paths = [str(targets)] if isinstance(targets, Path) else [str(t) for t in targets]
     proc = run_cmd(
-        [python, "-m", "pytest", str(steps), "-q", "--no-header", "-p", "no:cacheprovider"],
+        [python, "-m", "pytest", *paths, "-q", "--no-header", "-p", "no:cacheprovider"],
         cwd=root,
         timeout=timeout,
     )
     output = (proc.stdout or proc.stderr).strip()
     if proc.returncode == NO_TESTS_COLLECTED:
-        return RunResult(passed=False, output=f"no scenarios collected from {steps}")
+        return RunResult(passed=False, output=f"no scenarios collected from {', '.join(paths)}")
     return RunResult(passed=proc.returncode == 0, output=output)
 
 
