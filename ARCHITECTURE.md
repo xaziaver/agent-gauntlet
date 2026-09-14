@@ -26,6 +26,7 @@ src/gauntlet/
 ├── runner.py            gate registry, context construction, execution
 ├── report.py            GateResult[] -> human text or JSON
 ├── events.py            append-only event log
+├── tree.py              the gated-tree hash, and the last-green record stop-check skips on
 ├── status.py            composition: gates + pending approvals + activity
 ├── status_render.py     human rendering for status
 │
@@ -99,6 +100,14 @@ Code truncates hook output at 10,000 characters and an honest cap beats a silent
 Append-only JSONL at `.gauntlet/events.jsonl`. Envelope fields (`v`, `at`, `run`, `kind`) are
 written **last** so a payload key can never shadow them. Writing an event must never raise: a lost
 line beats a broken gate.
+
+`check` and `stop-check` both bound a run with `run.started` and `run.finished` carrying
+`command`; `stop-check` emits them inside the project lock, so a lock-rejected run leaves no line.
+Every `run.finished` carries `tree`, the gated-tree hash defined under "Things that look wrong but
+are deliberate", and `files`, the number of files it covers — both `null` when the tree could not
+be hashed — so the log can always pair a run with the tree it measured, partial runs included. A
+`stop-check` that skips because the tree matches the last wholly green run emits exactly one event,
+`run.reused` (`command`, `tree`, `files`, `reused_run`, `reused_at`), and nothing else.
 
 ### The boundary above Gauntlet
 
@@ -247,6 +256,23 @@ deliberate and worth the cost — those tests have caught things no unit test co
   log would have changed every gate's line for one gate's convenience (item 1, 2026-09-13).
 - **A spec no step module binds runs the whole steps directory.** The fallback is more enforcement,
   not less; it is also what every mutant did before per-mutant scoping, so it needs no opt-in.
+- **The gated-tree hash is a shell pipeline, and `.gauntlet/last-green.json` is a cache, not
+  evidence.** `stop-check` skips every gate when the tree it would measure equals the tree of the
+  last wholly green run. The tree is the paths a gate reads — `[project] src` and `tests`,
+  `[gates.acceptance] features` and `steps`, `[gates.boundary] steps` and `api` (each with its
+  gate's own defaults, only while that gate is on), every `[protect] paths` and `verify` entry —
+  minus `.gauntlet/`, always: gates write there freely and nothing verifies it, so hashing it
+  would move the hash on every run. The value is what this prints in a clone, so anyone can
+  recompute it with no Gauntlet install:
+  `git ls-files -z -c -o --exclude-standard -- <paths> | LC_ALL=C sort -z | xargs -0 sha256sum | sha256sum`.
+  Untracked-not-ignored files enter, so a clone reproduces a recorded value only for a tree that
+  had none; the `files` count beside the hash is the first thing to compare when the values
+  differ. A rename with identical content moves it, because the path is in the line. A deleted
+  tracked file, a missing `git`, or a failing one means no hash: `run.finished` says `tree: null`,
+  no record is written, and `stop-check` runs every gate. The record is written only by a run in
+  which every enabled gate was selected, not `--changed`, and every one passed — decided from that
+  process's own results, never by reading the log. It is a skip cache in a gate-writable,
+  unverified directory and is never evidence of anything; a run is (item 2, 2026-09-14).
 
 ---
 

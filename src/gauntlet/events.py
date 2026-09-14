@@ -25,6 +25,7 @@ ROTATED_SUFFIX = ".1"
 
 RUN_STARTED = "run.started"
 RUN_FINISHED = "run.finished"
+RUN_REUSED = "run.reused"
 GATE_FINISHED = "gate.finished"
 APPROVAL_NEEDED = "approval.needed"
 APPROVAL_GRANTED = "approval.granted"
@@ -81,18 +82,23 @@ class Log:
         self.run = run or new_run_id()
         self.enabled = enabled and root is not None
 
-    def emit(self, event: str, **data: Any) -> None:
-        """Write one event. Never raises: a lost line beats a broken gate."""
+    def emit(self, event: str, **data: Any) -> Event | None:
+        """Write one event and return it; None when nothing was written.
+
+        Never raises: a lost line beats a broken gate.
+        """
         if not self.enabled or self.root is None:
-            return
+            return None
         path = events_path(self.root)
+        written = build(event, self.run, data)
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
             _rotate(path, MAX_BYTES)
             with path.open("a", encoding="utf-8") as handle:
-                handle.write(build(event, self.run, data).to_line())
+                handle.write(written.to_line())
         except OSError:
-            return
+            return None
+        return written
 
 
 def disabled() -> Log:

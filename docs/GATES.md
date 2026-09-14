@@ -467,13 +467,20 @@ time, not review time.
 
 ## The stop hook, in one paragraph
 
-`gauntlet stop-check` runs every enabled gate over the whole tree (never `--changed`, which passes
-vacuously when nothing changed and is wrong for "are you actually done"), under the run lock,
-stopping at the first failure by default. Exit 2 blocks the agent's stop and feeds the report
-back; after `--max-attempts` bounces it exits 0 with a `systemMessage` so a human decides. It emits
-`gate.finished` lines to `.gauntlet/events.jsonl` but neither `run.started` nor `run.finished`
-(a known gap in the findings file). It records no tree hash, so it cannot itself skip a run on an
-unchanged tree; a project wanting that wraps the hook.
+`gauntlet stop-check` hashes the gated tree first (`tree.py`: the paths every gate reads, minus
+`.gauntlet/`, listed by `git ls-files`), and when `.gauntlet/last-green.json` names that exact tree
+and the gates enabled now it runs nothing: one `run.reused` line naming the run it defers to, one
+line on stdout — `gauntlet stop-check skipped: gated tree unchanged since green run <run>, <at>` —
+the session's attempts cleared, exit 0, no lock taken (`--no-skip-unchanged` turns this off).
+Otherwise it runs every enabled gate over the whole tree (never `--changed`, which passes vacuously
+when nothing changed and is wrong for "are you actually done"), under the run lock, stopping at the
+first failure by default. Exit 2 blocks the agent's stop and feeds the report back; after
+`--max-attempts` bounces it exits 0 with a `systemMessage` so a human decides. In
+`.gauntlet/events.jsonl` it bounds its `gate.finished` lines with `run.started` and `run.finished`
+(`command: stop-check`, emitted inside the lock, so a lock-rejected run leaves no line),
+`run.finished` carrying the tree hash and its file count; like `check`, it writes the record only
+when every enabled gate ran over the whole tree and passed. The record is a cache, never evidence:
+a run is.
 
 ## Reading a gate quickly
 

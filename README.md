@@ -149,7 +149,7 @@ Each gate is opt-in: no `[gates.x]` table, no gate.
 | `gauntlet mutant approve[-code]` / `list` / `prune[-code]` | Classify surviving mutants |
 | `gauntlet events` | Recent activity: runs, gate results, approvals, escalations |
 | `gauntlet loop --cmd "..." --task "..."` | Drive an agent that can't be hooked |
-| `gauntlet guard` / `stop-check` | Hook entry points (not run by hand). `stop-check` stops at the first failing gate, in the fixed order cheap-first and acceptance last; `--no-fail-fast` runs them all |
+| `gauntlet guard` / `stop-check` | Hook entry points (not run by hand). `stop-check` runs no gate when the gated tree is unchanged since the last wholly green run, naming that run (`--no-skip-unchanged` forces a run); otherwise it stops at the first failing gate, in the fixed order cheap-first and acceptance last; `--no-fail-fast` runs them all |
 
 Exit codes are the contract everything shares: **0** passed, **1** Gauntlet couldn't run, **2** gates
 failed.
@@ -343,7 +343,10 @@ settings and replaces only its own entries):
   re-enters the agent's context. Bounded by a per-session retry cap that escalates to you, because an
   agent that cannot fix the problem shouldn't loop forever. It stops at the first failing gate — the
   order is fixed, cheap gates first and acceptance last, so a red `protect` or `static` never waits
-  on a mutation pass (`--no-fail-fast` runs every gate, as `gauntlet check` does).
+  on a mutation pass (`--no-fail-fast` runs every gate, as `gauntlet check` does). When the gated
+  tree is byte-identical to the tree of the last wholly green run — the agent's own `gauntlet check`
+  counts — it runs no gate at all and names the run it defers to, so a documents-only turn ends in
+  seconds (`--no-skip-unchanged` forces the run).
 
 It also writes a marked block into `CLAUDE.md` — advisory context, never enforcement. Worth including
 anyway: capable models read ambient signals and raise their own bar. The gates remain the only thing

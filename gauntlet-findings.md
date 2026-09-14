@@ -478,6 +478,11 @@ reach `run_full_gauntlet(..., changed=False)`, so their eleven gate results are 
 `check` adds `run.started` and `run.finished`, `stop-check` emits neither — read from the source at
 `3ef2745` for item 1's comparison.)*
 
+*(Annotation, 2026-09-14, close of item 2: the cache remedy landed as item 2 —
+`.gauntlet/last-green.json`, written by any wholly green `check` or `stop-check`, read by
+`stop-check` alone. The second cost's fix, the agent's own `check` counting, was exercised on
+the subject: a `check` at 17:10Z and a `stop-check` deferring to it at 17:28Z in 0.198 s.)*
+
 **What it cost us.** Roughly eight minutes per full check at current size, several times per
 session, growing monotonically. No correctness cost.
 
@@ -668,6 +673,14 @@ harness change would land inside the gated project's own documentation. Apply af
 the two lines it replaces, and it already threads `fail_fast`, so it postdates `4fc5c34`;
 `cli.py:235` for `stop_check` has drifted to 232. Re-derive by string before applying, not by
 these numbers.)*
+
+*(Annotation, 2026-09-14: the stop-check half of this entry — `run.started` and `run.finished`
+on `stop_check`, `_finish` taking the command — is applied by item 2, decision (6) under "The
+stop-check records no tree hash", because the tree hash it records needs a `run.finished` line
+to live on. What remains here is the `check` half: the emit moved inside the lock, and the test
+that a lock-rejected run emits no `run.started`. Anchors re-checked at `2e4970d`: `cli.py:151-152`
+are still exactly the two lines the patch replaces; `stop_check` is at `cli.py:232`, with the
+locked run factored into `_stop_gates` at 219.)*
 
 #### The acceptance gate short-circuits mutation on an approval failure
 
@@ -1358,10 +1371,126 @@ over, it should stay a documented function of a commit that anyone can recompute
 and should state how untracked-but-not-ignored files enter it — the wrapper hashes those too, and a
 clone cannot see them.
 
+**Design decisions, advisor-recommended, human-ratified 2026-09-14.** (1) The hash covers
+Gauntlet's own gated paths: `[project] src` and `tests`, `[gates.acceptance] features` and
+`steps`, `[gates.boundary] steps` and `api`, every protected path and every verified path —
+minus `.gauntlet/`, always: it is gate-writable and unverified, and on a project that does not
+ignore it, hashing it would move the hash on every run. `.claude/hooks` is out: no gate reads
+it, so a hook edit cannot move a verdict. On ClaimGate at the tag that is 127 files; the
+wrapper's 128th is its own script. Cost: a turn that edits only a hook script skips where the
+wrapper ran, which is the correct outcome. (2) The function is the wrapper's, byte for byte:
+`git ls-files -z -c -o --exclude-standard -- <paths>`, bytewise sort, one `<sha256>  <path>`
+line per file, sha256 of those lines. Tracked and untracked-not-ignored files both enter; a
+listed path missing on disk (a deleted tracked file) yields no hash; a rename with identical
+content moves the hash, because the path is in the line. The shell equivalent is documented in
+`ARCHITECTURE.md` so anyone can recompute it from a clone; a clone reproduces the recorded
+value exactly when the run's tree had no untracked gated files, and the `files` count recorded
+beside the hash is the first thing to compare when it does not. Cost: none new — this is the
+2026-09-11 property paragraph's demand, already proven from a clone. (3) `git` is the listing.
+Its absence or a non-zero exit means no hash: `run.finished` carries `tree: null`, no record is
+written, `stop-check` runs every gate; a project outside git never skips. A filesystem walk with
+`.gitignore` semantics would reimplement git's exclude rules in stdlib — the wrong place for
+that risk. Cost: git becomes something the Stop hook path invokes; `doctor` says so
+(`doctor.py:36` ties it to `--changed` alone today). (4) The record is
+`.gauntlet/last-green.json`, written atomically (temp then replace) only by a wholly green run:
+every enabled gate selected, not `--changed`, every result passed — decided from the process's
+own results, never by reading the log. It carries `tree`, `files`, `run`, `at`, `command`,
+`gates`. `check` and `stop-check` both write it; only `stop-check` reads it. It is a skip cache,
+gate-writable and unverified as the 2026-09-14 annotation under "The acceptance gate re-runs
+every mutant" says; item 3's committed verdict record is a different artifact and is not this
+file. (5) Every `check` and `stop-check` `run.finished` carries `tree` and `files` (null when
+unhashable), partial runs included, so the log can always pair a run with the tree it measured.
+The skip emits exactly one event, `run.reused` (`command`, `tree`, `files`, `reused_run`,
+`reused_at`), prints one line naming the run it defers to, clears the session's stop attempts,
+exits 0, takes no project lock and runs no gate. `--skip-unchanged/--no-skip-unchanged`,
+default on. A record whose `gates` differ from the enabled set does not skip. (6) Item 4's
+stop-check half comes in here: `stop-check` emits `run.started` and `run.finished` with
+`command: stop-check`, and `_finish` takes the command. This entry says it depends on that
+patch, the hash needs a line to live on, and those are the lines this change writes. Item 4
+keeps the `check` lock-ordering half and its lock-rejection test; the note's 2-3-4 order gains
+an annotation. (7) Hash before the gates run, record after: the hash describes the tree the
+gates measured, and a gate that fails to restore what it wrote leaves a tree the record no
+longer matches, so the next stop-check runs in full — the safe direction. No post-run re-hash
+in this item; that is item 5's ground. Cost: one git call and about 127 file reads per run,
+milliseconds, on the PostToolUse hook too. (8) The hash and the record live in a new module
+`src/gauntlet/tree.py`; `cli.py` is at 280 of 300 and `stop_check` at 23 of 25, so the skip
+decision is one call from `stop_check` into a helper there.
+
+**Predicted effect on the regression subject, 2026-09-14.** Two invocations in one clone of
+`be87d38`, this repository at the branch tip with porcelain empty, `.gauntlet/` absent before
+the first. First, `gauntlet check`: the verdict is identical — all eleven `gate.finished` lines
+carry the same `gate`, `passed`, `error`, `diagnostics` and `actual` as run
+`20260911T110451-2238600`, the acceptance duration near item 1's 1,042.331 s (a floor, not a
+target). `run.started` is unchanged in shape. `run.finished` carries `command: check`,
+`passed: true`, `failed: []` as at item 1, plus two new fields: `tree`, equal to
+`a8a00163534b873780f5a8eceb213b0f19e8056f712c9643b971d7432ed00493`, and `files: 127` —
+measured 2026-09-14 from a clean archive of the tag by the shell pipeline and by the Python
+function, same value; the wrapper's `e41d0a7c…` over 128 differs by its own script alone.
+`gauntlet.lock.json` is byte-identical. The clone's tree is clean after: `.gauntlet/` gains
+`last-green.json` naming that run, beside `acceptance-scope.json` and `mutation-backup/` as at
+item 1, under a directory `.gitignore` covers; everything a run writes under `src`, `tests` and
+`features` is restored byte-for-byte or ignored (`__pycache__/`, `.pytest_cache/`,
+`.coverage`, `mutants/`), so the tree hashes to the same value afterwards. Second, immediately
+after, `printf '{}' | gauntlet stop-check --max-attempts 1` with nothing changed: no gate runs
+and no `gate.finished` line is written; one `run.reused` line is appended with
+`command: stop-check`, the same `tree` and `files`, `reused_run` naming the first invocation
+and `reused_at` its `run.finished` time; stdout is one line naming that run; exit 0; seconds,
+not minutes; no `run.started` or `run.finished` for this invocation; the tree still clean and
+the record unchanged. Against item 1's run the event log differs by the two `run.finished`
+fields and the one `run.reused` line, and nothing else. A `stop-check` that does run is not
+exercised on the subject; it adds `run.started` and `run.finished` with `command: stop-check`
+around its `gate.finished` lines (decision 6), pinned by the tool's own tests and visible in
+this repository's own Stop hook runs.
+
+**Change, applied 2026-09-14, amended the same day.** `tree.py` (new, 243 lines) derives the
+gated path list from a `Config` — `src`, `tests`, the acceptance and boundary gates' configured
+paths with their own defaults while each gate's table is present, every protected and verified
+path, `.gauntlet/` removed — lists it with `git ls-files -z -c -o --exclude-standard` through
+`run_cmd`, and hashes one `<sha256>  <path>` line per file, bytewise sorted: the wrapper's
+pipeline, reproduced byte for byte (both give `e41d0a7c…` over the wrapper's 128 files and
+`a8a00163…` over Gauntlet's 127 at the tag). No git, a non-zero exit, a listed file missing on
+disk, or a file name git cannot decode (the amendment, `8b64ca0`: a `UnicodeDecodeError` from
+`run_cmd` was escaping into the hook, which exits 1 and fails open) all mean no hash. `check`
+and `stop-check` both measure before any gate runs; every `run.finished` carries `tree` and
+`files`, null when unhashable; a wholly green run — every enabled gate selected, not
+`--changed`, every result passed, decided from the process's own results — writes
+`.gauntlet/last-green.json` (tree, files, run, at, command, gates; temp then replace; `at` is
+the `run.finished` line's own timestamp, and a run whose `run.finished` could not be written
+writes no record, since `Log.emit` now returns what it wrote). `stop-check` hashes before
+taking the lock and, when the record names that exact tree and the gates enabled now, emits one
+`run.reused` (`command`, `tree`, `files`, `reused_run`, `reused_at`), prints
+`gauntlet stop-check skipped: gated tree unchanged since green run <run>, <at>`, clears the
+session's attempts and exits 0; `--no-skip-unchanged` forces the run. A `stop-check` that runs
+now emits `run.started` and `run.finished` with `command: stop-check` inside the lock — item 4's
+stop-check half. `doctor` ties git to the skip path. Known divergences and debts: an empty
+gated tree hashes to nothing where the pipeline hashes empty stdin once (every gate is vacuous
+on it anyway); the acceptance gate's path defaults are restated in `tree.py` because
+`acceptance.run()` reads them inline, to be lifted into constants when that module next moves;
+`cli.py` is at 296 of 300 lines, so the next item touching it opens with an extraction.
+Thirty-seven tests, one parametrized over four corrupt records; own suite 551 in 49.7 s,
+coverage 96.76 / 92.23 (run `20260914T161254-2726665`). Regression run
+`20260914T171042-2731382` on the item-1 clone at `be87d38` with `.gauntlet/` and `mutants/`
+removed, Gauntlet at `8b64ca0` installed into the clone's uv venv (Python 3.14; item 1 had run
+the uv tool on PATH): exit 0 in 17 m 35 s, all eleven tuples identical to item 1's run and so
+to the tag's, compared by the agent and again by the advisor from the archived log; acceptance
+1,014.333 s; `run.finished` carrying `a8a00163…` over 127 as predicted; `gauntlet.lock.json`
+and the tree byte-identical after. Then `stop-check --max-attempts 1` on the unchanged tree,
+run `20260914T172831-2750689`: 0.198 s, exit 0, one `run.reused` line naming the first run and
+nothing else — the log differs from item 1's by the two fields and the one line the prediction
+named. First live skip on this repository: the Stop hook at 12:17:26Z deferring to the hand
+`check` of 12:14:42Z. Durations that moved for reasons outside the tuple: static 0.195 →
+3.821 s (cold mypy cache under the fresh interpreter), mutation 3.988 → 26.274 s (cold,
+`mutants/` removed).
+
 **Routes to:** BACKLOG.md, v1, beside "Run pairing in the event log is unreliable in two
 directions", whose patch this depends on.
 
-**Status.** Open; worked around on the ClaimGate side.
+**Status.** Applied. `1faa85e` and `8b64ca0` on `v1/item-2-tree-hash-skip`, on top of the
+human findings commit `73beee5`; regression run `20260914T171042-2731382` and skip
+`20260914T172831-2750689`, log archived at `~/gauntlet-review/item2-events-2026-09-14.jsonl`.
+Item 4 keeps its `check` half. A bounded `stop-check` that ran its gates was observed live at
+the close: run `20260914T203926-2762092`, `run.started` and `run.finished` with `command: stop-check` around nine
+`gate.finished` lines, tree `144a4209…` over 90.
 
 #### The only record of a verdict is a local log that is ignored by git and rotates destructively
 
@@ -3721,6 +3850,13 @@ describes, caught because the committed file still carried the script's expected
 `CLAUDE.md` carries start-up, environment and save-point sections since `2fdc06d`, so a prompt
 opening `Session start-up per CLAUDE.md, then:` now has something behind it. Next is item 1 below;
 its prediction paragraph is drafted and ratified before any code moves.)*
+
+*(Annotation, 2026-09-14: item 1 is applied and merged at `2e4970d`, verdict identical to the
+tag's on all eleven tuples, acceptance 3,736.757 s → 1,042.331 s. Item 2's design decisions and
+prediction were ratified 2026-09-14 before any code moved; by its decision (6) it takes item 4's
+stop-check half — the run boundary on `stop-check` — because the hash it records needs a
+`run.finished` line to live on, so item 4 below is reduced to its `check` half. The order is
+otherwise unchanged.)*
 
 **How to apply this file, decided 2026-09-07 with ClaimGate's owner.** During the build,
 Gauntlet was frozen and ClaimGate moved; when the prototype is complete the roles invert.

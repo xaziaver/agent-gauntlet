@@ -22,6 +22,7 @@ from gauntlet import config as config_mod
 from gauntlet import doctor as doctor_mod
 from gauntlet import guard as guard_mod
 from gauntlet import stop as stop_mod
+from gauntlet import tree as tree_mod
 from gauntlet.adapters import python as python_adapter
 from gauntlet.cli_approvals import lock, verify
 from gauntlet.cli_events import events_app
@@ -71,14 +72,11 @@ def _locked_run(root: Path, execute: Callable[[], list[base.GateResult]]) -> lis
         raise typer.Exit(code=EXIT_OK) from None
 
 
-def _finish(log: events.Log, results: list[base.GateResult]) -> None:
+def _finish(log: events.Log, results: list[base.GateResult], run: tree_mod.Invocation) -> None:
+    """Close the run in the log; remember the tree only when the run was wholly green."""
     _emit_approval_needed(log, results)
-    log.emit(
-        events.RUN_FINISHED,
-        command="check",
-        passed=report.passed(results),
-        failed=[r.gate for r in results if not r.passed],
-    )
+    finished = log.emit(events.RUN_FINISHED, **tree_mod.finished_fields(run, results))
+    tree_mod.remember(run, results, finished)
 
 
 def _read_stop_payload() -> dict[str, Any]:
@@ -148,9 +146,10 @@ def check(
     selected = _select_gates(gates, cfg)
     log = events.Log(root)
     ctx = runner.build_context(root, cfg, selected, changed)
+    run = tree_mod.Invocation(root, cfg, "check", tree_mod.measure(root, cfg), changed)
     log.emit(events.RUN_STARTED, command="check", gates=selected, changed=changed)
     results = _locked_run(root, lambda: runner.run_gates(ctx, cfg, selected, fail_fast, log))
-    _finish(log, results)
+    _finish(log, results, run)
     _emit(results, cfg.max_diagnostics, json_out)
 
 
@@ -216,16 +215,31 @@ def init(
         typer.echo("\nReview gauntlet.toml, then run `gauntlet lock` to approve it.")
 
 
+def _reuse(log: events.Log, session: str, record: tree_mod.GreenRecord, root: Path) -> NoReturn:
+    """The skip: one event naming the run deferred to, one line, a pass for the session."""
+    log.emit(events.RUN_REUSED, **tree_mod.reused_fields(record))
+    typer.echo(tree_mod.skip_line(record))
+    _stop_outcome(root, session, passed=True)
+    raise typer.Exit(code=EXIT_OK)
+
+
 def _stop_gates(
-    root: Path, cfg: config_mod.Config, log: events.Log, fail_fast: bool
+    root: Path, cfg: config_mod.Config, log: events.Log, session: str, fail_fast: bool, skip: bool
 ) -> list[base.GateResult]:
-    """The stop path's run: every enabled gate, whole tree, under the project lock."""
+    """Skip on a matching record; else every enabled gate under the lock, boundaries inside it."""
+    run = tree_mod.Invocation(root, cfg, "stop-check", tree_mod.measure(root, cfg))
+    record = tree_mod.reusable(run) if skip else None
+    if record is not None:
+        _reuse(log, session, record, root)
     selected = _select_gates("", cfg)
 
     def execute() -> list[base.GateResult]:
+        log.emit(events.RUN_STARTED, command=run.command, gates=selected, changed=run.changed)
         return runner.run_full_gauntlet(root, cfg, selected, log, fail_fast=fail_fast)
 
-    return _locked_run(root, execute)
+    results = _locked_run(root, execute)
+    _finish(log, results, run)
+    return results
 
 
 @app.command(name="stop-check")
@@ -236,17 +250,18 @@ def stop_check(
     fail_fast: bool = typer.Option(
         True, "--fail-fast/--no-fail-fast", help="Stop at the first failing gate"
     ),
+    skip_unchanged: bool = typer.Option(
+        True, "--skip-unchanged/--no-skip-unchanged", help=tree_mod.SKIP_HELP
+    ),
 ) -> None:
     """Stop hook: run the full gauntlet, bounded by a per-session retry cap.
 
-    Exit 2 tells Claude Code the agent is not finished and feeds the report back.
-    Once the cap is reached this exits 0 with a systemMessage, handing the problem
-    to the human rather than looping forever.
+    Exit 2 means not finished, report fed back; at the cap, exit 0 with a systemMessage.
     """
     root, cfg = _resolve_config()
     session = stop_mod.session_id(_read_stop_payload())
     log = events.Log(root)
-    results = _stop_gates(root, cfg, log, fail_fast)
+    results = _stop_gates(root, cfg, log, session, fail_fast, skip_unchanged)
     count = _stop_outcome(root, session, report.passed(results))
     if count == 0:
         raise typer.Exit(code=EXIT_OK)
