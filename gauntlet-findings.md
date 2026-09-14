@@ -1244,10 +1244,36 @@ times low: pytest start-up is a ~0.4 s floor per mutant, so scoping saves roughl
 wall time, not nineteen twentieths. The measurement's per-spec results are in the owner's review
 directory as `scoped-results.jsonl`, sha256 `1defb33befa81e1c`.)*
 
+**Change, applied 2026-09-13, amended 2026-09-14.** `acceptance/binding.py` (new, pure) discovers
+the step modules that bind a feature from the `scenarios(...)` and `scenario(...)` calls in every
+`.py` under the steps directory, on every call; `gates/acceptance.py` gains `targets_for(config,
+steps, feature)` — `[steps]` under `scope = "directory"`, else the bound modules or `[steps]` —
+which `survivors_for` passes to `_survivors` in place of the directory, and `_record_scope` writes
+`.gauntlet/acceptance-scope.json` after the mutation loop; `adapters/python.py` `run_acceptance`
+takes one path or several. The loop, the backup and the restore are unchanged, and every chosen
+mutant still runs before `classify` sees the ledger. Commits `ae591d5` (the change, twelve tests,
+`docs/GATES.md` cost paragraph, two `ARCHITECTURE.md` deliberate-oddities bullets) and `3ef2745`
+(an unparsable or non-UTF-8 step file binds nothing — advisor reversal of an agent judgment that
+let `ast.parse` raise, which would have exited 1 and failed the Stop hook open; one test).
+Regression run `20260913T222906-2657107`, `gauntlet check` in a fresh clone of `be87d38` with this
+repository at `3ef2745` and a clean tree recorded before it: all eleven `gate.finished` tuples
+identical to the baseline run `20260911T110451-2238600`, compared field by field by the agent and
+again by the advisor from the archived log; lock byte-identical (`61c2ac4d30025e8c`); clone tree
+clean after; sixteen backups; the scope record names one module per feature; the only other lines
+are the `run.started`/`run.finished` pair `check` emits. Acceptance duration 3,736.757 s →
+1,042.331 s, 72 % saved, 3.6×: above the prediction's 700–1,000 s, which was labelled a floor to
+check and was 4 % low. A first launch of the run, `20260913T222806-2655353`, was stopped by the
+agent seventeen seconds in, during the mutation gate, and left mutmut's `mutants/` working copy on
+disk before the completed run's mutation gate ran; that gate's line matched the baseline, and the
+caveat was retired by removing the directory and re-running the gate alone in the clone (run
+`20260914T105020-2707417`, score 100.0 %, 757 killed).
+
 **Routes to:** BACKLOG.md, v1. The largest single payoff in this file.
 
-**Status.** In flight on `v1/item-1-per-mutant-scoping` — design decisions and prediction ratified
-2026-09-13; deferred to the end of the ClaimGate build by human decision, 2026-09-08.
+**Status.** Applied. `ae591d5` and `3ef2745` on `v1/item-1-per-mutant-scoping`; regression run
+`20260913T222906-2657107` identical to the baseline on all eleven tuples, compared by the advisor
+2026-09-14 from the archived log. Deferred to the end of the ClaimGate build by human decision,
+2026-09-08.
 
 #### The stop-check records no tree hash, so a documents-only turn pays a full run
 

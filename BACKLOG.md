@@ -118,6 +118,22 @@ Every session reads `CLAUDE.md` and this file. Then, per item:
 
 ## Status as of this handoff
 
+**2026-09-14, G3 item 1 applied.** `ae591d5` and `3ef2745` on `v1/item-1-per-mutant-scoping`, on
+top of the human findings commits `675dd9f` and `e8b5370` and the housekeeping `0f2a5ff`;
+verified against `origin` by the advisor: footprint, digests, every transcribed passage, sizes
+from `ast`, twelve tests plus one. Regression run `20260913T222906-2657107`, `gauntlet check` in a
+fresh clone of `be87d38` (`~/gauntlet-review/claimgate-item1`, toolchain from
+`requirements-dev.txt`, `gauntlet doctor` clean) with this repository at `3ef2745` and porcelain
+empty recorded before it: exit 0; all eleven `gate.finished` tuples identical to
+`20260911T110451-2238600`, compared by the agent and again by the advisor from the archived log;
+lock `61c2ac4d30025e8c` unchanged; clone tree clean after; `.gauntlet/acceptance-scope.json` names
+one module per feature, `scope: module`. Acceptance 1,042.331 s against the baseline's 3,736.757 s
+— the figure every later G3 run should expect from that gate. A first launch,
+`20260913T222806-2655353`, was stopped seventeen seconds in during the mutation gate; its leftover
+`mutants/` was removed and that gate re-run alone (run `20260914T105020-2707417`: score 100.0 %, 757 killed).
+Own baseline updated below. Next: the branch merges to `main` (`--no-ff`, human), then item 2 of
+the note's order on its own `v1/item-2-<name>` branch.
+
 **2026-09-13, close of clean-up.** G2f landed at `1539205`, verified against `origin` by the advisor;
 `0449c6b`, `2fdc06d` and `1539205` were merged to `main` at `c6c22da`, one `--no-ff` merge with
 `cleanup/documents` fast-forwarded to it. The 2026-09-13 advisor session's findings save point is
@@ -153,16 +169,18 @@ recorded immediately before it: `gauntlet` is installed with `uv tool install --
 this working tree is the tool, and a checkout here changes what every ClaimGate hook runs at once.
 
 **This repository's own baseline.** Nine gates configured: protect, static, size, complexity, tests,
-coverage, crap, duplication, acceptance; no `[gates.boundary]` or `[gates.mutation]`. The turn-end
-stop-check after G2d, run `20260913T093143-2601684`, stamped 2026-09-13T09:31:43Z to 09:32:20Z, read
-by the human from `.gauntlet/events.jsonl` and by the advisor from the pasted lines: protect 3/3
-paths unchanged; static 0 findings; size worst function 25; complexity 6; tests 498/498 passing in
-36.328 s; coverage line 96.54, branch 91.75 against floors of 95, 90 and per-file 80; crap 9.32;
-duplication 0; acceptance "no feature files" (vacuous). Diagnostics 0 and error null on all nine,
-identical to the run after G2b except the tests duration (34.641 s). Stop hook budget 600 s; a full
-own-run is about 37 s by the timestamps. The suite is `.venv/bin/pytest tests -q -p no:cacheprovider`; the `pytest` on PATH
-is not the venv's and collects nothing. Branch coverage has 1.75 points of headroom over its floor:
-a G3 change that adds an untested branch goes red here before it reaches the subject.
+coverage, crap, duplication, acceptance; no `[gates.boundary]` or `[gates.mutation]`. The `gauntlet
+check` after the item-1 amendment, run `20260913T222626-2654730`, stamped 2026-09-13T22:26:26Z to
+22:27:17Z, agent-quoted and read by the advisor from the paste: protect 3/3 paths unchanged; static
+0 findings; size worst function 25; complexity 6; tests 511/511 passing in 50.161 s; coverage line
+96.6, branch 91.89 against floors of 95, 90 and per-file 80; crap 9.32; duplication 0; acceptance
+"no feature files" (vacuous). Diagnostics 0 and error null on all nine. Before item 1 (run
+`20260913T093143-2601684`, after G2d) the suite was 498 tests in 36.328 s at 96.54 / 91.75; the two
+item-1 tests that run a real pytest-bdd project account for about 9 s of the difference. Stop hook
+budget 600 s; a full own-run is about 51 s by the timestamps. The suite is `.venv/bin/pytest tests
+-q -p no:cacheprovider`; the `pytest` on PATH is not the venv's and collects nothing. Branch
+coverage has 1.89 points of headroom over its floor: a G3 change that adds an untested branch goes
+red here before it reaches the subject.
 
 **The inventory of 2026-09-12**, read-only, agent-produced, from which this file was written.
 Three source-line citations in the findings resolve at `a0ef78d` (`cli.py:151` and `cli.py:151-152`
