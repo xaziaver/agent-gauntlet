@@ -33,7 +33,7 @@ CHECK_ORDER = (
 
 # Which gates need which tool. Gates absent here need only the standard library.
 GATES_BY_TOOL = {
-    "git": ("--changed",),
+    "git": ("--changed", "stop-check --skip-unchanged"),
     "ruff": ("static",),
     "mypy": ("static",),
     "radon": ("complexity", "crap"),

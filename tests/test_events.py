@@ -106,3 +106,15 @@ def test_payload_fields_never_shadow_the_envelope(tmp_path: Path) -> None:
     item = _lines(tmp_path)[0]
     assert item["kind"] == events.RUN_STARTED
     assert item["run"] == "run-1"
+
+
+def test_emit_returns_the_event_it_wrote(tmp_path: Path) -> None:
+    written = events.Log(tmp_path).emit("run.finished", passed=True)
+    assert written is not None
+    assert written.kind == "run.finished"
+    (line,) = events.read(events.events_path(tmp_path))
+    assert (line["run"], line["at"]) == (written.run, written.at)
+
+
+def test_a_disabled_log_returns_nothing_from_emit() -> None:
+    assert events.disabled().emit("run.finished") is None
