@@ -478,6 +478,11 @@ reach `run_full_gauntlet(..., changed=False)`, so their eleven gate results are 
 `check` adds `run.started` and `run.finished`, `stop-check` emits neither — read from the source at
 `3ef2745` for item 1's comparison.)*
 
+*(Annotation, 2026-09-14, close of item 2: the cache remedy landed as item 2 —
+`.gauntlet/last-green.json`, written by any wholly green `check` or `stop-check`, read by
+`stop-check` alone. The second cost's fix, the agent's own `check` counting, was exercised on
+the subject: a `check` at 17:10Z and a `stop-check` deferring to it at 17:28Z in 0.198 s.)*
+
 **What it cost us.** Roughly eight minutes per full check at current size, several times per
 session, growing monotonically. No correctness cost.
 
@@ -1437,10 +1442,55 @@ exercised on the subject; it adds `run.started` and `run.finished` with `command
 around its `gate.finished` lines (decision 6), pinned by the tool's own tests and visible in
 this repository's own Stop hook runs.
 
+**Change, applied 2026-09-14, amended the same day.** `tree.py` (new, 243 lines) derives the
+gated path list from a `Config` — `src`, `tests`, the acceptance and boundary gates' configured
+paths with their own defaults while each gate's table is present, every protected and verified
+path, `.gauntlet/` removed — lists it with `git ls-files -z -c -o --exclude-standard` through
+`run_cmd`, and hashes one `<sha256>  <path>` line per file, bytewise sorted: the wrapper's
+pipeline, reproduced byte for byte (both give `e41d0a7c…` over the wrapper's 128 files and
+`a8a00163…` over Gauntlet's 127 at the tag). No git, a non-zero exit, a listed file missing on
+disk, or a file name git cannot decode (the amendment, `8b64ca0`: a `UnicodeDecodeError` from
+`run_cmd` was escaping into the hook, which exits 1 and fails open) all mean no hash. `check`
+and `stop-check` both measure before any gate runs; every `run.finished` carries `tree` and
+`files`, null when unhashable; a wholly green run — every enabled gate selected, not
+`--changed`, every result passed, decided from the process's own results — writes
+`.gauntlet/last-green.json` (tree, files, run, at, command, gates; temp then replace; `at` is
+the `run.finished` line's own timestamp, and a run whose `run.finished` could not be written
+writes no record, since `Log.emit` now returns what it wrote). `stop-check` hashes before
+taking the lock and, when the record names that exact tree and the gates enabled now, emits one
+`run.reused` (`command`, `tree`, `files`, `reused_run`, `reused_at`), prints
+`gauntlet stop-check skipped: gated tree unchanged since green run <run>, <at>`, clears the
+session's attempts and exits 0; `--no-skip-unchanged` forces the run. A `stop-check` that runs
+now emits `run.started` and `run.finished` with `command: stop-check` inside the lock — item 4's
+stop-check half. `doctor` ties git to the skip path. Known divergences and debts: an empty
+gated tree hashes to nothing where the pipeline hashes empty stdin once (every gate is vacuous
+on it anyway); the acceptance gate's path defaults are restated in `tree.py` because
+`acceptance.run()` reads them inline, to be lifted into constants when that module next moves;
+`cli.py` is at 296 of 300 lines, so the next item touching it opens with an extraction.
+Thirty-seven tests, one parametrized over four corrupt records; own suite 551 in 49.7 s,
+coverage 96.76 / 92.23 (run `20260914T161254-2726665`). Regression run
+`20260914T171042-2731382` on the item-1 clone at `be87d38` with `.gauntlet/` and `mutants/`
+removed, Gauntlet at `8b64ca0` installed into the clone's uv venv (Python 3.14; item 1 had run
+the uv tool on PATH): exit 0 in 17 m 35 s, all eleven tuples identical to item 1's run and so
+to the tag's, compared by the agent and again by the advisor from the archived log; acceptance
+1,014.333 s; `run.finished` carrying `a8a00163…` over 127 as predicted; `gauntlet.lock.json`
+and the tree byte-identical after. Then `stop-check --max-attempts 1` on the unchanged tree,
+run `20260914T172831-2750689`: 0.198 s, exit 0, one `run.reused` line naming the first run and
+nothing else — the log differs from item 1's by the two fields and the one line the prediction
+named. First live skip on this repository: the Stop hook at 12:17:26Z deferring to the hand
+`check` of 12:14:42Z. Durations that moved for reasons outside the tuple: static 0.195 →
+3.821 s (cold mypy cache under the fresh interpreter), mutation 3.988 → 26.274 s (cold,
+`mutants/` removed).
+
 **Routes to:** BACKLOG.md, v1, beside "Run pairing in the event log is unreliable in two
 directions", whose patch this depends on.
 
-**Status.** Open; worked around on the ClaimGate side.
+**Status.** Applied. `1faa85e` and `8b64ca0` on `v1/item-2-tree-hash-skip`, on top of the
+human findings commit `73beee5`; regression run `20260914T171042-2731382` and skip
+`20260914T172831-2750689`, log archived at `~/gauntlet-review/item2-events-2026-09-14.jsonl`.
+Item 4 keeps its `check` half. A bounded `stop-check` that ran its gates was observed live at
+the close: run `20260914T203926-2762092`, `run.started` and `run.finished` with `command: stop-check` around nine
+`gate.finished` lines, tree `144a4209…` over 90.
 
 #### The only record of a verdict is a local log that is ignored by git and rotates destructively
 

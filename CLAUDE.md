@@ -33,10 +33,14 @@ Everything above the block is hand-written and survives `init`; edit only there.
   Whatever this tree holds is the tool that runs here and in every hook of ClaimGate, the
   regression subject; a checkout here changes what ClaimGate's hooks run the instant it
   happens. CI runs the committed tree with `uv run gauntlet check --json`.
-- The tool under change is also the checker. `stop-check` prints nothing on a pass and
-  exits 1 on a crash, which Claude Code ignores, so a silent turn end proves nothing. A
-  gate figure is a `gate.finished` line in `.gauntlet/events.jsonl`, quoted; never a memory
-  of one. `check` emits `run.started` and `run.finished` lines; `stop-check` emits none.
+- The tool under change is also the checker. `stop-check` prints nothing on a pass that ran
+  the gates, one line on a skip (`gauntlet stop-check skipped: gated tree unchanged since green
+  run …`), and exits 1 on a crash, which Claude Code ignores, so a silent turn end proves
+  nothing. A gate figure is a `gate.finished` line in `.gauntlet/events.jsonl`, quoted; never a
+  memory of one. `check` and `stop-check` both emit `run.started` and `run.finished`; a
+  `stop-check` that skips emits one `run.reused` line instead. The hook skips whenever your own
+  `gauntlet check` was green on the same tree, so its line at a turn end is read from the log,
+  never inferred.
 - The suite is `.venv/bin/pytest tests -q -p no:cacheprovider`. The `pytest` on PATH is not
   the venv's and collects nothing.
 - The Stop hook budget is 600 s (`.claude/settings.json`) against a full own-run of under
