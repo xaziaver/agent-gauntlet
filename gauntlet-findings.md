@@ -2757,6 +2757,33 @@ the cheap addition this argues for: `spec approve` and `mutant approve` print a 
 `check` warns when `gauntlet.lock.json` differs from its committed state — the ledger is the one
 artifact where "uncommitted" and "at risk" are the same word.
 
+#### `run_cmd` decodes tool output strictly, so a non-UTF-8 byte from any tool is an uncaught exception in a hook
+
+**What happened.** `gates/base.py`'s `run_cmd` is `subprocess.run(..., text=True)` with the locale's
+encoding and strict errors. It converts timeouts and missing executables into ordinary results, as
+`ARCHITECTURE.md` says, but a `UnicodeDecodeError` raised while decoding a tool's stdout or stderr
+passes straight through it. Found 2026-09-14 while reviewing item 2, whose `git ls-files -z` call
+lists raw file names through the same function: a name git cannot decode would have raised inside
+the Stop hook.
+
+**Why it matters.** An uncaught exception in a hook exits 1, which Claude Code treats as
+non-blocking, so the hook fails open and silently — the failure mode the 2026-09-12 annotation
+under "The Stop hook never passes vacuously" describes. Every gate that runs a tool is exposed: a
+test that prints a raw byte, a mutant that produces one, a linter echoing a file name. Not observed
+on either repository; nothing in them has such a byte.
+
+**What would address it.** Decode with `errors="replace"` in `run_cmd`, or catch
+`UnicodeDecodeError` there and return a failed `CompletedProcess` the caller reports as a gate
+error. Item 2 took the narrow fix for its one call (`tree._listing` returns "no hash", so a full
+run, at `8b64ca0`); the general fix belongs to `run_cmd` and to the near-miss bucket of the v1
+pass, beside ledger atomicity.
+
+**What it cost us.** Nothing realized.
+
+**Routes to:** `BACKLOG.md`, v1, small.
+
+**Status.** Open.
+
 #### An automatic retry loop repeats the one gate that rewrites the working tree
 
 **What happened.** The stop hook retries a failing `gauntlet check`. Observed at 2, 5, and 7
@@ -3625,6 +3652,12 @@ check` that crashes exits 1, which Claude Code treats as non-blocking by design,
 silence at a turn end is confirmed from the `gate.finished` lines — nine of them, the tool's own
 baseline in `BACKLOG.md` — never inferred.)*
 
+*(Annotation, 2026-09-14: since item 2 the hook's turn-end line on this repository is either nine
+`gate.finished` lines between `run.started` and `run.finished` with `command: stop-check`, or one
+`run.reused` naming the green run it deferred to — the hook skips whenever the hand `gauntlet check`
+was green on the same tree. Both are read from the log; a silent turn end still proves nothing, and
+a skip that should not have happened looks exactly like one that should.)*
+
 ### The approval stage short-circuits before the expensive one
 
 When a spec is unapproved or modified, the acceptance gate reports and returns in about a
@@ -3662,6 +3695,30 @@ hook runs every gate after the first failure" — 2630s to report a millisecond 
 can break it on its own: reordering `DEFAULT_GATE_ORDER` to put an expensive gate early, or
 restoring the old default so the hook runs everything. A refactor that adds a gate must place it
 by cost, and one that touches the stop path must keep `fail_fast` on.
+
+### A stop-check on an unchanged wholly green tree skips in seconds, and every failure to hash is a full run
+
+Since 2026-09-14 (G3 item 2) `stop-check` hashes the gated tree before taking the lock and defers
+to `.gauntlet/last-green.json` when that record names the same tree and the same enabled gates: one
+`run.reused` line, one stdout line, exit 0, no gate run — 0.198 s on ClaimGate at the tag against a
+17 m 35 s full run. Four things hold it up, and each can be broken on its own. The hash is the
+wrapper's pipeline byte for byte — `git ls-files -z -c -o --exclude-standard` over the gated paths,
+one `<sha256>  <path>` line per file, bytewise sorted, sha256 of those lines — so a value in the log
+is recomputable from a clone with two shell commands; a "faster" hash that drops the path from the
+line, changes the sort, or reads the index instead of the working tree stops being checkable
+outside the tool. The gated paths are every path a gate reads (`src`, `tests`, the acceptance and
+boundary paths, protected and verified paths) and never `.gauntlet/`, which gates write; a gate
+that reads a path outside that set without the path being added makes a turn that edits only that
+path skip wrongly. Every way the hash can fail — no git, a non-zero exit, a listed file missing, a
+name git cannot decode — yields no hash, which yields a full run and a record-less `run.finished`
+with `tree: null`; a "fix" that lets an exception escape reopens the fail-open hook (`stop-check`
+exits 1, Claude Code ignores it), and one that treats a failure as a match skips on an error. The
+record is written only by a wholly green run (every enabled gate, not `--changed`, all passed)
+from the process's own results, and read only by `stop-check`; it is a skip cache, never evidence
+— a verdict is a run's `gate.finished` lines, and item 3's committed record is a different
+artifact. The regression evidence is the two-invocation run in the item's entry: a `check`, then a
+`stop-check` on the unchanged tree, the log differing from a plain `check` by two `run.finished`
+fields and one `run.reused` line, and nothing else.
 
 ### Mutant locators are structural, not positional
 
@@ -3857,6 +3914,11 @@ prediction were ratified 2026-09-14 before any code moved; by its decision (6) i
 stop-check half — the run boundary on `stop-check` — because the hash it records needs a
 `run.finished` line to live on, so item 4 below is reduced to its `check` half. The order is
 otherwise unchanged.)*
+
+*(Annotation, 2026-09-14, later: item 2 is applied — `1faa85e`, amended `8b64ca0`, closed
+`bfb8b1a`, merged to `main` the same day — with the regression run and the skip named in its entry
+and its property recorded under *Properties to preserve*. Next is item 3; its ground includes what
+`.gauntlet/last-green.json` already holds and what it must never be mistaken for.)*
 
 **How to apply this file, decided 2026-09-07 with ClaimGate's owner.** During the build,
 Gauntlet was frozen and ClaimGate moved; when the prototype is complete the roles invert.

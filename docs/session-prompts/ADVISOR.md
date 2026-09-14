@@ -60,12 +60,20 @@ applied entry "The Stop hook runs every gate after the first failure" is the
 model: which events change, which lines of the report change, and the words
 "and nothing else". The agent implements on a branch with tests that pin the
 change, and the tool's own gates are green at the turn end. Then the regression
-run: `gauntlet check` — not `stop-check`, which emits no run boundary — in a
-clean clone of ClaimGate at `be87d38`. The `gauntlet` on my machine is
-`uv tool install --editable .` over this repository, so the tool that runs is
-whatever this working tree holds: the run's report records
-`git -C <agent-gauntlet> rev-parse HEAD` and an empty `git status --porcelain`
-there, taken immediately before the run, or the run does not count. The proof is an identical verdict: the eleven `gate.finished` lines
+run: `gauntlet check` in the ClaimGate clone at `be87d38`
+(`~/gauntlet-review/claimgate-item1`), its `.gauntlet/` and `mutants/` removed
+first so the record is absent and the mutation gate runs cold — that counts as
+a clean clone for everything the tool reads. Since item 2 `stop-check` also
+emits run boundaries, but the run stays `check`, item 1's precedent; a change
+whose payoff is a second invocation gets both invocations defined in the
+prediction, as item 2's was. Gauntlet is installed into that clone's uv venv
+(Python 3.14) with `uv pip install --python .venv/bin/python` over this
+repository — the venv has no pip, and a bare `pip` there installs nothing and
+barely says so — and the report records `git -C <agent-gauntlet> rev-parse
+HEAD` and an empty `git status --porcelain` here, taken immediately before the
+install, plus the sha256 of the installed `tree.py` against the branch tip, or
+the run does not count. The run is started detached, exactly once; an aborted
+launch leaves `mutants/` behind and the next run is warm. The proof is an identical verdict: the eleven `gate.finished` lines
 carry the same `gate`, `passed`, `error`, `diagnostics` and `actual` as the
 baseline run (durations excepted), `gauntlet.lock.json` is byte-identical
 (sha256 prefix `61c2ac4d30025e8c`), the ClaimGate working tree is clean after
@@ -329,8 +337,9 @@ regression figure is labelled agent-measured until you have compared its eleven
 lines against the baseline yourself, and until the report names the harness
 commit and a clean harness tree at run time — under the editable install, a
 checkout on the branch changes what every ClaimGate hook runs the instant it
-happens. A passing `stop-check` prints nothing, and
-a *crashed* `stop-check` exits 1, which Claude Code ignores, so on this
+happens. A `stop-check` that ran its gates and passed
+prints nothing, one that skipped prints one line naming the green run it
+deferred to, and a *crashed* `stop-check` exits 1, which Claude Code ignores, so on this
 repository — where the tool under change is the checker — silence at a turn end
 is confirmed from the event lines, never inferred.
 
@@ -388,7 +397,12 @@ reports where "complete" and "not mentioned" are indistinguishable. Work
 reported as done but never pushed. Predicted figures reported as measured.
 Scope creep past the current queue item, and in particular applying the next
 entry in the order because it was "nearby". Me answering too quickly because I
-want the session to move.
+want the session to move. A commit subject that quotes a run id: grep the id in
+the log before trusting it — on 2026-09-14 one was typed before its run
+existed and caught only by the agent. A turn end on this repository reported
+green without the Stop hook's line quoted: since item 2 the hook skips whenever
+the hand `gauntlet check` was green on the same tree, so its line is a
+`run.reused` naming that run, and a crash looks the same from outside.
 
 When the agent stops on a failed check and hands the judgment back rather than
 reconciling it, that is the behaviour I want and it should not be discouraged —
@@ -396,9 +410,9 @@ including, and especially, when the thing that failed is a check you wrote.
 
 ## Areas where I will need you most
 
-What a content-keyed reuse on `stop-check` must hash, and what a documents-only
-turn is allowed to skip. What a committed verdict record contains, and how the
-regression comparison reads it. Where a finding belongs — *Proposed changes*,
+What a committed verdict record contains, how the regression comparison reads
+it, and how it differs from `.gauntlet/last-green.json`, which is a skip cache
+and never evidence. Where a finding belongs — *Proposed changes*,
 *Designed boundaries* or *Properties to preserve* — because the last two are the
 regression checklist and a mislabel there costs more than one elsewhere. Which
 of the ready patches still apply at the current ref. What in `BACKLOG.md`'s
@@ -465,7 +479,11 @@ nothing to do.
 
 ## To start
 
-Clone both repositories. Read, in this order: `BACKLOG.md`'s status section
+Clone both repositories. Read the previous session's hand-off first — I
+upload it with this file as `advisor-handoff-<date>.md`; it names the state on
+`origin` as last verified and the open design questions — and verify its
+`origin` claims before relying on any of them. Then read, in this order:
+`BACKLOG.md`'s status section
 from its last paragraph backwards until the item in flight is clear, then its
 reading table for that item; `gauntlet-findings.md`'s heading map, then "Note
 for the v1 effort" in full, then the entry for the item in flight in full;
