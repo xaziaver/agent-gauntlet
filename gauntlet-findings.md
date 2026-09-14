@@ -1207,6 +1207,18 @@ ledger is consulted — the constraint under "The acceptance gate re-runs every 
 binds this change too. (7) `gauntlet mutant approve` and `prune` inherit the scoping through
 `survivors_for`, by design, and a test pins it.
 
+*(Annotation, 2026-09-14, on decision (1) as built: the discovery reads every `.py` under the steps
+directory, recursively, not only `test_*.py` — the implementation prompt said `*.py` and the agent
+built to the prompt; the superset is the right reading, since it survives `*_test.py` and a custom
+`python_files`, and since the amendment at `3ef2745` a file that cannot be read as UTF-8 or parsed
+binds nothing instead of raising — nothing between a gate and the exit code catches an exception,
+and an exit 1 fails the Stop hook open, so this was an advisor reversal of an agent judgment that
+had let `ast.parse` raise. `pytest_bdd.scenarios(...)` binds like the bare name. Only the first
+string literal of a multi-argument `scenarios(...)` binds; a second feature named in the same call
+falls back to the whole directory, which is the safe side. The scope record recomputes the binding
+after the loop rather than capturing what `_survivors` received; the two agree because discovery is
+deterministic over files the run never writes.)*
+
 **Predicted effect on the regression subject, 2026-09-13.** The verdict is identical. All eleven
 `gate.finished` lines carry the same `gate`, `passed`, `error`, `diagnostics` and `actual` as run
 `20260911T110451-2238600`; the acceptance line stays `16 spec(s), 73 reviewed-equivalent` with
@@ -2706,6 +2718,26 @@ exactly as mutable as the same line in a plain scenario, and mutating it is exac
 mutants covered rather than reading the count.
 
 **Routes to.** `BACKLOG.md`.
+
+**Status.** Open.
+
+#### `AcceptanceAdapter` in `adapters/base.py` is a protocol nothing implements or reads
+
+**What happened.** Found while applying item 1, 2026-09-13. `adapters/base.py` defines `class
+AcceptanceAdapter(Protocol)` with `run_acceptance(self, root, targets, timeout)`; the only
+`run_acceptance` in the tree is the module-level function in `adapters/python.py`, whose signature
+also carries `python: str`, and nothing in `src/` or `tests/` names the protocol except its
+definition. Item 1 mirrored its new `targets` type onto the protocol because the prompt asked it to,
+which kept a dead declaration in step with live code for no reader.
+
+**What would address it.** Delete the protocol, or make it true: give it the `python` parameter and
+have the gate depend on it rather than on the module. Deletion is a line count. The second is the
+language-adapter seam `ARCHITECTURE.md`'s "How to add a language adapter" describes, and is worth
+doing only when a second adapter exists.
+
+**What it cost us.** Nothing; one line of an item-1 diff, and a sentence in its report.
+
+**Routes to.** `BACKLOG.md`, v1, "everything else".
 
 **Status.** Open.
 
