@@ -299,6 +299,21 @@ def test_export_refuses_a_reused_run_and_names_the_run_it_deferred_to(
     assert not out.exists()
 
 
+def test_export_of_a_run_with_no_gate_lines_exits_one(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A run.started with nothing after it (lock-rejected, or killed before its first gate)."""
+    monkeypatch.chdir(tmp_path)
+    log = tmp_path / "events.jsonl"
+    events.Log(tmp_path, run="r1").emit(events.RUN_STARTED, command="check", gates=["size"])
+    log.write_bytes(events.events_path(tmp_path).read_bytes())
+    out = tmp_path / "verdict.json"
+    result = runner.invoke(app, ["verdict", "export", "r1", str(out), "--log", str(log)])
+    assert result.exit_code == EXIT_CONFIG_ERROR
+    assert "run r1 ran no gate" in _text(result)
+    assert not out.exists()
+
+
 def test_export_of_a_run_with_a_short_gate_line_exits_one(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
