@@ -682,6 +682,12 @@ that a lock-rejected run emits no `run.started`. Anchors re-checked at `2e4970d`
 are still exactly the two lines the patch replaces; `stop_check` is at `cli.py:232`, with the
 locked run factored into `_stop_gates` at 219.)*
 
+*(Annotation, 2026-09-15: anchors re-checked at `4c498ce`, after item 3. The two lines the patch
+replaces are still adjacent and unchanged in text, now at `cli.py:160-161`, below the `--record`
+refusal item 3 added to `check`; `_stop_gates` is at 237 and `stop_check` at 257. The lock-rejection
+test that exists is `test_cli.py::test_a_concurrent_run_exits_zero_rather_than_interleaving` (371);
+the test this half adds is that such a run emits no `run.started`.)*
+
 #### The acceptance gate short-circuits mutation on an approval failure
 
 **What happened.** One dangling approval key (`spec:features/siu_flags.feature`, see below) made
@@ -1620,6 +1626,16 @@ and the archive copy's sha256 `49395ea8c36d633f` unchanged after. Fourth, cheap:
 first invocation's own run id from the clone's live log equals the `--record` file in every field
 but `harness`. A `stop-check` that runs its gates is unchanged by this item.
 
+*(Annotation, 2026-09-15, on the prediction above. Two of its phrases went wrong in the way item
+1's 2026-09-14 annotation on predicting durations describes. "Near item 2's 1,014.333 s (a floor,
+not a target)" was one earlier run on the same machine; the run came in at 966.337 s, 4.7 % under.
+"`.gauntlet/` gains `last-green.json`" was read, correctly, as a listing, against which the six
+other artifacts every run writes there were unnamed differences. Both were correct stops by the
+agent and both were ruled not stops, and they point the same way: a prediction states no duration
+unless it names the regime and the band, and a prediction that will be checked against a listing
+names the whole listing. The proof is the eleven tuples — one digest since this item — the tree,
+the lock and the clean tree; nothing else in the paragraph should read as one.)*
+
 **Change, applied 2026-09-15.** First an extraction, `c42426c`: `doctor` and `version` moved to
 `cli_doctor.py`, registered as `lock` and `verify` are, `cli.py` 295 → 274, behaviour unchanged.
 Then `81b2bcb`. `verdict.py` (new, 197 lines) builds the record two ways — `from_run`, from the
@@ -1681,6 +1697,12 @@ code that produced a verdict is whatever that tree held at the time; the archive
 not say, and it was established after the fact that `a0ef78d`'s source equals `4fc5c34`'s. Two
 fields for the record: the harness commit, and whether its tree was clean. Until this lands, every
 regression run states both immediately before it starts.)*
+
+*(Annotation, 2026-09-15: superseded by decision (8) above. The record names the harness by
+content — `harness.source`, the package pipeline — not by a commit field the tool cannot check;
+the commit is recovered by recomputing the pipeline at a ref, and "clean" is the digest equalling
+the ref's. The rule that every regression run states the commit and an empty porcelain before it
+starts is unchanged; it is the human's report that carries them.)*
 
 *(Annotation, 2026-09-13: the archived baseline is not in the tag. `docs/queue-history/events-
 prototype-1.jsonl` fails `git show prototype-1:<path>`; it was first committed at ClaimGate
@@ -3873,6 +3895,27 @@ artifact. The regression evidence is the two-invocation run in the item's entry:
 `stop-check` on the unchanged tree, the log differing from a plain `check` by two `run.finished`
 fields and one `run.reused` line, and nothing else.
 
+### A verdict record digests the five fields the regression pass compares, and is checkable from a clone
+
+Since 2026-09-15 (G3 item 3) `check --record PATH` writes a run's `gate.finished` lines, its tree
+and its harness to a path the caller names, and `verdict export` rebuilds the same shape from any
+copy of the log. Three things hold it up. The digest covers `gate`, `passed`, `error`,
+`diagnostics` and `actual` in run order — canonical JSON, each value round-tripped through the
+log's own serialisation — and nothing else: a record built live and one exported from the log
+digest identically (`9c7aececf56dc4f5…` for the tag's run from the archive and for item 3's
+regression run from its own results), and a field added to the digest — a duration, a timestamp,
+the tree — breaks the comparison across machines and against the archived baseline, which has no
+tree. The record lives outside `.gauntlet/` and outside every gated path, and is refused otherwise
+before any gate runs: inside the gated tree it would move the hash the skip cache compares, and
+inside `.gauntlet/` it would be gitignored and gate-writable, the two things it exists not to be.
+`harness.source` is the tree-hash pipeline over the installed package's `.py` files with a walk in
+place of `git ls-files`, recomputable from a clone at a ref; a harness field read from git at the
+install path lies under a non-editable install, and one that only states a commit is a claim no one
+can check. `stop-check` writes no record and nothing reads one; the skip cache stays what the
+property above says. The regression evidence is item 3's entry: a `--record` run equal to the tag's
+on the digest, a skip after it, and an export of the tag's run from the archive with seven null
+fields and the same digest.
+
 ### Mutant locators are structural, not positional
 
 A locator is scenario name, kind, column, and row values — not a line number and not a file offset.
@@ -4072,6 +4115,14 @@ otherwise unchanged.)*
 `bfb8b1a`, merged to `main` the same day — with the regression run and the skip named in its entry
 and its property recorded under *Properties to preserve*. Next is item 3; its ground includes what
 `.gauntlet/last-green.json` already holds and what it must never be mistaken for.)*
+
+*(Annotation, 2026-09-15: item 3 is applied — `c42426c`, `81b2bcb`, closed `4c498ce`, merged to
+`main` the same day — with the regression run, the skip and the export named in its entry and its
+property under *Properties to preserve*; the tag's own record exists in the owner's review
+directory and lands in ClaimGate at C4. Next is item 4's `check` half: the `run.started` emit moved
+inside the lock, and the test that a lock-rejected run emits no `run.started`. Its prediction on
+the subject is that nothing changes, and that prediction gets the same scrutiny as one that says
+something does.)*
 
 **How to apply this file, decided 2026-09-07 with ClaimGate's owner.** During the build,
 Gauntlet was frozen and ClaimGate moved; when the prototype is complete the roles invert.

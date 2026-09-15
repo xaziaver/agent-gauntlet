@@ -60,7 +60,8 @@ applied entry "The Stop hook runs every gate after the first failure" is the
 model: which events change, which lines of the report change, and the words
 "and nothing else". The agent implements on a branch with tests that pin the
 change, and the tool's own gates are green at the turn end. Then the regression
-run: `gauntlet check` in the ClaimGate clone at `be87d38`
+run: `gauntlet check --record <a path outside the clone>` in the ClaimGate clone at
+`be87d38`
 (`~/gauntlet-review/claimgate-item1`), its `.gauntlet/` and `mutants/` removed
 first so the record is absent and the mutation gate runs cold — that counts as
 a clean clone for everything the tool reads. Since item 2 `stop-check` also
@@ -71,11 +72,15 @@ prediction, as item 2's was. Gauntlet is installed into that clone's uv venv
 repository — the venv has no pip, and a bare `pip` there installs nothing and
 barely says so — and the report records `git -C <agent-gauntlet> rev-parse
 HEAD` and an empty `git status --porcelain` here, taken immediately before the
-install, plus the sha256 of the installed `tree.py` against the branch tip, or
-the run does not count. The run is started detached, exactly once; an aborted
+install, plus `verdict.harness()` printed from the clone's interpreter immediately
+after the install and equal to `cd src/gauntlet && git ls-files -z | LC_ALL=C sort -z
+| xargs -0 sha256sum | sha256sum` at the branch tip (since item 3; before it, the
+sha256 of the installed `tree.py` alone), or the run does not count. The run is started detached, exactly once; an aborted
 launch leaves `mutants/` behind and the next run is warm. The proof is an identical verdict: the eleven `gate.finished` lines
 carry the same `gate`, `passed`, `error`, `diagnostics` and `actual` as the
-baseline run (durations excepted), `gauntlet.lock.json` is byte-identical
+baseline run (durations excepted) — since item 3, one figure: the record's
+`verdict_sha256` is `9c7aececf56dc4f5…`, the tag's, and the eleven lines are read
+anyway — `gauntlet.lock.json` is byte-identical
 (sha256 prefix `61c2ac4d30025e8c`), the ClaimGate working tree is clean after
 the run, and every other difference in the event log is one the prediction
 named. A difference the prediction did not name is a stop, not a correction.
@@ -304,7 +309,13 @@ negative grep "checked" without stating its case and pattern — "the string
 docstring naming TOML twice. Dating every edit with the day the session began.
 A session that runs past midnight puts yesterday's date into history headers,
 "Done" markers and audit lines, and the commits then disagree with the text
-they carry. Check the date each turn, or date by session and say so.
+they carry. Check the date each turn, or date by session and say so. Writing a
+duration into a prediction as a floor from one earlier run — item 3's came in
+4.7 % under it and stopped a correct agent turn, and item 1's annotation on
+predicting durations had already said a single-run figure is not a prediction;
+state no duration, or state the regime and the band. Asking for a directory
+listing, in a prediction or a prompt, without naming the reference listing —
+every entry not named is a stop by rule, and item 3's agent stopped on six.
 
 ## Where things stand
 
@@ -334,7 +345,8 @@ document the agent transcribed from your text is read back at the ref and its
 sha256 prefix given to me; any figure from the tool's own gates is labelled
 agent-measured until you have read the `gate.finished` line for it; any
 regression figure is labelled agent-measured until you have compared its eleven
-lines against the baseline yourself, and until the report names the harness
+lines against the baseline yourself — since item 3, recomputed the record's
+`verdict_sha256` from its `verdict` and compared it to the tag's — and until the report names the harness
 commit and a clean harness tree at run time — under the editable install, a
 checkout on the branch changes what every ClaimGate hook runs the instant it
 happens. A `stop-check` that ran its gates and passed
@@ -410,9 +422,9 @@ including, and especially, when the thing that failed is a check you wrote.
 
 ## Areas where I will need you most
 
-What a committed verdict record contains, how the regression comparison reads
-it, and how it differs from `.gauntlet/last-green.json`, which is a skip cache
-and never evidence. Where a finding belongs — *Proposed changes*,
+What a verdict-path change whose prediction says "nothing changes" could have
+reached on the subject, and why it did not — item 4's `check` half is the first.
+Where a finding belongs — *Proposed changes*,
 *Designed boundaries* or *Properties to preserve* — because the last two are the
 regression checklist and a mislabel there costs more than one elsewhere. Which
 of the ready patches still apply at the current ref. What in `BACKLOG.md`'s
