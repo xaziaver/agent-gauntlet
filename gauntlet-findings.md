@@ -1522,6 +1522,104 @@ that appends a generation instead of overwriting one, or both. The narrow fix is
 the regression pass needs is not the whole log but the eleven `gate.finished` lines of a green run,
 in a file a tag can carry.
 
+**Design decisions, advisor-recommended, human-ratified 2026-09-15.** (1) The record is one JSON
+object per run, written `indent=2, sort_keys=True` with a trailing newline, temp file then
+replace, at a path the caller names: `v` (1), `run`, `command`, `changed`, `gates` (the selection,
+as `run.started` carries it), `finished_at` (the `run.finished` line's `at`), `passed`, `tree`,
+`files`, `verdict`, `verdict_sha256`, `harness`. `verdict` is the list of per-gate objects in run
+order, each exactly the `gate.finished` payload — `gate`, `passed`, `actual`, `duration`,
+`diagnostics` (the count), `error` — and not the `check --json` report's, which carries a
+diagnostic list, thresholds and `vacuous`, never sees the run id or the tree, and would disagree
+with the log about the same run; `vacuous` stays absent as it is absent from the log (the first
+defect under BACKLOG item 1, untouched here). `verdict_sha256` is sha256 of the UTF-8 bytes of
+`json.dumps(tuples, sort_keys=True, separators=(",", ":"))`, where `tuples` is the list of
+five-key objects `gate`, `passed`, `error`, `diagnostics`, `actual` in run order, each value first
+round-tripped through the log's own serialisation (`json.loads(json.dumps(value, default=str))`)
+so a record built from live results and one read back from the log digest identically. Durations,
+timestamps and run ids are outside the digest: the tag's two green runs differ in duration on nine
+gates and digest to the same value. Cost: one more byte-exact rule to document beside the tree
+hash. (2) `check --record PATH`, no default path — the tool does not choose where a project keeps
+its evidence — and never under `.gauntlet/` or under any gated path: a resolved path inside the
+root that falls under `NEVER_HASHED` or under `tree.gated_paths` is refused with exit 1 before the
+tree is hashed and before any gate runs; a path outside the root is accepted. The record is
+neither protected, verified nor hashed. Protected paths enter the gated tree (`tree.py` L95 at
+`85125ee`), so a protected record written after the pre-run hash would make every recording run
+un-skippable; a verified record would read `modified` on the next run until `gauntlet lock`, one
+human approval per run. Its evidence is content, not location: `run` names the log lines it must
+agree with, and the digest is checkable against any copy of the log. Cost: an agent can edit a
+committed record; the edit is a diff in the pull request and leaves the digest disagreeing with
+the tuples. (3) Two writers, one shape. `check --record` builds the record from the process's own
+results after `run.finished` is emitted, never by reading the log; `verdict export RUN PATH
+[--log FILE]` builds it from a log file — the root's `.gauntlet/events.jsonl` when `--log` is
+absent, any file when it is given, with no `gauntlet.toml` required then — for runs the tag
+already made. `check --record` writes on a red run too (`passed: false`), writes nothing on a lock
+rejection or a crash, and `stop-check` never writes one: a hook that writes a committable file
+dirties every green turn end. A test pins that `--record` and `export` of the same run agree in
+every field but `harness`. The reason for two builders rather than export-after-check: `_rotate`
+runs inside every `emit` (`events.py` L96), so a run whose lines straddle `MAX_BYTES` has some in
+`.jsonl.1` and the rest in `.jsonl`, and a record read from one file is silently short. (4) The
+skip cache stays a skip cache. `export` never follows `reused_run`: a run whose only line is
+`run.reused` exits 1 naming the run it deferred to; a run with no lines exits 1. `stop-check`
+reads `.gauntlet/last-green.json` alone, as today, and no code path reads a committed record.
+(5) No `verdict compare` in this item. With the digest in the record, "identical verdict" is two
+`grep verdict_sha256` and equality, and the per-gate difference on a mismatch is
+`diff <(jq .verdict A) <(jq .verdict B)`; a compare command is one command, a renderer and tests,
+priced and deferred to housekeeping after this item closes. (6) Rotation is left as it is; the
+record is the durability fix. (7) `cli.py` is 295 lines by the size gate's rule (not the 296
+`BACKLOG.md` says twice), so the item's first commit extracts `doctor` and `version` to
+`cli_doctor.py`, registered as `lock` and `verify` are, behaviour unchanged — no test imports
+either by attribute; every CLI test goes through `app`. Then `_finish` returns the `run.finished`
+event it wrote, `check` gains `--record`, the record logic lives in a new `verdict.py`, and
+`cli_verdict.py` registers the `verdict` sub-app. (8) The harness is named by content, not by a
+stated commit — a departure from the 2026-09-12 annotation's two fields, because neither can be
+measured: no install carries a commit, and the clone venv's `direct_url.json` names this working
+tree with `dir_info` empty, so a `git rev-parse` at the install path would report whatever the
+tree holds at run time rather than the code installed, under exactly the install the regression
+run uses. `harness` is `{version, source, files}`: `version` is `gauntlet.__version__`; `source`
+is sha256 over one `<sha256>  <path>\n` line per `.py` file under the installed package directory,
+paths relative to that directory, bytewise sorted, files chosen by `base.is_analyzable` (so an
+editor's lock symlink is skipped, not raised on); `files` is the count. Recomputable from a clone
+by `cd src/gauntlet && git ls-files -z | LC_ALL=C sort -z | xargs -0 sha256sum | sha256sum`:
+`4a6d4baab55a0e21…` over 48 at `85125ee`, advisor-measured. A digest equal to a ref's says "this
+commit, and clean" in one field, and replaces the one-file `tree.py` check in the regression
+procedure. `export` writes `harness: null`: nobody recorded the tag's. Cost: the commit is read
+off a record by one recomputation rather than a field. (9) No new event kind: the record is a
+file, not an event, and the log of a `--record` run is identical to the log of the same run
+without it.
+
+**Predicted effect on the regression subject, 2026-09-15.** Three invocations, in the clone
+`~/gauntlet-review/claimgate-item1` at `be87d38` with `.gauntlet/` and `mutants/` removed first,
+this repository at the branch tip with porcelain empty, Gauntlet installed from that tip into the
+clone's venv, and — recorded before the install — the tip's commit and its package digest and
+file count by the shell pipeline in decision (8). First, `gauntlet check --record
+~/gauntlet-review/item3-verdict.json`: the verdict is identical — all eleven `gate.finished` lines
+carry the same `gate`, `passed`, `error`, `diagnostics` and `actual` as run
+`20260911T110451-2238600`, acceptance near item 2's 1,014.333 s (a floor, not a target);
+`run.started` and `run.finished` as at item 2, the latter with `command: check`, `passed: true`,
+`failed: []`, `tree` `a8a00163534b873780f5a8eceb213b0f19e8056f712c9643b971d7432ed00493` and
+`files: 127`; the event log differs from item 2's first invocation in run ids, timestamps and
+durations and nothing else — `--record` writes no event. `gauntlet.lock.json` is byte-identical;
+the clone's tree is clean after (the record is outside it; `.gauntlet/` gains `last-green.json`
+naming the run, as at item 2). The record: `command` `check`, `changed` false, `gates` the eleven
+in configured order, `passed` true, `tree` and `files` equal to the `run.finished` line's,
+`finished_at` equal to its `at`, `verdict` eleven objects equal field for field to the run's
+`gate.finished` lines, `verdict_sha256`
+`9c7aececf56dc4f5214bfc4a07cd729f347086039dc7ba9193c6edfa3d01ca42` — computed 2026-09-15 by the
+advisor from the archived baseline under decision (1)'s rule; the tag's other green run
+`20260911T100212-1991987` gives the same value, and `20260910T212538-1548345`, one `actual`
+different (`963/963 passing`), gives `0b04a1888709bece…` — `harness.version` `0.1.0`,
+`harness.source` and `harness.files` equal to the pre-install pipeline values. Second, immediately
+after, `printf '{}' | gauntlet stop-check --max-attempts 1`: one `run.reused` naming the first
+run, exit 0, seconds, no gate run — item 2's second invocation unchanged, which is the proof that
+the record moved nothing gated. Third, anywhere, with no lock taken and no event written:
+`gauntlet verdict export 20260911T110451-2238600 --log <a copy of the archive>
+~/gauntlet-review/prototype-1-verdict.json` gives a record whose `verdict` is the archive's eleven
+lines and whose digest is the same `9c7aececf56dc4f5…`, `passed` true, with `command`, `changed`,
+`gates`, `finished_at`, `tree`, `files` and `harness` all null — that run has no boundary lines —
+and the archive copy's sha256 `49395ea8c36d633f` unchanged after. Fourth, cheap: `export` of the
+first invocation's own run id from the clone's live log equals the `--record` file in every field
+but `harness`. A `stop-check` that runs its gates is unchanged by this item.
+
 **Routes to:** BACKLOG.md, v1, beside "The stop-check records no tree hash" and "Run pairing in the
 event log is unreliable in two directions" — all three are the event log not being a record.
 
@@ -1542,6 +1640,13 @@ prototype-1.jsonl` fails `git show prototype-1:<path>`; it was first committed a
 the lock and the specs but not the log. Recomputed from a clone of `main`: 3912 lines, 836,642
 bytes, sha256 `49395ea8c36d633f`, ending on the acceptance line of run `20260911T110451-2238600`,
 and the eleven `gate.finished` tuples match `BACKLOG.md`'s status paragraph.)*
+
+*(Annotation, 2026-09-15: `_rotate` runs inside every `Log.emit` (`events.py` L96 at `85125ee`),
+not once per run, so a run whose lines straddle `MAX_BYTES` is split across `events.jsonl.1` and
+`events.jsonl`, and any record built by reading one file for that run is silently short. That is
+why decision (3) above builds the live record from the process's results and reserves log-reading
+for `export`, and it is item 2's "never from the log" principle applied a second time. The
+rotation itself is left as it is: the committed record is the durability fix.)*
 
 #### A stop-check's stderr on a broad failure exceeds the host's hook-output limit
 
