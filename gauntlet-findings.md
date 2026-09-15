@@ -1620,12 +1620,60 @@ and the archive copy's sha256 `49395ea8c36d633f` unchanged after. Fourth, cheap:
 first invocation's own run id from the clone's live log equals the `--record` file in every field
 but `harness`. A `stop-check` that runs its gates is unchanged by this item.
 
+**Change, applied 2026-09-15.** First an extraction, `c42426c`: `doctor` and `version` moved to
+`cli_doctor.py`, registered as `lock` and `verify` are, `cli.py` 295 → 274, behaviour unchanged.
+Then `81b2bcb`. `verdict.py` (new, 197 lines) builds the record two ways — `from_run`, from the
+process's own `GateResult`s, the `Invocation`, the gate selection and the `run.finished` event
+(`finished_at` null when the log could not be written; `run` is the log's id either way), and
+`from_lines`, from one log file's parsed lines by run id, boundary fields null where the run has no
+such line, `harness` null always — and digests the five compared fields as decision (1) states: each
+value round-tripped through the log's serialisation, `sort_keys=True, separators=(",", ":")`, sha256
+of the UTF-8 bytes. `check --record PATH` refuses, through `cli_support.fail` and before
+`events.Log` exists — so a refusal writes no `run.started` — any resolved path inside the root under
+`.gauntlet/` or a gated path; writes the record after `_finish`, which now returns the event it
+wrote, and before the report; on red runs too; never on a lock rejection. `stop-check` has no such
+option. `verdict export RUN PATH [--log FILE]` reads the root's log, or with `--log` any file with
+no config lookup, exits 1 through `fail` when the run has no lines or only a `run.reused` (naming
+`reused_run`), writes no event and takes no lock. `harness` is `{version, source, files}`: the
+tree-hash pipeline over `base.is_analyzable` files under `Path(gauntlet.__file__).parent`. `tree.py`
+gained `digest_listing` (the hash step of `hash_tree`, behaviour unchanged), public `under` and
+`write_json` (temp name `<name>.tmp`, byte-identical for `last-green.json`). The fixture
+`tests/fixtures/prototype-1-run-20260911T110451-2238600.jsonl` is the archive's eleven lines byte
+for byte. Twenty-one tests in `test_verdict.py`; own suite 572 in 51.4 s, coverage 96.87 / 92.41,
+`cli.py` 284 (run `20260915T101125-2799622`, itself made with `--record`: tree `e3e172a8…` over 95
+and `harness.source` `a0e9b46e…` over 51, both equal to the shell pipelines from a clean clone at
+`81b2bcb`, advisor-measured). Regression run `20260915T102408-2800787` on the item-1 clone at
+`be87d38`, `.gauntlet/` and `mutants/` removed, Gauntlet at `81b2bcb` installed into the clone's
+venv (`uv pip install --reinstall-package agent-gauntlet --python .venv/bin/python`) with
+`verdict.harness()` printing the tip's pipeline values before the run: exit 0 in 996 s; all eleven
+tuples identical to the tag's, compared by the agent and again by the advisor from the archived log;
+`run.finished` with `a8a00163…` over 127; lock and tree unchanged after; the record carrying digest
+`9c7aececf56dc4f5…` and the harness values. Then the skip, run `20260915T104103-2818371`: 0.147 s,
+one `run.reused`, nothing else — the log identical to item 2's fourteen lines with ids, times and
+durations stripped. Then `export` of the tag's run from a copy of the archive, from a directory with
+no `gauntlet.toml`: the same digest, seven null fields, the copy's `49395ea8c36d633f` unchanged; and
+`export` of the regression run from the clone's log, equal to the live record in every key but
+`harness`. Two things the prediction did not name, both ruled not stops: acceptance took 966.337 s,
+4.7 % under a figure the prediction called a floor — durations were excepted from the proof from the
+start, and item 1's annotation on predicting durations already says a single-run floor is not a
+prediction; and `ls .gauntlet/` after the run listed the tests, coverage and duplication gates'
+artifacts, the lock file and items 1 and 2's records — every one written under the ignored directory
+by every run, which is why the clone's tree was clean, the condition the proof states. Both stops
+were correct; the prediction's errors were the advisor's. Debts: a library call
+`verdict.deferred_to([])` raises `IndexError` (unreachable from the CLI, which fails on empty lines
+first); `from_lines` raises `KeyError` on a `gate.finished` line missing one of its six keys;
+`verdict compare` is priced and deferred (decision 5).
+
 **Routes to:** BACKLOG.md, v1, beside "The stop-check records no tree hash" and "Run pairing in the
 event log is unreliable in two directions" — all three are the event log not being a record.
 
-**Status.** Open. Worked around on the ClaimGate side: the log as it stood at the tag is committed
-at `docs/queue-history/events-prototype-1.jsonl` (836,642 bytes, sha256 `49395ea8c36d633f`), which
-fixes that one baseline and nothing else.
+**Status.** Applied. `c42426c` (extraction) and `81b2bcb` (change) on `v1/item-3-committed-verdict`,
+on top of the human findings commit `aac3869`; regression run `20260915T102408-2800787` and skip
+`20260915T104103-2818371`, log archived at `~/gauntlet-review/item3-events-2026-09-15.jsonl` (14
+lines, sha256 `102f081f848b5bd7`). The tag's own record, `verdict export` of run
+`20260911T110451-2238600` from the archive, is `~/gauntlet-review/prototype-1-verdict.json`, digest
+`9c7aececf56dc4f5`, to be committed to ClaimGate in C4 — the ClaimGate-side workaround stands until
+then: the archived log is what `export` reads.
 
 *(Annotation, 2026-09-12: the committed record must also name the harness. `gauntlet` on the
 owner's machine is `uv tool install --editable .` over the agent-gauntlet working tree, so the

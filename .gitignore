@@ -1,5 +1,6 @@
 # Gauntlet's run artifacts: events.jsonl, stop-attempts.json, junit.xml and coverage.json.
-# The event log is the only record of a verdict and it lives here, uncommitted.
+# The event log is the authority on a verdict and lives here, uncommitted; `gauntlet check
+# --record PATH` writes a run's record to a path a repository can carry, never here.
 .gauntlet/
 # mutmut's working copy of the source tree; left behind, it collides with pytest collection.
 mutants/
