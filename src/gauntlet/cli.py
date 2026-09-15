@@ -17,14 +17,14 @@ from typing import Any, NoReturn
 
 import typer
 
-from gauntlet import __version__, events, report, runner, scaffold
 from gauntlet import config as config_mod
-from gauntlet import doctor as doctor_mod
+from gauntlet import events, report, runner, scaffold
 from gauntlet import guard as guard_mod
 from gauntlet import stop as stop_mod
 from gauntlet import tree as tree_mod
-from gauntlet.adapters import python as python_adapter
+from gauntlet import verdict as verdict_mod
 from gauntlet.cli_approvals import lock, verify
+from gauntlet.cli_doctor import doctor, version
 from gauntlet.cli_events import events_app
 from gauntlet.cli_loop import loop_app
 from gauntlet.cli_mutants import mutant_app
@@ -35,6 +35,7 @@ from gauntlet.cli_support import EXIT_CONFIG_ERROR, EXIT_GATE_FAILURE, EXIT_OK
 from gauntlet.cli_support import fail as _fail
 from gauntlet.cli_support import resolve_config as _resolve_config
 from gauntlet.cli_support import select_gates as _select_gates
+from gauntlet.cli_verdict import verdict_app
 from gauntlet.gates import base
 from gauntlet.gates.base import RunInProgressError, exclusive_run
 
@@ -44,12 +45,15 @@ AGENTS = ("claude-code", "generic")
 app = typer.Typer(no_args_is_help=True, pretty_exceptions_enable=False)
 app.command("lock")(lock)
 app.command("verify")(verify)
+app.command("doctor")(doctor)
+app.command("version")(version)
 app.add_typer(loop_app, name="loop")
 app.add_typer(spec_app, name="spec")
 app.add_typer(mutant_app, name="mutant")
 app.add_typer(events_app, name="events")
 app.add_typer(status_app, name="status")
 app.add_typer(review_app, name="review")
+app.add_typer(verdict_app, name="verdict")
 
 
 @app.callback()
@@ -72,11 +76,14 @@ def _locked_run(root: Path, execute: Callable[[], list[base.GateResult]]) -> lis
         raise typer.Exit(code=EXIT_OK) from None
 
 
-def _finish(log: events.Log, results: list[base.GateResult], run: tree_mod.Invocation) -> None:
+def _finish(
+    log: events.Log, results: list[base.GateResult], run: tree_mod.Invocation
+) -> events.Event | None:
     """Close the run in the log; remember the tree only when the run was wholly green."""
     _emit_approval_needed(log, results)
     finished = log.emit(events.RUN_FINISHED, **tree_mod.finished_fields(run, results))
     tree_mod.remember(run, results, finished)
+    return finished
 
 
 def _read_stop_payload() -> dict[str, Any]:
@@ -140,16 +147,20 @@ def check(
     changed: bool = typer.Option(False, "--changed", help="Only analyze changed files"),
     fail_fast: bool = typer.Option(False, "--fail-fast", help="Stop at the first failing gate"),
     json_out: bool = typer.Option(False, "--json", help="Machine-readable report"),
+    record: Path | None = typer.Option(None, "--record", help=verdict_mod.RECORD_HELP),
 ) -> None:
     """Run the configured gates and report."""
     root, cfg = _resolve_config()
     selected = _select_gates(gates, cfg)
+    if record is not None and (reason := verdict_mod.refusal(record, root, cfg)) is not None:
+        _fail(reason)
     log = events.Log(root)
     ctx = runner.build_context(root, cfg, selected, changed)
     run = tree_mod.Invocation(root, cfg, "check", tree_mod.measure(root, cfg), changed)
     log.emit(events.RUN_STARTED, command="check", gates=selected, changed=changed)
     results = _locked_run(root, lambda: runner.run_gates(ctx, cfg, selected, fail_fast, log))
-    _finish(log, results, run)
+    finished = _finish(log, results, run)
+    verdict_mod.record(record, results, run, selected, finished, log.run)
     _emit(results, cfg.max_diagnostics, json_out)
 
 
@@ -267,28 +278,6 @@ def stop_check(
         raise typer.Exit(code=EXIT_OK)
     report_text = report.to_human(results, cfg.max_diagnostics)
     _escalate_or_bounce(count, max_attempts, report_text, log, session)
-
-
-@app.command()
-def doctor() -> None:
-    """Check that every enabled gate's tooling is present in THIS environment.
-
-    Run it with the same command your hooks use (bare `gauntlet doctor`, not
-    `uv run gauntlet doctor`) — a broken hook environment fails open silently,
-    and this is how you find out.
-    """
-    root, cfg = _resolve_config()
-    project_python = python_adapter.interpreter(root, cfg.python)
-    checks = doctor_mod.run_checks(cfg.enabled_gates, project_python)
-    warnings = doctor_mod.warnings_for(root, cfg.src, cfg.enabled_gates, cfg.disabled_gates)
-    typer.echo(doctor_mod.render(checks, project_python, warnings))
-    raise typer.Exit(code=EXIT_OK if doctor_mod.healthy(checks) else EXIT_CONFIG_ERROR)
-
-
-@app.command()
-def version() -> None:
-    """Print the gauntlet version."""
-    typer.echo(__version__)
 
 
 if __name__ == "__main__":

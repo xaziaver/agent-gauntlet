@@ -115,9 +115,33 @@ Every session reads `CLAUDE.md` and this file. Then, per item:
 | G2f | `.gitignore`; `ARCHITECTURE.md` "Known sharp edges" |
 | G3 item 1 | the entry "The acceptance gate runs the entire steps directory once per mutant, so wall time is scenarios × mutants" in full — its design-decisions and prediction paragraphs are the brief; then "The acceptance gate re-runs every mutant on every check", its "Constraint on any fix here" paragraph twice; *Properties to preserve* "An approved equivalent mutant is a regression test for its own justification"; `src/gauntlet/gates/acceptance.py` `survivors_for` and `_survivors`; `src/gauntlet/adapters/python.py` `run_acceptance`; `src/gauntlet/mutants.py` `classify`; `gauntlet.toml` `[project]` and `[gates.acceptance]`; `docs/GATES.md` "acceptance" |
 | G3 item 2 | the entry "The stop-check records no tree hash, so a documents-only turn pays a full run" in full, including its 2026-09-11 paragraphs — the property paragraph is a constraint, not advice; "Run pairing in the event log is unreliable in two directions" and its ready patch; "The acceptance gate re-runs every mutant on every check" with its 2026-09-13 and 2026-09-14 annotations (its cache remedy folds in here); "The Stop hook cannot be scoped, and the prescribed workflow produces a phase where it cannot pass" with its 2026-09-06 correction; `src/gauntlet/cli.py` `check`, `stop_check` and `_finish`; `src/gauntlet/runner.py` `run_full_gauntlet` and `build_context`; `src/gauntlet/events.py`; `src/gauntlet/config.py` (which paths Gauntlet knows as gated); ClaimGate's `.claude/hooks/stop-check.sh` and `.claude/settings.json` at `be87d38`, read-only, for the hash the wrapper computes and what calls it |
+| G3 item 3 | the entry "The only record of a verdict is a local log that is ignored by git and rotates destructively" in full, with its 2026-09-12 and 2026-09-13 annotations — the harness fields are a constraint; "The stop-check records no tree hash" Design decisions (4) and (5) and its Change-applied paragraph (what `.gauntlet/last-green.json` is and is not); *Properties to preserve* "A stop-check on an unchanged wholly green tree skips in seconds, and every failure to hash is a full run"; `src/gauntlet/events.py`; `src/gauntlet/cli.py` `check`, `_finish` and the `--json` report path; `src/gauntlet/tree.py` `Invocation`, `remember`, `wholly_green`; `gauntlet.toml` `[output]` and `[protect]`; ClaimGate's `docs/queue-history/events-prototype-1.jsonl` on its `main`, read-only, as the archived baseline the record must be able to stand in for |
 | G3, any entry | `gauntlet-findings.md` "Note for the v1 effort", then the entry in full; `ARCHITECTURE.md` "Contracts you must not break" and "Conventions"; `docs/GATES.md` for the gate touched |
 
 ## Status as of this handoff
+
+**2026-09-15, G3 item 3 applied.** `c42426c` (extraction: `doctor` and `version` to `cli_doctor.py`,
+`cli.py` 295 → 274) and `81b2bcb` (the change) on `v1/item-3-committed-verdict`, on top of the human
+findings commit `aac3869` and the opening `85125ee`; design decisions (1)-(9) and the prediction
+ratified 2026-09-15 before any code moved; verified against `origin` by the advisor: footprint,
+digests, sizes by `ast`, the own gated tree `e3e172a8…` over 95 and the harness digest `a0e9b46e…`
+over 51 recomputed by the shell pipelines from a clean clone, both records read field by field
+against the logs. Regression run `20260915T102408-2800787`, `gauntlet check --record
+~/gauntlet-review/item3-verdict.json` in the item-1 clone at `be87d38` with `.gauntlet/` and
+`mutants/` removed, Gauntlet at `81b2bcb` installed into the clone's venv (`uv pip install
+--reinstall-package agent-gauntlet --python .venv/bin/python`) and `verdict.harness()` printing the
+tip's pipeline values before the run: exit 0 in 996 s; all eleven `gate.finished` tuples identical
+to the tag's, compared by the agent and again by the advisor from the archived log; `run.finished`
+`a8a00163…` over 127; lock `61c2ac4d30025e8c` and clone tree unchanged after; the record's
+`verdict_sha256` `9c7aececf56dc4f5…`, the value predicted from the archive. Then the skip, run
+`20260915T104103-2818371`, 0.147 s, one `run.reused`. Then `verdict export` of the tag's run from a
+copy of the archive: the same digest, seven null fields, the archive unchanged; the tag's record is
+`~/gauntlet-review/prototype-1-verdict.json`, to be committed to ClaimGate in C4. Acceptance 966.337
+s, under item 2's 1,014.333 s, which the prediction wrongly called a floor; durations are outside
+the proof. Merge to `main` is the human's next act; item 4, reduced to its `check` half, opens after
+it. Own baseline updated below. Debts banked in the entry: `verdict.deferred_to([])` and
+`from_lines` on a line missing a key both raise; `verdict compare` deferred; the acceptance path
+defaults still restated in `tree.py`.
 
 **2026-09-14, G3 item 2 applied.** `1faa85e` and `8b64ca0` on `v1/item-2-tree-hash-skip`, on
 top of the human findings commit `73beee5` and the opening `c3e5b40`; design decisions (1)-(8)
@@ -135,9 +159,9 @@ the tag; lock `61c2ac4d30025e8c` unchanged; clone tree clean after. Then
 `printf '{}' | gauntlet stop-check --max-attempts 1` on the unchanged tree, run
 `20260914T172831-2750689`: 0.198 s, exit 0, one `run.reused` line, nothing else. Acceptance
 1,014.333 s; static 3.821 s and mutation 26.274 s, both cold. Own baseline updated below.
-Merge to `main` is the human's next act; item 3 opens after it. Item 4 is reduced to its
+Merged to `main`; item 3 opens on `v1/item-3-committed-verdict`. Item 4 is reduced to its
 `check` half. Debts banked in the entry: acceptance path defaults restated in `tree.py`;
-`cli.py` at 296 of 300.
+`cli.py` at 296 of 300 (295 by the size gate's rule, as item 3 found).
 
 **2026-09-14, G3 item 1 applied.** `ae591d5` and `3ef2745` on `v1/item-1-per-mutant-scoping`, on
 top of the human findings commits `675dd9f` and `e8b5370` and the housekeeping `0f2a5ff`;
@@ -184,27 +208,35 @@ boundary 18 step file(s), 0 direct import(s); tests 966/966 passing; coverage li
 reviewed-equivalent, 3736.757 s against ClaimGate's 7200 s Stop budget. An identical verdict means
 those eleven tuples of `gate`, `passed`, `error`, `diagnostics` and `actual` unchanged, the lock
 byte-identical, the subject's working tree clean after the run, and no other event-log difference
-the entry's prediction did not name. A regression run is `gauntlet check` in a clean clone of the
-tag, costing about an hour, with this repository's commit and an empty `git status --porcelain` here
-recorded immediately before it: `gauntlet` is installed with `uv tool install --editable .`, so
+the entry's prediction did not name. A regression run is `gauntlet check --record <a path outside
+the clone>` in a clean clone of the tag (since item 3; about seventeen minutes since item 1), with
+this repository's commit and an empty `git status --porcelain` here recorded immediately before it,
+and the record's `harness.source` equal to `cd src/gauntlet && git ls-files -z | LC_ALL=C sort -z |
+xargs -0 sha256sum | sha256sum` at that commit: `gauntlet` is installed with `uv tool install
+--editable .`, so
 this working tree is the tool, and a checkout here changes what every ClaimGate hook runs at once.
 
 **This repository's own baseline.** Nine gates configured: protect, static, size, complexity, tests,
-coverage, crap, duplication, acceptance; no `[gates.boundary]` or `[gates.mutation]`. The `gauntlet check` after item 2's amendment, run `20260914T161254-2726665`, stamped
-2026-09-14T16:12:54Z to 16:13:44Z, agent-quoted and read by the advisor from the paste: protect
-3/3 paths unchanged; static 0 findings; size worst function 25; complexity 6; tests 551/551
-passing in 49.7 s; coverage line 96.76, branch 92.23 against floors of 95, 90 and per-file 80;
-crap 9.32; duplication 0; acceptance "no feature files" (vacuous). Diagnostics 0 and error null
-on all nine; `run.finished` tree `144a4209186df8d6…` over 90 files. Before item 2 (run
+coverage, crap, duplication, acceptance; no `[gates.boundary]` or `[gates.mutation]`. The `gauntlet
+check --record` after item 3, run `20260915T101125-2799622`, stamped 2026-09-15T10:11:25Z to
+10:12:17Z, agent-quoted and read by the advisor from the paste: protect 3/3 paths unchanged; static
+0 findings; size worst function 25; complexity 6; tests 572/572 passing in 51.356 s; coverage line
+96.87, branch 92.41 against floors of 95, 90 and per-file 80; crap 9.32; duplication 0; acceptance
+"no feature files" (vacuous). Diagnostics 0 and error null on all nine; `run.finished` tree
+`e3e172a80fb1f216…` over 95 files; the record's `harness.source` `a0e9b46ebf885c86…` over 51, both
+recomputed by the advisor by the shell pipelines from a clean clone at `81b2bcb`. Before item 3 (run
+`20260914T161254-2726665`) the suite was 551 tests in 49.7 s at 96.76 / 92.23 over 90 files. Before
+item 2 (run
 `20260913T222626-2654730`) the suite was 511 tests in 50.161 s at 96.6 / 91.89. Before item 1 (run
 `20260913T093143-2601684`, after G2d) the suite was 498 tests in 36.328 s at 96.54 / 91.75; the two
 item-1 tests that run a real pytest-bdd project account for about 9 s of the difference. Stop hook
 budget 600 s; a full own-run is about 51 s by the timestamps. The suite is `.venv/bin/pytest tests
 -q -p no:cacheprovider`; the `pytest` on PATH is not the venv's and collects nothing. Branch
-coverage has 2.23 points of headroom over its floor: a G3 change that adds an untested branch goes
+coverage has 2.41 points of headroom over its floor: a G3 change that adds an untested branch goes
 red here before it reaches the subject. Since item 2 the Stop hook skips whenever the hand `gauntlet check` was green on the same
 tree: a turn end that ran no gate is a `run.reused` line in the log naming that run, and only
-the log tells it from a crash. `cli.py` is at 296 of 300 lines.
+the log tells it from a crash. `cli.py` is at 284 of 300 lines since item 3 moved `doctor` and
+`version` to `cli_doctor.py`; `verdict.py` is 197, `tree.py` 252.
 
 **The inventory of 2026-09-12**, read-only, agent-produced, from which this file was written.
 Three source-line citations in the findings resolve at `a0ef78d` (`cli.py:151` and `cli.py:151-152`

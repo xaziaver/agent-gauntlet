@@ -108,6 +108,8 @@ are deliberate", and `files`, the number of files it covers — both `null` when
 be hashed — so the log can always pair a run with the tree it measured, partial runs included. A
 `stop-check` that skips because the tree matches the last wholly green run emits exactly one event,
 `run.reused` (`command`, `tree`, `files`, `reused_run`, `reused_at`), and nothing else.
+`check --record` adds no event: the record is a file, and the log of a recorded run is the
+log of the same run without it.
 
 ### The boundary above Gauntlet
 
@@ -273,6 +275,23 @@ deliberate and worth the cost — those tests have caught things no unit test co
   which every enabled gate was selected, not `--changed`, and every one passed — decided from that
   process's own results, never by reading the log. It is a skip cache in a gate-writable,
   unverified directory and is never evidence of anything; a run is (item 2, 2026-09-14).
+- **A committed verdict record is neither protected, verified nor hashed, and names its
+  harness by content.** `check --record PATH` writes one JSON object — the run's
+  `gate.finished` lines as `verdict`, `verdict_sha256` over their five compared fields
+  (`gate`, `passed`, `error`, `diagnostics`, `actual`; canonical JSON, durations and
+  timestamps excluded), the run's `tree` and `files`, and `harness` — to a path the caller
+  names, never under `.gauntlet/` or a gated path: a protected path would enter the tree
+  hash and make every recording run un-skippable, and a verified one would read `modified`
+  until the next `gauntlet lock`. Its evidence is content: `run` names the log lines it
+  must agree with, and `verdict export RUN PATH --log FILE` rebuilds the same record from
+  any copy of the log (it never follows `run.reused`). `harness.source` is sha256 over the
+  installed package's `.py` files by the tree-hash pipeline with a directory walk in place
+  of `git ls-files` — from a clone,
+  `cd src/gauntlet && git ls-files -z | LC_ALL=C sort -z | xargs -0 sha256sum | sha256sum`
+  — because no install carries a commit, and the path a non-editable install's
+  `direct_url.json` names is a tree that may have moved since. `stop-check` never writes a
+  record and nothing reads one; `.gauntlet/last-green.json` is still the skip cache and
+  still not evidence (item 3, 2026-09-15).
 
 ---
 
