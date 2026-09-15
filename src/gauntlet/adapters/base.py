@@ -2,19 +2,10 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Protocol
 
 
 @dataclass(frozen=True)
 class RunResult:
     passed: bool
     output: str
-
-
-class AcceptanceAdapter(Protocol):
-    def run_acceptance(
-        self, root: Path, targets: Path | Sequence[Path], timeout: int
-    ) -> RunResult: ...
