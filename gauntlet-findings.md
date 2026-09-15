@@ -665,6 +665,56 @@ agent-gauntlet is an editable install, so any change takes effect on ClaimGate's
 ClaimGate's `docs/harness-findings.md` records the current behaviour as verified from source — the
 harness change would land inside the gated project's own documentation. Apply after ClaimGate ships.
 
+**Design decisions for the `check` half, advisor-recommended, human-ratified 2026-09-15.** (1)
+The ready patch as written, shape 1 of the ground report: `check`'s two lines become an inner
+`execute` whose first statement is the `run.started` emit and whose return is
+`runner.run_gates(...)`, then `results = _locked_run(root, execute)` — identical in form to
+`_stop_gates.execute`, and reading `run.command` and `run.changed` from the `Invocation` built
+two lines above rather than the literals. Measured cost: `cli.py` 284 → 288, `check` 20 → 24 of
+25; `_finish` stays outside the lock in both commands. The shared-helper shape lands the module at
+300 of 300 and is rejected. The one line of headroom left in `check` means the next change to
+`check` opens with an extraction, as item 3 did for the module. (2) The test mirrors the
+stop-check half's: under a held `exclusive_run`, `check` exits 0, prints "in progress", and the
+log has no `run.started` and no `run.finished` — `test_a_lock_rejected_check_emits_no_boundary_lines`;
+`test_a_concurrent_run_exits_zero_rather_than_interleaving` stays as it is. (3) Readers: nothing
+in `src/` pairs `run.started` to `run.finished`; `status.recent` and `gauntlet events` show lines
+verbatim, and `verdict.from_lines` reads `run.started` for three fields (ground §2). After this
+change a lock-rejected `check` leaves no line, so its id cannot be exported — which is also the
+fix for a hole the ground found: today `export` of such a run yields `verdict: []`,
+`passed: true`. For the lines already in logs, a housekeeping commit outside the verdict path,
+before the change, makes `export` exit 1 through `fail` for a run with no `gate.finished` line and
+no `run.reused` line ("ran no gate"), test `test_export_of_a_run_with_no_gate_lines_exits_one`.
+(4) `AcceptanceAdapter` (its own entry, banked `e8b5370`) is deleted on this branch in its own
+commit: one occurrence in the package, its definition at `adapters/base.py:17`, nothing imports
+it (ground §5, measured). `adapters/` is in the first-shape list, so the deletion rides on this
+item's prediction and regression run rather than on a claim of being outside the path. (5)
+BACKLOG item 1's "`check --json` emits plain text under lock contention" is adjacent and
+untouched. (6) ClaimGate's `docs/harness-findings.md` records the pre-change behaviour and is
+not edited; phase 4's "How the harness behaves" is written fresh. Cost of the whole item: four
+lines in `cli.py`, one test, one export guard with its test, one deleted protocol.
+
+**Predicted effect on the regression subject, 2026-09-15.** Nothing changes. Three invocations as
+at item 3, in the clone at `be87d38` with `.gauntlet/` and `mutants/` removed, this repository
+at the branch tip with porcelain empty, Gauntlet installed from the tip into the clone's venv and
+`verdict.harness()` equal to the tip's pipeline before the run. First, `gauntlet check --record
+<a path outside the clone>`: the eleven `gate.finished` lines carry the same `gate`, `passed`,
+`error`, `diagnostics` and `actual` as run `20260911T110451-2238600`; the record's
+`verdict_sha256` is `9c7aececf56dc4f5214bfc4a07cd729f347086039dc7ba9193c6edfa3d01ca42`;
+`run.started` and `run.finished` as at item 3, the latter with
+`a8a00163534b873780f5a8eceb213b0f19e8056f712c9643b971d7432ed00493` over 127; the log identical
+to item 3's first invocation in kinds, order and content, run ids, timestamps and durations
+excepted; `gauntlet.lock.json` byte-identical; the clone's tree clean after. Second,
+`stop-check --max-attempts 1`: one `run.reused` naming the first run, nothing else. Third,
+`verdict export` of the tag's run from a copy of the archive: the same digest, seven null fields.
+What the change could reach and why it does not: the only line it moves is `run.started`, now
+written after the lock is taken instead of before; on the subject the lock is free, acquisition
+is microseconds, and the line is still the first of its run, ahead of every `gate.finished` — the
+same second, the same content, the same position. A lock-rejected `check`, the only case whose
+log changes, is not exercised on the subject; the tool's own test pins it. `_finish`, `_emit`,
+the record and the skip cache are untouched. The `AcceptanceAdapter` deletion reaches nothing
+the subject runs: the name occurs once in the package, at its definition. No duration is
+predicted. And nothing else.
+
 **Routes to:** BACKLOG.md, v1.
 
 **Status.** Open, patch ready.
