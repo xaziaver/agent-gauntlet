@@ -17,14 +17,13 @@ from typing import Any, NoReturn
 
 import typer
 
-from gauntlet import __version__, events, report, runner, scaffold
 from gauntlet import config as config_mod
-from gauntlet import doctor as doctor_mod
+from gauntlet import events, report, runner, scaffold
 from gauntlet import guard as guard_mod
 from gauntlet import stop as stop_mod
 from gauntlet import tree as tree_mod
-from gauntlet.adapters import python as python_adapter
 from gauntlet.cli_approvals import lock, verify
+from gauntlet.cli_doctor import doctor, version
 from gauntlet.cli_events import events_app
 from gauntlet.cli_loop import loop_app
 from gauntlet.cli_mutants import mutant_app
@@ -44,6 +43,8 @@ AGENTS = ("claude-code", "generic")
 app = typer.Typer(no_args_is_help=True, pretty_exceptions_enable=False)
 app.command("lock")(lock)
 app.command("verify")(verify)
+app.command("doctor")(doctor)
+app.command("version")(version)
 app.add_typer(loop_app, name="loop")
 app.add_typer(spec_app, name="spec")
 app.add_typer(mutant_app, name="mutant")
@@ -267,28 +268,6 @@ def stop_check(
         raise typer.Exit(code=EXIT_OK)
     report_text = report.to_human(results, cfg.max_diagnostics)
     _escalate_or_bounce(count, max_attempts, report_text, log, session)
-
-
-@app.command()
-def doctor() -> None:
-    """Check that every enabled gate's tooling is present in THIS environment.
-
-    Run it with the same command your hooks use (bare `gauntlet doctor`, not
-    `uv run gauntlet doctor`) — a broken hook environment fails open silently,
-    and this is how you find out.
-    """
-    root, cfg = _resolve_config()
-    project_python = python_adapter.interpreter(root, cfg.python)
-    checks = doctor_mod.run_checks(cfg.enabled_gates, project_python)
-    warnings = doctor_mod.warnings_for(root, cfg.src, cfg.enabled_gates, cfg.disabled_gates)
-    typer.echo(doctor_mod.render(checks, project_python, warnings))
-    raise typer.Exit(code=EXIT_OK if doctor_mod.healthy(checks) else EXIT_CONFIG_ERROR)
-
-
-@app.command()
-def version() -> None:
-    """Print the gauntlet version."""
-    typer.echo(__version__)
 
 
 if __name__ == "__main__":
