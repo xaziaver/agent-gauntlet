@@ -102,7 +102,8 @@ written **last** so a payload key can never shadow them. Writing an event must n
 line beats a broken gate.
 
 `check` and `stop-check` both bound a run with `run.started` and `run.finished` carrying
-`command`; `stop-check` emits them inside the project lock, so a lock-rejected run leaves no line.
+`command`, and both emit `run.started` inside the project lock, so a lock-rejected run of either
+leaves no line (item 4, 2026-09-15).
 Every `run.finished` carries `tree`, the gated-tree hash defined under "Things that look wrong but
 are deliberate", and `files`, the number of files it covers — both `null` when the tree could not
 be hashed — so the log can always pair a run with the tree it measured, partial runs included. A

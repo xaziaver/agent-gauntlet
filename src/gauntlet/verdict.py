@@ -110,25 +110,38 @@ def lines_of(items: list[dict[str, Any]], run_id: str) -> list[dict[str, Any]]:
 
 
 def deferred_to(lines: list[dict[str, Any]]) -> str | None:
-    """The run a skip deferred to, when the lines are only `run.reused`; else None."""
-    if all(line.get("kind") == events.RUN_REUSED for line in lines):
+    """The run a skip deferred to, when the lines are only `run.reused`; else (or on none) None."""
+    if lines and all(line.get("kind") == events.RUN_REUSED for line in lines):
         return str(lines[0]["reused_run"])
     return None
+
+
+class ShortGateLineError(ValueError):
+    """A `gate.finished` line lacks one of its six keys: the log holds no verdict for that gate."""
 
 
 def _first(lines: list[dict[str, Any]], kind: str) -> dict[str, Any]:
     return next((line for line in lines if line.get("kind") == kind), {})
 
 
+def _gate_fields(line: dict[str, Any]) -> dict[str, Any]:
+    """The six `gate.finished` keys of one line, or ShortGateLineError naming the first absent."""
+    for key in GATE_KEYS:
+        if key not in line:
+            raise ShortGateLineError(
+                f"gate.finished line ({line.get('gate')!r}, {line.get('at')}) has no {key!r}"
+            )
+    return {key: line[key] for key in GATE_KEYS}
+
+
 def from_lines(lines: list[dict[str, Any]], run_id: str) -> Record:
-    """The record of a run as one log file holds it; absent boundary lines give nulls."""
+    """The record of a run as one log file holds it; absent boundary lines give nulls.
+
+    Raises ShortGateLineError for a `gate.finished` line missing one of GATE_KEYS.
+    """
     started = _first(lines, events.RUN_STARTED)
     finished = _first(lines, events.RUN_FINISHED)
-    verdict = [
-        {key: line[key] for key in GATE_KEYS}
-        for line in lines
-        if line.get("kind") == events.GATE_FINISHED
-    ]
+    verdict = [_gate_fields(line) for line in lines if line.get("kind") == events.GATE_FINISHED]
     return _record(
         run_id,
         verdict,

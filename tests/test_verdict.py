@@ -245,6 +245,10 @@ def test_the_verdict_digest_ignores_durations_timestamps_and_run_ids() -> None:
     assert verdict.digest(slower) == verdict.digest(lines) == verdict.digest(enveloped)
 
 
+def test_deferred_to_of_no_lines_is_none() -> None:
+    assert verdict.deferred_to([]) is None
+
+
 def test_the_verdict_digest_moves_when_one_actual_changes() -> None:
     lines = _lines_of([_result("size", {"worst_function_lines": 3}), _result("complexity", 2)])
     changed = [dict(line) for line in lines]
@@ -292,6 +296,39 @@ def test_export_refuses_a_reused_run_and_names_the_run_it_deferred_to(
     result = runner.invoke(app, ["verdict", "export", reused["run"], str(out)])
     assert result.exit_code == EXIT_CONFIG_ERROR
     assert reused["reused_run"] in _text(result)
+    assert not out.exists()
+
+
+def test_export_of_a_run_with_no_gate_lines_exits_one(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A run.started with nothing after it (lock-rejected, or killed before its first gate)."""
+    monkeypatch.chdir(tmp_path)
+    log = tmp_path / "events.jsonl"
+    events.Log(tmp_path, run="r1").emit(events.RUN_STARTED, command="check", gates=["size"])
+    log.write_bytes(events.events_path(tmp_path).read_bytes())
+    out = tmp_path / "verdict.json"
+    result = runner.invoke(app, ["verdict", "export", "r1", str(out), "--log", str(log)])
+    assert result.exit_code == EXIT_CONFIG_ERROR
+    assert "run r1 ran no gate" in _text(result)
+    assert not out.exists()
+
+
+def test_export_of_a_run_with_a_short_gate_line_exits_one(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A `gate.finished` line missing one of its six keys is reported, not a traceback."""
+    monkeypatch.chdir(tmp_path)
+    first, *rest = events.read(ARCHIVE)
+    del first["duration"]
+    log = tmp_path / "events.jsonl"
+    log.write_text("".join(json.dumps(line) + "\n" for line in [first, *rest]), encoding="utf-8")
+    out = tmp_path / "verdict.json"
+    result = runner.invoke(app, ["verdict", "export", ARCHIVE_RUN, str(out), "--log", str(log)])
+    assert result.exit_code == EXIT_CONFIG_ERROR
+    assert isinstance(result.exception, SystemExit)  # not a KeyError caught by the runner
+    assert "config error" in _text(result)
+    assert ARCHIVE_RUN in _text(result) and "'duration'" in _text(result)
     assert not out.exists()
 
 
