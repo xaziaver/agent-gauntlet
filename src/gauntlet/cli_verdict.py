@@ -33,4 +33,8 @@ def export(
     reused = verdict_mod.deferred_to(lines)
     if reused is not None:
         fail(f"run {run} ran no gate: it reused run {reused}, whose lines are the verdict")
-    verdict_mod.write(path, verdict_mod.from_lines(lines, run))
+    try:
+        record = verdict_mod.from_lines(lines, run)
+    except verdict_mod.ShortGateLineError as exc:
+        fail(f"run {run}: {exc}")
+    verdict_mod.write(path, record)
