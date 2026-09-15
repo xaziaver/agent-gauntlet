@@ -420,6 +420,15 @@ def test_a_lock_rejected_stop_check_emits_no_boundary_lines(project: Path) -> No
     assert _events(project, events.RUN_FINISHED) == []
 
 
+def test_a_lock_rejected_check_emits_no_boundary_lines(project: Path) -> None:
+    with base.exclusive_run(project):
+        result = runner.invoke(app, ["check"])
+    assert result.exit_code == EXIT_OK
+    assert "in progress" in result.output
+    assert _events(project, events.RUN_STARTED) == []
+    assert _events(project, events.RUN_FINISHED) == []
+
+
 # --- doctor ----------------------------------------------------------------
 
 

@@ -157,8 +157,12 @@ def check(
     log = events.Log(root)
     ctx = runner.build_context(root, cfg, selected, changed)
     run = tree_mod.Invocation(root, cfg, "check", tree_mod.measure(root, cfg), changed)
-    log.emit(events.RUN_STARTED, command="check", gates=selected, changed=changed)
-    results = _locked_run(root, lambda: runner.run_gates(ctx, cfg, selected, fail_fast, log))
+
+    def execute() -> list[base.GateResult]:
+        log.emit(events.RUN_STARTED, command=run.command, gates=selected, changed=run.changed)
+        return runner.run_gates(ctx, cfg, selected, fail_fast, log)
+
+    results = _locked_run(root, execute)
     finished = _finish(log, results, run)
     verdict_mod.record(record, results, run, selected, finished, log.run)
     _emit(results, cfg.max_diagnostics, json_out)

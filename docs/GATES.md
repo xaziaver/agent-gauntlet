@@ -477,7 +477,8 @@ when nothing changed and is wrong for "are you actually done"), under the run lo
 first failure by default. Exit 2 blocks the agent's stop and feeds the report back; after
 `--max-attempts` bounces it exits 0 with a `systemMessage` so a human decides. In
 `.gauntlet/events.jsonl` it bounds its `gate.finished` lines with `run.started` and `run.finished`
-(`command: stop-check`, emitted inside the lock, so a lock-rejected run leaves no line),
+(`command: stop-check`, `run.started` emitted inside the lock as `check`'s is since item 4,
+2026-09-15, so a lock-rejected run of either leaves no line),
 `run.finished` carrying the tree hash and its file count; like `check`, it writes the record only
 when every enabled gate ran over the whole tree and passed. The record is a cache, never evidence:
 a run is.
