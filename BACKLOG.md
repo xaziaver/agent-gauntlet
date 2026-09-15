@@ -121,6 +121,24 @@ Every session reads `CLAUDE.md` and this file. Then, per item:
 
 ## Status as of this handoff
 
+**2026-09-15, G3 item 4 applied (the `check` half).** On `v1/item-4-run-started-in-lock` from
+`a0386af`: `a92eb13` (open), `ecec591` (housekeeping outside the verdict path: `deferred_to([])`,
+`ShortGateLineError`), the human findings commit `6d64fba` (design decisions (1)-(6) and a "nothing
+changes" prediction, ratified before code moved), `8f0b8bf` (housekeeping: `export` refuses a run
+with no `gate.finished` line), `ca9d42d` (the change: `check`'s `run.started` emit inside the lock,
+`cli.py` 284 → 288, `check` 24 of 25, one test, ARCHITECTURE.md and GATES.md amended), `2eed979`
+(`AcceptanceAdapter` deleted, its entry closed). Verified against `origin` by the advisor at every
+step: footprints, digests, sizes by `ast`, both pipelines from a clean clone. Regression run
+`20260915T124953-2826892`, `check --record` in the item-1 clone at `be87d38` with Gauntlet at
+`2eed979` in the venv: exit 0 in 995 s, eleven tuples identical to the tag's, compared by the agent
+and by the advisor; the log identical to item 3's with ids, times and durations stripped,
+`run.started` still first; `run.finished` `a8a00163…` over 127; lock `61c2ac4d30025e8c`; record
+digest `9c7aececf56dc4f5…`. Skip `20260915T130701-2844199`, 0.207 s. Export of the tag's run
+byte-equal to item 3's. Nothing outside the prediction appeared. Merge to `main` is the human's next
+act; item 5 opens after it. Own baseline updated below. Debts: `check` at 24 of 25, next change to
+it extracts first; `verdict compare` still deferred; the acceptance path defaults still restated in
+`tree.py`.
+
 **2026-09-15, G3 item 3 applied.** `c42426c` (extraction: `doctor` and `version` to `cli_doctor.py`,
 `cli.py` 295 → 274) and `81b2bcb` (the change) on `v1/item-3-committed-verdict`, on top of the human
 findings commit `aac3869` and the opening `85125ee`; design decisions (1)-(9) and the prediction
@@ -216,25 +234,27 @@ xargs -0 sha256sum | sha256sum` at that commit: `gauntlet` is installed with `uv
 --editable .`, so this working tree is the tool, and a checkout here changes what every ClaimGate hook runs at once.
 
 **This repository's own baseline.** Nine gates configured: protect, static, size, complexity, tests,
-coverage, crap, duplication, acceptance; no `[gates.boundary]` or `[gates.mutation]`. The `gauntlet
-check --record` after item 3, run `20260915T101125-2799622`, stamped 2026-09-15T10:11:25Z to
-10:12:17Z, agent-quoted and read by the advisor from the paste: protect 3/3 paths unchanged; static
-0 findings; size worst function 25; complexity 6; tests 572/572 passing in 51.356 s; coverage line
-96.87, branch 92.41 against floors of 95, 90 and per-file 80; crap 9.32; duplication 0; acceptance
-"no feature files" (vacuous). Diagnostics 0 and error null on all nine; `run.finished` tree
-`e3e172a80fb1f216…` over 95 files; the record's `harness.source` `a0e9b46ebf885c86…` over 51, both
-recomputed by the advisor by the shell pipelines from a clean clone at `81b2bcb`. Before item 3 (run
+coverage, crap, duplication, acceptance; no `[gates.boundary]` or `[gates.mutation]`.
+The `gauntlet check --record` after item 4, run `20260915T121906-2825022`, stamped
+2026-09-15T12:19:06Z to 12:20:05Z, agent-quoted and read by the advisor from the paste: protect 3/3
+paths unchanged; static 0 findings; size worst function 25; complexity 6; tests 576/576 passing in
+58.108 s; coverage line 96.89, branch 92.5 against floors of 95, 90 and per-file 80; crap 9.32;
+duplication 0; acceptance "no feature files" (vacuous). Diagnostics 0 and error null on all nine;
+`run.finished` tree `60662e437dfce71e…` over 95 files; the record's `harness.source`
+`d6755bb005eb5b3e…` over 51, both recomputed by the advisor by the shell pipelines from a clean
+clone at `2eed979`. Before item 4 (run `20260915T101125-2799622`) the suite was 572 tests in 51.356
+s at 96.87 / 92.41 over 95 files. Before item 3 (run
 `20260914T161254-2726665`) the suite was 551 tests in 49.7 s at 96.76 / 92.23 over 90 files. Before
 item 2 (run `20260913T222626-2654730`) the suite was 511 tests in 50.161 s at 96.6 / 91.89. Before item 1 (run
 `20260913T093143-2601684`, after G2d) the suite was 498 tests in 36.328 s at 96.54 / 91.75; the two
 item-1 tests that run a real pytest-bdd project account for about 9 s of the difference. Stop hook
 budget 600 s; a full own-run is about 51 s by the timestamps. The suite is `.venv/bin/pytest tests
 -q -p no:cacheprovider`; the `pytest` on PATH is not the venv's and collects nothing. Branch
-coverage has 2.41 points of headroom over its floor: a G3 change that adds an untested branch goes
+coverage has 2.5 points of headroom over its floor: a G3 change that adds an untested branch goes
 red here before it reaches the subject. Since item 2 the Stop hook skips whenever the hand `gauntlet check` was green on the same
 tree: a turn end that ran no gate is a `run.reused` line in the log naming that run, and only
-the log tells it from a crash. `cli.py` is at 284 of 300 lines since item 3 moved `doctor` and
-`version` to `cli_doctor.py`; `verdict.py` is 197, `tree.py` 252.
+the log tells it from a crash. `cli.py` is at 288 of 300 lines and `check` at 24 of 25 since item 4;
+`verdict.py` is 210, `cli_verdict.py` 54, `tree.py` 252, `adapters/base.py` 11.
 
 **The inventory of 2026-09-12**, read-only, agent-produced, from which this file was written.
 Three source-line citations in the findings resolve at `a0ef78d` (`cli.py:151` and `cli.py:151-152`

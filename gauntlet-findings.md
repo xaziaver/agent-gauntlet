@@ -715,9 +715,44 @@ the record and the skip cache are untouched. The `AcceptanceAdapter` deletion re
 the subject runs: the name occurs once in the package, at its definition. No duration is
 predicted. And nothing else.
 
+**Change, applied 2026-09-15 (the `check` half).** `ca9d42d`: `check`'s two lines became an inner
+`execute()` whose first statement is the `run.started` emit, reading `run.command` and `run.changed`
+from the `Invocation`, and whose return is `runner.run_gates(...)`, then `results =
+_locked_run(root, execute)` — the form of `_stop_gates.execute`; nothing else in `cli.py` moved (284
+→ 288, `check` 20 → 24 of 25; ruff's formatter makes it six lines added and two removed, not the
+patch text's four). `test_tree.py::test_a_lock_rejected_check_emits_no_boundary_lines`, beside the
+stop-check test it mirrors, failed against the unchanged code with one `run.started` in the log and
+passes after. ARCHITECTURE.md's event-log sentence and the GATES.md parenthetical that stated the
+stop-check-only behaviour now say both commands emit inside the lock. Before it, `8f0b8bf`, outside
+the verdict path: `verdict export` exits 1 through `fail` — "ran no gate: no `gate.finished` line
+among its N line(s)" — for a run with neither `gate.finished` nor `run.reused`, the hole the ground
+report found (such a run exported as `verdict: []`, `passed: true`); the test exited 0 against the
+unfixed code. After it, `2eed979`: the `AcceptanceAdapter` deletion, its own entry. Own run
+`20260915T121906-2825022` at `2eed979`, made with `--record`: 576 tests in 58.1 s, coverage 96.89 /
+92.5, tree `60662e437dfce71e…` over 95 and `harness.source` `d6755bb005eb5b3e…` over 51, both equal
+to the shell pipelines from a clean clone, advisor-measured. Regression run
+`20260915T124953-2826892` on the item-1 clone at `be87d38`, `.gauntlet/` and `mutants/` removed,
+Gauntlet at `2eed979` installed into the venv with `verdict.harness()` printing the tip's values
+before the run: exit 0 in 995 s; all eleven tuples identical to the tag's, compared by the agent and
+again by the advisor from the archive; the log identical to item 3's fourteen lines in kinds, order
+and content with ids, times and durations stripped, `run.started` still first and in the same second
+as `protect`'s line; `run.finished` `a8a00163…` over 127; lock and tree unchanged; the record's
+digest `9c7aececf56dc4f5…`. Then the skip, 0.207 s, one `run.reused`; then `export` of the tag's run
+from the archive copy, byte-equal to item 3's `prototype-1-verdict.json`; then `export` of the
+regression run, equal to the live record in every key but `harness`. The prediction named nothing
+that did not happen and declined to name durations; nothing outside it appeared. The ground report's
+§4 is the before-state evidence: a lock-rejected `check` wrote exactly one `run.started` line,
+shape-identical to a killed run's. ClaimGate's `docs/harness-findings.md` still records the
+pre-change behaviour; phase 4 rewrites it. Debt: `check` is at 24 of 25 lines; its next change opens
+with an extraction.
+
 **Routes to:** BACKLOG.md, v1.
 
-**Status.** Open, patch ready.
+**Status.** Applied, both halves. The `stop-check` half at item 2 (`1faa85e`); the `check` half
+`ca9d42d` on `v1/item-4-run-started-in-lock`, on top of the human findings commit `6d64fba`, with
+housekeeping `8f0b8bf` before it and the `AcceptanceAdapter` deletion `2eed979` after; regression
+run `20260915T124953-2826892` and skip `20260915T130701-2844199`, log archived at
+`~/gauntlet-review/item4-events-2026-09-15.jsonl` (14 lines, sha256 `44deae8a15cc034e`).
 
 *(Annotation, 2026-09-12: the patch's anchors checked at `a0ef78d`: `cli.py:151-152` are exactly
 the two lines it replaces, and it already threads `fail_fast`, so it postdates `4fc5c34`;
@@ -3175,7 +3210,11 @@ doing only when a second adapter exists.
 
 **Routes to.** `BACKLOG.md`, v1, "everything else".
 
-**Status.** Open.
+**Status.** Applied. Deleted in `2eed979` on `v1/item-4-run-started-in-lock` under item 4's
+prediction ("reaches nothing the subject runs: the name occurs once in the package, at its
+definition", ground-measured); `adapters/base.py` 20 → 11 lines, `RunResult` alone remains, with the
+three imports only the protocol used; `grep -rn AcceptanceAdapter src tests` prints nothing;
+regression run `20260915T124953-2826892` identical to the tag's.
 
 ### v1, blocking v2
 
