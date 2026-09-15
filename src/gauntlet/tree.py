@@ -81,7 +81,8 @@ def _gate_paths(cfg: config_mod.Config, gate: str, defaults: dict[str, str]) -> 
     return [str(table.get(key, default)) for key, default in defaults.items()]
 
 
-def _under(path: str, prefix: str) -> bool:
+def under(path: str, prefix: str) -> bool:
+    """Is the POSIX-relative path the prefix itself or below it?"""
     return path == prefix or path.startswith(prefix + "/")
 
 
@@ -98,7 +99,7 @@ def gated_paths(cfg: config_mod.Config, root: Path) -> list[str]:
     kept: list[str] = []
     for candidate in candidates:
         path = Path(candidate).as_posix()
-        if path in kept or any(_under(path, prefix) for prefix in NEVER_HASHED):
+        if path in kept or any(under(path, prefix) for prefix in NEVER_HASHED):
             continue
         kept.append(path)
     return kept
@@ -118,11 +119,8 @@ def _listing(root: Path, paths: list[str]) -> list[bytes] | None:
     return sorted(name.encode("utf-8") for name in proc.stdout.split("\0") if name)
 
 
-def hash_tree(root: Path, paths: list[str]) -> TreeHash | None:
-    """sha256 over one `<sha256 of content>  <path>\\n` line per listed file."""
-    names = _listing(root, paths)
-    if names is None:
-        return None
+def digest_listing(root: Path, names: list[bytes]) -> TreeHash | None:
+    """sha256 over one `<sha256 of content>  <path>\\n` line per name; None if one is unreadable."""
     digest = hashlib.sha256()
     for name in names:
         try:
@@ -132,6 +130,14 @@ def hash_tree(root: Path, paths: list[str]) -> TreeHash | None:
         line = hashlib.sha256(content).hexdigest().encode("ascii") + b"  " + name + b"\n"
         digest.update(line)
     return TreeHash(tree=digest.hexdigest(), files=len(names))
+
+
+def hash_tree(root: Path, paths: list[str]) -> TreeHash | None:
+    """The digest over git's listing of the paths; None when git cannot say."""
+    names = _listing(root, paths)
+    if names is None:
+        return None
+    return digest_listing(root, names)
 
 
 def measure(root: Path, cfg: config_mod.Config) -> TreeHash | None:
@@ -203,13 +209,16 @@ def read_record(root: Path) -> GreenRecord | None:
         return None
 
 
-def write_record(root: Path, record: GreenRecord) -> None:
+def write_json(path: Path, payload: dict[str, Any]) -> None:
     """Temp file then replace: a reader never sees half a record."""
-    path = record_path(root)
     path.parent.mkdir(parents=True, exist_ok=True)
-    temp = path.with_suffix(".json.tmp")
-    temp.write_text(json.dumps(asdict(record), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    temp = path.with_name(path.name + ".tmp")
+    temp.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     temp.replace(path)
+
+
+def write_record(root: Path, record: GreenRecord) -> None:
+    write_json(record_path(root), asdict(record))
 
 
 def remember(

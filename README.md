@@ -141,7 +141,8 @@ Each gate is opt-in: no `[gates.x]` table, no gate.
 |---|---|
 | `gauntlet status` | Gates, pending approvals, recent activity. `--run` `--json` |
 | `gauntlet review` | Walk pending approvals one at a time, with the diff on screen |
-| `gauntlet check` | Run the gates. `--gates a,b` `--changed` `--fail-fast` `--json` |
+| `gauntlet check` | Run the gates. `--gates a,b` `--changed` `--fail-fast` `--json` `--record PATH` |
+| `gauntlet verdict export RUN PATH` | Write a run's verdict record from the event log (`--log FILE` reads any copy); the same shape `check --record` writes from a live run |
 | `gauntlet init` | Scaffold config + integration. `--agent claude-code\|generic` `--dry-run` |
 | `gauntlet doctor` | Is every enabled gate's tooling actually present here? |
 | `gauntlet lock` / `verify` | Approve configuration / check it hasn't drifted |

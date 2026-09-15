@@ -22,6 +22,7 @@ from gauntlet import events, report, runner, scaffold
 from gauntlet import guard as guard_mod
 from gauntlet import stop as stop_mod
 from gauntlet import tree as tree_mod
+from gauntlet import verdict as verdict_mod
 from gauntlet.cli_approvals import lock, verify
 from gauntlet.cli_doctor import doctor, version
 from gauntlet.cli_events import events_app
@@ -34,6 +35,7 @@ from gauntlet.cli_support import EXIT_CONFIG_ERROR, EXIT_GATE_FAILURE, EXIT_OK
 from gauntlet.cli_support import fail as _fail
 from gauntlet.cli_support import resolve_config as _resolve_config
 from gauntlet.cli_support import select_gates as _select_gates
+from gauntlet.cli_verdict import verdict_app
 from gauntlet.gates import base
 from gauntlet.gates.base import RunInProgressError, exclusive_run
 
@@ -51,6 +53,7 @@ app.add_typer(mutant_app, name="mutant")
 app.add_typer(events_app, name="events")
 app.add_typer(status_app, name="status")
 app.add_typer(review_app, name="review")
+app.add_typer(verdict_app, name="verdict")
 
 
 @app.callback()
@@ -73,11 +76,14 @@ def _locked_run(root: Path, execute: Callable[[], list[base.GateResult]]) -> lis
         raise typer.Exit(code=EXIT_OK) from None
 
 
-def _finish(log: events.Log, results: list[base.GateResult], run: tree_mod.Invocation) -> None:
+def _finish(
+    log: events.Log, results: list[base.GateResult], run: tree_mod.Invocation
+) -> events.Event | None:
     """Close the run in the log; remember the tree only when the run was wholly green."""
     _emit_approval_needed(log, results)
     finished = log.emit(events.RUN_FINISHED, **tree_mod.finished_fields(run, results))
     tree_mod.remember(run, results, finished)
+    return finished
 
 
 def _read_stop_payload() -> dict[str, Any]:
@@ -141,16 +147,20 @@ def check(
     changed: bool = typer.Option(False, "--changed", help="Only analyze changed files"),
     fail_fast: bool = typer.Option(False, "--fail-fast", help="Stop at the first failing gate"),
     json_out: bool = typer.Option(False, "--json", help="Machine-readable report"),
+    record: Path | None = typer.Option(None, "--record", help=verdict_mod.RECORD_HELP),
 ) -> None:
     """Run the configured gates and report."""
     root, cfg = _resolve_config()
     selected = _select_gates(gates, cfg)
+    if record is not None and (reason := verdict_mod.refusal(record, root, cfg)) is not None:
+        _fail(reason)
     log = events.Log(root)
     ctx = runner.build_context(root, cfg, selected, changed)
     run = tree_mod.Invocation(root, cfg, "check", tree_mod.measure(root, cfg), changed)
     log.emit(events.RUN_STARTED, command="check", gates=selected, changed=changed)
     results = _locked_run(root, lambda: runner.run_gates(ctx, cfg, selected, fail_fast, log))
-    _finish(log, results, run)
+    finished = _finish(log, results, run)
+    verdict_mod.record(record, results, run, selected, finished, log.run)
     _emit(results, cfg.max_diagnostics, json_out)
 
 
