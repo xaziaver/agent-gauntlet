@@ -16,7 +16,7 @@ from typing import Any
 from gauntlet import config as config_mod
 from gauntlet import locking, registry, specs
 from gauntlet import mutants as mutants_mod
-from gauntlet.acceptance import binding, gherkin, mutation
+from gauntlet.acceptance import binding, gherkin, mutation, strands
 from gauntlet.acceptance.mutation import Mutant
 from gauntlet.adapters import python as python_adapter
 from gauntlet.gates.base import Diagnostic, GateContext, GateResult, timed
@@ -24,7 +24,6 @@ from gauntlet.gates.base import Diagnostic, GateContext, GateResult, timed
 name = "acceptance"
 
 THRESHOLD = "approved, passing, and mutation-proof"
-BACKUP_DIR = Path(".gauntlet") / "mutation-backup"
 SCOPE_RECORD = Path(".gauntlet") / "acceptance-scope.json"
 MAX_LISTED = 6
 
@@ -124,13 +123,6 @@ def _approval_diagnostics(findings: list[registry.Finding]) -> list[Diagnostic]:
     ]
 
 
-def _backup(root: Path, path: Path, text: str) -> None:
-    """Keep a copy on disk so a crash mid-mutation is recoverable by hand."""
-    destination = root / BACKUP_DIR / path.name
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    destination.write_text(text, encoding="utf-8")
-
-
 def _survivors(
     root: Path,
     targets: list[Path],
@@ -141,7 +133,7 @@ def _survivors(
 ) -> list[mutation.Mutant]:
     """Apply each mutant in place and demand the targets fail. Always restores."""
     original = path.read_text(encoding="utf-8")
-    _backup(root, path, original)
+    strands.backup(root, path, original)
     survived: list[mutation.Mutant] = []
     try:
         for mutant in mutants:
