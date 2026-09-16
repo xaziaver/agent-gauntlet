@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import signal
 from pathlib import Path
 from typing import Any
 
@@ -13,7 +14,7 @@ from gauntlet import mutants as mutants_mod
 from gauntlet.adapters.python import CodeMutant
 from gauntlet.cli import app
 from gauntlet.cli_support import EXIT_CONFIG_ERROR, EXIT_OK
-from gauntlet.gates import acceptance
+from gauntlet.gates import acceptance, base
 from gauntlet.gates.base import GateContext
 from gauntlet.gates.mutation import SUBJECT, MutmutError
 
@@ -289,3 +290,24 @@ def test_prune_code_with_nothing_stale_says_so(project: Path, fake_code_survivor
 def test_list_shows_code_mutants_too(project: Path, fake_code_survivors: None) -> None:
     runner.invoke(app, ["mutant", "approve-code", "--reason", "provably unreachable"])
     assert "provably unreachable" in _text(runner.invoke(app, ["mutant", "list"]))
+
+
+def test_mutant_approve_dies_with_the_signal_after_restoring(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The gate's finally restores the spec; approve's only job is to end as the signal would."""
+    died: list[int] = []
+
+    def survivors(*_: object) -> list[Any]:
+        raise base.Interrupted(signal.SIGTERM)
+
+    def die(self: base.Interrupted) -> None:
+        died.append(self.signum)
+        raise SystemExit(128 + self.signum)
+
+    monkeypatch.setattr(acceptance, "survivors_for", survivors)
+    monkeypatch.setattr(base.Interrupted, "die", die)
+    result = runner.invoke(app, ["mutant", "approve", "features/tiering.feature", "--reason", "x"])
+    assert died == [signal.SIGTERM]
+    assert result.exit_code == 128 + signal.SIGTERM
+    assert not (project / ".gauntlet" / "events.jsonl").exists()

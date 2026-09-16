@@ -437,10 +437,14 @@ whole-directory run cost ~3,700 s; the scoped run is predicted at 700–1,000 s.
 N` still caps the mutants per feature (sampled with a fixed seed, `sample()`), trading
 completeness for time.
 
-*Safety of in-place mutation:* the original is written to `.gauntlet/mutation-backup/<file>`
-before the first mutant and restored in a `finally`. A clean interrupt (SIGINT) restores; a hard
-kill between write and restore leaves a mutant on disk, and the backup — or `git checkout --
-features/` when every spec is committed at its locked text — is the recovery.
+*Safety of in-place mutation:* the original is written to `.gauntlet/mutation-backup/<its path
+under features/>` before the first mutant and restored in a `finally`. A clean interrupt (SIGINT)
+restores; a hard kill between write and restore leaves a mutant on disk, and the backup — or `git
+checkout -- features/` when every spec is committed at its locked text — is the recovery. A run
+killed by SIGTERM, SIGHUP or SIGINT during mutation restores the spec, writes one `run.interrupted`
+line naming the gate and the signal, and ends with the signal's status, while a run killed by
+SIGKILL leaves its backup, which the gate's next run restores from before anything else and says
+so in `actual` — the backup directory is empty after every completed run (item 5, 2026-09-16).
 
 *Classification and reporting:* survivors are classified against the lock under `spec:<path>`
 exactly as code mutants are (equivalent, unresolved, stale). Diagnostics are grouped **one per

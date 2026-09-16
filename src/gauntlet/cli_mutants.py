@@ -13,7 +13,7 @@ from gauntlet import mutants as mutants_mod
 from gauntlet.acceptance.mutation import Mutant
 from gauntlet.adapters.python import CodeMutant
 from gauntlet.cli_support import EXIT_OK, fail, resolve_config
-from gauntlet.gates import acceptance
+from gauntlet.gates import acceptance, base
 from gauntlet.gates.mutation import SUBJECT, MutmutError, survivors_for
 
 mutant_app = typer.Typer(no_args_is_help=True, help="Review surviving mutants.")
@@ -71,7 +71,10 @@ def _current_survivors(
     config = _acceptance_config(cfg)
     ctx = runner.build_context(root, cfg, cfg.enabled_gates, changed=False)
     steps = root / str(config.get("steps", "tests/steps"))
-    survivors = acceptance.survivors_for(ctx, config, feature, steps)
+    try:
+        survivors = acceptance.survivors_for(ctx, config, feature, steps)
+    except base.Interrupted as exc:
+        exc.die()  # the gate's finally has already restored the spec
     if scenario:
         return [m for m in survivors if m.scenario == scenario]
     return survivors

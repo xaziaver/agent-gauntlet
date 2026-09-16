@@ -6,8 +6,10 @@ machinery they share. Nothing here knows about typer or exit codes.
 
 from __future__ import annotations
 
+import signal
 import subprocess
 from pathlib import Path
+from typing import NoReturn
 
 from gauntlet import config as config_mod
 from gauntlet import events
@@ -83,6 +85,27 @@ def build_context(
     )
 
 
+def _interrupted(
+    sink: events.Log, gate_name: str, exc: base.Interrupted | KeyboardInterrupt
+) -> NoReturn:
+    """Log which gate the signal landed in, then end with the signal's status."""
+    ended = exc if isinstance(exc, base.Interrupted) else base.Interrupted(signal.SIGINT)
+    sink.emit(events.RUN_INTERRUPTED, gate=gate_name, signal=ended.name)
+    ended.die()
+
+
+def _finished(sink: events.Log, result: base.GateResult) -> None:
+    sink.emit(
+        events.GATE_FINISHED,
+        gate=result.gate,
+        passed=result.passed,
+        actual=result.actual,
+        duration=result.duration,
+        diagnostics=len(result.diagnostics),
+        error=result.error,
+    )
+
+
 def run_gates(
     ctx: base.GateContext,
     cfg: config_mod.Config,
@@ -93,17 +116,12 @@ def run_gates(
     sink = log or events.disabled()
     results: list[base.GateResult] = []
     for gate_name in selected:
-        result = REGISTRY[gate_name].run(ctx, cfg.gates.get(gate_name, {}))
+        try:
+            result = REGISTRY[gate_name].run(ctx, cfg.gates.get(gate_name, {}))
+        except (base.Interrupted, KeyboardInterrupt) as exc:
+            _interrupted(sink, gate_name, exc)
         results.append(result)
-        sink.emit(
-            events.GATE_FINISHED,
-            gate=result.gate,
-            passed=result.passed,
-            actual=result.actual,
-            duration=result.duration,
-            diagnostics=len(result.diagnostics),
-            error=result.error,
-        )
+        _finished(sink, result)
         if fail_fast and not result.passed:
             break
     return results

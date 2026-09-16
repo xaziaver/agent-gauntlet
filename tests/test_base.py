@@ -1,7 +1,12 @@
 from __future__ import annotations
 
+import os
+import signal
+import subprocess
 import sys
 from pathlib import Path
+
+import pytest
 
 from gauntlet.gates import base
 
@@ -100,3 +105,45 @@ def test_run_cmd_reports_a_missing_executable_instead_of_raising(tmp_path: Path)
     proc = base.run_cmd(["definitely-not-a-real-binary-xyz"], cwd=tmp_path)
     assert proc.returncode == base.MISSING_TOOL_RETURNCODE
     assert "on PATH" in proc.stderr
+
+
+def test_write_text_atomic_replaces_the_target_and_leaves_no_temp(tmp_path: Path) -> None:
+    target = tmp_path / "spec.feature"
+    target.write_text("before\n")
+    base.write_text_atomic(target, "after\n")
+    assert target.read_text() == "after\n"
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["spec.feature"]
+
+
+def test_signals_raise_raises_interrupted_once_and_restores_the_handlers() -> None:
+    """The first TERM unwinds as an exception; a repeat while unwinding is ignored."""
+    sentinel = signal.signal(signal.SIGTERM, lambda *_: None)
+    try:
+        installed = signal.getsignal(signal.SIGTERM)
+        with pytest.raises(base.Interrupted) as caught, base.signals_raise():
+            try:
+                os.kill(os.getpid(), signal.SIGTERM)
+            finally:
+                os.kill(os.getpid(), signal.SIGTERM)  # the repeat: ignored, not re-raised
+        assert caught.value.signum == signal.SIGTERM
+        assert caught.value.name == "SIGTERM"
+        assert signal.getsignal(signal.SIGTERM) is installed
+        assert signal.getsignal(signal.SIGHUP) is signal.SIG_DFL
+    finally:
+        signal.signal(signal.SIGTERM, sentinel)
+
+
+def test_interrupted_die_ends_the_process_with_the_signal_s_status() -> None:
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "from gauntlet.gates import base; import signal; "
+            "base.Interrupted(signal.SIGTERM).die()",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == -signal.SIGTERM  # 143 in a shell
+    assert proc.stderr == ""
