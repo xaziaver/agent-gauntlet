@@ -528,6 +528,89 @@ it (3.988 s, against 20.458 s cold once it was removed) with an identical tuple.
 shortens each window on ClaimGate from about 3 s to about 0.6 s and does not close it; the backup
 directory is the recovery path, and it worked.)*
 
+**Design decisions, advisor-recommended, human-ratified 2026-09-16.** Grounded in the report of
+2026-09-15 (`9b79a4b14bc339a4`): SIGINT with the default disposition already restores through the
+`finally`; SIGTERM — what coreutils `timeout` sends, and the likeliest hook kill — and SIGKILL strand
+the tree; the backup is never removed after a green run, so its existence cannot mark a strand and
+an automatic restore from it would overwrite a human's later edit; two specs of one basename share
+one backup; mtime separates nothing. (1) Two layers, because SIGKILL cannot be caught. Layer one,
+signal-to-exception: `gates/base.py` gains `Interrupted(BaseException)` carrying the signal number,
+and a context manager `signals_raise()` that installs handlers for SIGTERM and SIGHUP raising it —
+on the first delivery only; repeats while unwinding are ignored — and restores the previous handlers
+on exit. `_survivors` enters it after `_backup` and around its `try/finally`, so a TERM or HUP during
+mutation runs the `finally` exactly as SIGINT does today; a signal outside the loop, when the tree
+is clean, behaves as before. Layer two, restore at the next start: the gate's `run`, before
+`_stages`, restores every backup whose mirrored target exists under the configured features
+directory, discards every backup (restored or not — a target that no longer exists cannot be a
+strand, and a backup laid down by the old basename layout maps to no spec), prunes the empty
+directory, and prefixes `actual` with "N stranded spec(s) restored; " when N > 0, N counting files
+whose content differed; a clean run's `actual` is byte-identical to today's. (2) The backup marks
+the strand: `_survivors`' `finally` restores the spec and then discards its backup, so a backup on
+disk means a run died between its mutant write and its restore, or — SIGKILL between the restore
+and the unlink — a backup equal to its spec, which layer two removes without counting. Backups
+mirror the spec's path under `.gauntlet/mutation-backup/` (`features/a/x.feature` and
+`features/b/x.feature` no longer share one file), which layer two requires before it can be safe.
+(3) Every write to a spec — each mutant and the restore — goes through one atomic helper,
+`base.write_text_atomic` (temp beside the target, `os.replace`), so no interruption leaves a partial
+spec; the residue of a kill mid-write is a stray temp file, untracked. (4) The log says what
+happened, closing the ground's open question 5: `events.py` gains `RUN_INTERRUPTED = "run.interrupted"`;
+`runner.run_gates` catches `Interrupted` and `KeyboardInterrupt` around a gate's run, emits one line
+`{kind: run.interrupted, gate, signal}` (signal by name, `SIGTERM`, `SIGHUP`, `SIGINT`), then calls
+`Interrupted.die()`, which resets that signal's disposition to default and re-raises it on its own
+pid, so the process ends with the signal's status as today (143, 129, 130) and no traceback; the
+flock releases with the process; `run.finished`, `_finish` and the skip cache are never reached. The
+`gauntlet mutant approve` path, which reaches `_survivors` without the runner, catches `Interrupted`
+in `cli_mutants` and calls `die()` without a log line. (5) `gates/acceptance.py` is at 282 of 300, so
+the first commit is an extraction, stage invariant held: `BACKUP_DIR`, `_backup` and the new discard
+and restore functions live in a new `acceptance/strands.py` (`backup`, `discard`, `restore_all`);
+`acceptance.py` imports it, behaviour unchanged, `test_mutation_restores_the_feature_file` the pin.
+The item-1 freeze on `mutation.py`, `gherkin.py`, `mutants.py` and `registry.py` holds; the engine's
+enumeration (1263 at the tag) cannot move. (6) Not in this item: the per-call `timeout` (it bounds
+one pytest and leaves the `finally` intact — ground, `tw3`), the hook timeout (ClaimGate's Stop hook
+is already 7200 s at the tag), mutmut's `mutants/` copy (the mutation gate's, BACKLOG 4), and SIGINT's
+disposition under a backgrounded shell (the environment's, not the tool's). Cost: one context
+manager, one exception, one atomic writer and one event kind in the tool's contract; on a green run,
+sixteen `signal.signal` pairs and sixteen unlinks on ClaimGate; and the proof gains a second half —
+the kill matrix re-run in the ground's throwaway, since the subject never sees a signal.
+
+**Predicted effect on the regression subject, 2026-09-16.** Nothing changes on the subject but one
+listing. Three invocations as at item 4, in the clone at `be87d38` with `.gauntlet/` and `mutants/`
+removed, this repository at the branch tip with porcelain empty, Gauntlet installed from the tip
+into the clone's venv and `verdict.harness()` equal to the tip's pipeline before the run. First,
+`gauntlet check --record <a path outside the clone>`: the eleven `gate.finished` lines carry the
+same `gate`, `passed`, `error`, `diagnostics` and `actual` as run `20260911T110451-2238600` —
+acceptance's `actual` is exactly `16 spec(s), 73 reviewed-equivalent`, no prefix, because no
+backup exists when the run starts; the record's `verdict_sha256` is
+`9c7aececf56dc4f5214bfc4a07cd729f347086039dc7ba9193c6edfa3d01ca42`; `run.started` and
+`run.finished` as at item 4, the latter with
+`a8a00163534b873780f5a8eceb213b0f19e8056f712c9643b971d7432ed00493` over 127; no `run.interrupted`
+line; the log identical to item 4's fourteen lines in kinds, order and content, run ids, timestamps
+and durations excepted; `gauntlet.lock.json` byte-identical; the clone's tree clean after. The one
+named difference: `ls .gauntlet/` after the run is `acceptance-scope.json coverage.json events.jsonl
+jscpd junit.xml last-green.json run.lock` — `mutation-backup` absent, where items 3 and 4 listed it,
+because every backup is discarded after its restore. Second, `stop-check --max-attempts 1`: one
+`run.reused` naming the first run, nothing else. Third, `verdict export` of the tag's run from a
+copy of the archive: byte-equal to item 3's `prototype-1-verdict.json`. No duration is predicted.
+And nothing else on the subject.
+
+**Predicted effect on the throwaway kill matrix, 2026-09-16** — the ground report's `tw1`, 50
+mutants, killed at about +8 s with the mutation in flight, the same script and the same polling,
+Gauntlet at the branch tip. SIGTERM: spec equals HEAD after, `git status` empty, no
+`.gauntlet/mutation-backup/`, exit 143, the log's last two lines for the run `gate.finished` for
+the gates before acceptance and then `run.interrupted` with `gate: acceptance`, `signal: SIGTERM`
+— no `run.finished`. SIGHUP: the same with `signal: SIGHUP` and exit 129. SIGINT with the default
+disposition: restored as before, exit 130, and now a `run.interrupted` line with `signal: SIGINT`.
+`timeout 5`: restored, `run.interrupted` `SIGTERM`, exit 124 (coreutils' own). SIGKILL: the strand
+remains and `git status` shows ` M`, as before, with the backup present at its mirrored path
+`.gauntlet/mutation-backup/features/rating.feature`; the next `gauntlet check` on that tree
+restores it before the approval stage, passes, reports acceptance `actual` as `1 stranded spec(s)
+restored; 1 spec(s)`, leaves no backup and a clean tree, exit 0 — where the ground measured
+`1 unapproved or modified spec(s)`, exit 2, and the strand left in place. The same-basename
+project `tw2`: two backup files during the run, at `features/a/rating.feature` and
+`features/b/rating.feature` under the backup directory, none after. Child pytest after the
+parent's death: gone within a second, as measured. Anything the matrix shows that this paragraph
+does not name is a stop.
+
 **Routes to:** BACKLOG.md, v1.
 
 **Status.** Open.
