@@ -451,7 +451,8 @@ exactly as code mutants are (equivalent, unresolved, stale). Diagnostics are gro
 scenario**, listing up to six of its surviving values, because thirteen identical sentences burn
 the diagnostic budget and the hook's character cap for no signal. `actual` reads
 `"<n> spec(s), <m> surviving mutant(s), <k> reviewed-equivalent"`; a green summary omits the
-killed count.
+killed count. When stage 1 or 2 fails, `actual` ends `; mutation not run`, so the summary says
+which stage never ran rather than leaving it to inference (item 6, 2026-09-17).
 
 *Config:* `features` (default `features/`), `steps` (default `tests/steps`), `require_approved`
 (default true), `mutate_examples` (default true), `mutation_sample` (default 0 = all), `timeout`

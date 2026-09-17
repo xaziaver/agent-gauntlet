@@ -103,23 +103,45 @@ def _emit(results: list[base.GateResult], max_diags: int, json_out: bool) -> NoR
     raise typer.Exit(code=EXIT_OK if ok else EXIT_GATE_FAILURE)
 
 
-def _stop_outcome(root: Path, session: str, passed: bool) -> int:
-    """Update this session's attempt count. Returns the new count; 0 when passing."""
+def _clear_attempts(root: Path, session: str) -> None:
+    """A pass, run or reused: the session's next failure starts over."""
     attempts_file = stop_mod.attempts_path(root)
     state = stop_mod.load_attempts(attempts_file)
-    if passed:
-        stop_mod.save_attempts(stop_mod.clear_session(state, session), attempts_file)
+    stop_mod.save_attempts(stop_mod.clear_session(state, session), attempts_file)
+
+
+def _stop_outcome(
+    root: Path, session: str, results: list[base.GateResult], lines: str, log: events.Log
+) -> int:
+    """Update this session's attempt count. Returns the new count; 0 when passing.
+
+    A red run only a human can clear is neither counted nor cleared: it escalates
+    at once, because no number of agent turns changes it.
+    """
+    if report.passed(results):
+        _clear_attempts(root, session)
         return 0
+    attempts_file = stop_mod.attempts_path(root)
+    state = stop_mod.load_attempts(attempts_file)
+    if stop_mod.human_blocked(results):
+        _escalate_blocked(state.get(session, 0), lines, log, session)
     state, count = stop_mod.record_failure(state, session)
     stop_mod.save_attempts(state, attempts_file)
     return count
+
+
+def _escalate_blocked(count: int, lines: str, log: events.Log, session: str) -> NoReturn:
+    """Hand a human-blocked run to the human now, the attempt count untouched."""
+    log.emit(events.AGENT_ESCALATED, session=session, attempts=count, reason="human-blocked")
+    typer.echo(json.dumps({"systemMessage": stop_mod.blocked_message(lines)}))
+    raise typer.Exit(code=EXIT_OK)
 
 
 def _escalate_or_bounce(
     count: int, max_attempts: int, lines: str, log: events.Log, session: str
 ) -> NoReturn:
     if stop_mod.should_escalate(count, max_attempts):
-        log.emit(events.AGENT_ESCALATED, session=session, attempts=count)
+        log.emit(events.AGENT_ESCALATED, session=session, attempts=count, reason="attempts")
         typer.echo(json.dumps({"systemMessage": stop_mod.escalation_message(count, lines)}))
         raise typer.Exit(code=EXIT_OK)
     typer.echo(lines, err=True)
@@ -172,7 +194,7 @@ def _reuse(log: events.Log, session: str, record: tree_mod.GreenRecord, root: Pa
     """The skip: one event naming the run deferred to, one line, a pass for the session."""
     log.emit(events.RUN_REUSED, **tree_mod.reused_fields(record))
     typer.echo(tree_mod.skip_line(record))
-    _stop_outcome(root, session, passed=True)
+    _clear_attempts(root, session)
     raise typer.Exit(code=EXIT_OK)
 
 
@@ -215,10 +237,10 @@ def stop_check(
     session = stop_mod.session_id(_read_stop_payload())
     log = events.Log(root)
     results = _stop_gates(root, cfg, log, session, fail_fast, skip_unchanged)
-    count = _stop_outcome(root, session, report.passed(results))
+    report_text = report.to_human(results, cfg.max_diagnostics)
+    count = _stop_outcome(root, session, results, report_text, log)
     if count == 0:
         raise typer.Exit(code=EXIT_OK)
-    report_text = report.to_human(results, cfg.max_diagnostics)
     _escalate_or_bounce(count, max_attempts, report_text, log, session)
 
 

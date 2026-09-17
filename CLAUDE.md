@@ -40,7 +40,8 @@ Everything above the block is hand-written and survives `init`; edit only there.
   memory of one. `check` and `stop-check` both emit `run.started` and `run.finished`; a
   `stop-check` that skips emits one `run.reused` line instead. The hook skips whenever your own
   `gauntlet check` was green on the same tree, so its line at a turn end is read from the log,
-  never inferred.
+  never inferred. A `systemMessage` beginning "Gauntlet is blocked on a human" means stop and
+  say so; the fix is the human's.
 - The suite is `.venv/bin/pytest tests -q -p no:cacheprovider`. The `pytest` on PATH is not
   the venv's and collects nothing.
 - The Stop hook budget is 600 s (`.claude/settings.json`) against a full own-run of under

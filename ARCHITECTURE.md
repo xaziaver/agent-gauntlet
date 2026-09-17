@@ -21,6 +21,7 @@ src/gauntlet/
 ├── cli_events.py        gauntlet events
 ├── cli_loop.py          gauntlet loop
 ├── cli_approvals.py     gauntlet lock / verify
+├── cli_setup.py         gauntlet init / guard
 │
 ├── config.py            gauntlet.toml -> Config; the canonical gate order
 ├── runner.py            gate registry, context construction, execution
@@ -113,6 +114,10 @@ are deliberate", and `files`, the number of files it covers — both `null` when
 be hashed — so the log can always pair a run with the tree it measured, partial runs included. A
 `stop-check` that skips because the tree matches the last wholly green run emits exactly one event,
 `run.reused` (`command`, `tree`, `files`, `reused_run`, `reused_at`), and nothing else.
+A `stop-check` that escalates emits one `agent.escalated` with `reason`: `attempts` at the
+retry cap, or `human-blocked` when every failure is an approval finding, in which case it
+escalates at once and the session's attempt count is neither spent nor cleared (item 6,
+2026-09-17).
 `check --record` adds no event: the record is a file, and the log of a recorded run is the
 log of the same run without it.
 
@@ -304,6 +309,13 @@ deliberate and worth the cost — those tests have caught things no unit test co
   next start without overwriting a human's later edit, which a backup that persisted after
   green runs would have done (measured 2026-09-15). Backups mirror the spec's path under the
   directory, so two specs of one basename no longer share a file (item 5, 2026-09-16).
+- **An approval failure still stops the acceptance gate before mutation, and now says so.**
+  `actual` ends "; mutation not run" on both early returns. Running mutation past an
+  unapproved or modified spec would cost the full stage on every Stop-hook turn of a tree the
+  human has not reviewed, and a red tree never skips; the survivors that stay hidden until the
+  approval clears are the price, and the gate names it. A red run whose every failure is an
+  approval finding is human-blocked: `stop-check` escalates it at once without spending an
+  attempt, and `gauntlet loop` stops after that iteration (item 6, 2026-09-17).
 
 ---
 
