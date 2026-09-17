@@ -8,6 +8,7 @@ to test, which makes it decorative.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 from dataclasses import dataclass
 from pathlib import Path
@@ -16,15 +17,15 @@ from typing import Any
 from gauntlet import config as config_mod
 from gauntlet import locking, registry, specs
 from gauntlet import mutants as mutants_mod
-from gauntlet.acceptance import binding, gherkin, mutation
+from gauntlet.acceptance import binding, gherkin, mutation, strands
 from gauntlet.acceptance.mutation import Mutant
 from gauntlet.adapters import python as python_adapter
+from gauntlet.gates import base
 from gauntlet.gates.base import Diagnostic, GateContext, GateResult, timed
 
 name = "acceptance"
 
 THRESHOLD = "approved, passing, and mutation-proof"
-BACKUP_DIR = Path(".gauntlet") / "mutation-backup"
 SCOPE_RECORD = Path(".gauntlet") / "acceptance-scope.json"
 MAX_LISTED = 6
 
@@ -124,13 +125,6 @@ def _approval_diagnostics(findings: list[registry.Finding]) -> list[Diagnostic]:
     ]
 
 
-def _backup(root: Path, path: Path, text: str) -> None:
-    """Keep a copy on disk so a crash mid-mutation is recoverable by hand."""
-    destination = root / BACKUP_DIR / path.name
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    destination.write_text(text, encoding="utf-8")
-
-
 def _survivors(
     root: Path,
     targets: list[Path],
@@ -141,15 +135,17 @@ def _survivors(
 ) -> list[mutation.Mutant]:
     """Apply each mutant in place and demand the targets fail. Always restores."""
     original = path.read_text(encoding="utf-8")
-    _backup(root, path, original)
+    strands.backup(root, path, original)
     survived: list[mutation.Mutant] = []
-    try:
-        for mutant in mutants:
-            path.write_text(mutation.apply(original, mutant), encoding="utf-8")
-            if python_adapter.run_acceptance(root, targets, python, timeout).passed:
-                survived.append(mutant)
-    finally:
-        path.write_text(original, encoding="utf-8")
+    with base.signals_raise():
+        try:
+            for mutant in mutants:
+                base.write_text_atomic(path, mutation.apply(original, mutant))
+                if python_adapter.run_acceptance(root, targets, python, timeout).passed:
+                    survived.append(mutant)
+        finally:
+            base.write_text_atomic(path, original)
+            strands.discard(root, path)
     return survived
 
 
@@ -273,10 +269,21 @@ def _stages(
     return _mutation_result(features, _mutation_outcome(ctx, config, features, steps, approved))
 
 
+def _with_restored(result: GateResult, restored: int) -> GateResult:
+    """Say so when the run began by undoing a strand; a clean run's result is untouched."""
+    if restored == 0:
+        return result
+    actual = f"{restored} stranded spec(s) restored; {result.actual}"
+    return dataclasses.replace(result, actual=actual)
+
+
 @timed
 def run(ctx: GateContext, config: dict[str, Any]) -> GateResult:
-    features = specs.discover(ctx.project_root, str(config.get("features", "features/")))
+    features_dir = str(config.get("features", "features/"))
+    restored = strands.restore_all(ctx.project_root, ctx.project_root / features_dir)
+    features = specs.discover(ctx.project_root, features_dir)
     if not features:
         return _result(True, "no feature files", vacuous=True)
     steps = ctx.project_root / str(config.get("steps", "tests/steps"))
-    return _stages(ctx, config, features, steps, int(config.get("timeout", 600)))
+    result = _stages(ctx, config, features, steps, int(config.get("timeout", 600)))
+    return _with_restored(result, restored)

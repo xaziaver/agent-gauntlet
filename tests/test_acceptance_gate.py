@@ -7,6 +7,11 @@ tests/steps/, and production code reached through an import the bindings own.
 from __future__ import annotations
 
 import json
+import os
+import signal
+import subprocess
+import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -117,6 +122,19 @@ def test_the_rating_spec_is_untouched() -> None:
 '''
 
 CONFIG = {"features": "features/", "steps": "tests/steps", "mutation_sample": 2}
+
+GATED_CONFIG = """\
+[project]
+language = "python"
+src = "src"
+tests = "tests"
+
+[gates.acceptance]
+features = "features/"
+steps = "tests/steps"
+"""
+
+BACKUP = Path(".gauntlet") / "mutation-backup"
 
 
 @pytest.fixture
@@ -308,3 +326,162 @@ def test_the_scope_record_names_each_feature_s_modules(
             "features/semiannual.feature": ["tests/steps/test_semiannual.py"],
         },
     }
+
+
+class _Killer:
+    """Stands in for `run_acceptance`: the baseline passes and every mutant is killed.
+    Notes which backups exist at each call."""
+
+    def __init__(self, root: Path) -> None:
+        self.root = root
+        self.calls = 0
+        self.backups_seen: set[str] = set()
+
+    def __call__(self, *_: object) -> RunResult:
+        self.calls += 1
+        present = (self.root / BACKUP).rglob("*.feature")
+        self.backups_seen.update(p.relative_to(self.root / BACKUP).as_posix() for p in present)
+        return RunResult(passed=self.calls == 1, output="")
+
+
+def _kill_every_mutant(root: Path, monkeypatch: pytest.MonkeyPatch) -> _Killer:
+    killer = _Killer(root)
+    monkeypatch.setattr(acceptance.python_adapter, "run_acceptance", killer)
+    return killer
+
+
+def test_a_successful_mutation_pass_leaves_no_backup(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A backup on disk means a strand; a completed run must not leave one behind."""
+    _approve(project)
+    killer = _kill_every_mutant(project, monkeypatch)
+    result = acceptance.run(_ctx(project), CONFIG)
+    assert result.passed is True, result.diagnostics
+    assert killer.backups_seen == {"features/rating.feature"}
+    assert not (project / BACKUP).exists()
+
+
+def test_backups_mirror_the_spec_s_path_under_the_backup_directory(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two specs of one basename in different directories get two backups, not one."""
+    for sub in ("a", "b"):
+        (project / "features" / sub).mkdir()
+        (project / "features" / sub / "rating.feature").write_text(FEATURE)
+    (project / "features" / "rating.feature").unlink()
+    _approve(project, "a/rating", "b/rating")
+    killer = _kill_every_mutant(project, monkeypatch)
+    result = acceptance.run(_ctx(project), CONFIG)
+    assert result.passed is True, result.diagnostics
+    assert killer.backups_seen == {"features/a/rating.feature", "features/b/rating.feature"}
+    assert not (project / BACKUP).exists()
+
+
+def test_a_stranded_spec_is_restored_from_its_backup_at_the_next_run_and_named_in_actual(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _approve(project)
+    _kill_every_mutant(project, monkeypatch)
+    spec = project / "features" / "rating.feature"
+    copy = project / BACKUP / "features" / "rating.feature"
+    copy.parent.mkdir(parents=True)
+    copy.write_text(FEATURE)
+    spec.write_text(FEATURE.replace("is 1200", "is 1201"))  # what a killed run left
+    result = acceptance.run(_ctx(project), CONFIG)
+    assert result.passed is True, result.diagnostics
+    assert result.actual == "1 stranded spec(s) restored; 1 spec(s)"
+    assert spec.read_text() == FEATURE
+    assert not (project / BACKUP).exists()
+
+
+def test_a_backup_equal_to_its_spec_is_discarded_without_being_counted(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A kill between the restore and the unlink leaves a backup that strands nothing."""
+    _approve(project)
+    _kill_every_mutant(project, monkeypatch)
+    copy = project / BACKUP / "features" / "rating.feature"
+    copy.parent.mkdir(parents=True)
+    copy.write_text(FEATURE)
+    result = acceptance.run(_ctx(project), CONFIG)
+    assert result.actual == "1 spec(s)"
+    assert not (project / BACKUP).exists()
+
+
+def test_a_backup_with_no_target_under_features_is_discarded_and_restores_nothing(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An old-layout basename backup, one whose spec was deleted, and one whose
+    target lies outside features/ are all discarded and none is written anywhere."""
+    _approve(project)
+    _kill_every_mutant(project, monkeypatch)
+    for rel in ("rating.feature", "features/gone.feature", "src/rating.py"):
+        copy = project / BACKUP / rel
+        copy.parent.mkdir(parents=True, exist_ok=True)
+        copy.write_text("not a spec\n")
+    result = acceptance.run(_ctx(project), CONFIG)
+    assert result.actual == "1 spec(s)"
+    assert not (project / BACKUP).exists()
+    assert not (project / "rating.feature").exists()
+    assert not (project / "features" / "gone.feature").exists()
+    assert (project / "src" / "rating.py").read_text() == RATING
+
+
+def test_every_spec_write_is_atomic(project: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Each mutant and the restore land by rename, never by writing into the spec."""
+    _approve(project)
+    _kill_every_mutant(project, monkeypatch)
+    spec = project / "features" / "rating.feature"
+    replaced: list[Path] = []
+    written: list[Path] = []
+    real_replace, real_write = os.replace, Path.write_text
+
+    def replace(src: Path, dst: Path) -> None:
+        replaced.append(Path(dst))
+        real_replace(src, dst)
+
+    def write_text(self: Path, *args: object, **kwargs: object) -> int:
+        written.append(self)
+        return real_write(self, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(os, "replace", replace)
+    monkeypatch.setattr(Path, "write_text", write_text)
+    acceptance.run(_ctx(project), CONFIG)
+    assert replaced.count(spec) == 3  # two sampled mutants, then the restore
+    assert spec not in written
+
+
+def test_a_sigterm_during_mutation_restores_the_spec_and_logs_run_interrupted(
+    project: Path,
+) -> None:
+    """The real thing: `gauntlet check` in a subprocess, killed with the mutation in flight."""
+    rows = "".join(f"      | {m:<7} | {m * 12:<6} |\n" for m in range(10, 66, 7))
+    text = FEATURE + rows
+    spec = project / "features" / "rating.feature"
+    spec.write_text(text)
+    _approve(project)
+    (project / "gauntlet.toml").write_text(GATED_CONFIG)
+    backup = project / BACKUP / "features" / "rating.feature"
+    proc = subprocess.Popen(
+        [sys.executable, "-c", "from gauntlet.cli import app; app()", "check"],
+        cwd=project,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    started = time.monotonic()
+    while not (backup.is_file() and spec.read_text() != text):
+        assert proc.poll() is None, proc.communicate()
+        assert time.monotonic() - started < 10, "the mutation stage never began"
+        time.sleep(0.02)
+    proc.send_signal(signal.SIGTERM)
+    proc.wait(timeout=10)
+    assert proc.returncode == -signal.SIGTERM  # 143 in a shell
+    assert spec.read_text() == text
+    assert not (project / BACKUP).exists()
+    lines = (project / ".gauntlet" / "events.jsonl").read_text().splitlines()
+    log = [json.loads(line) for line in lines]
+    assert log[-1]["kind"] == "run.interrupted"
+    assert (log[-1]["gate"], log[-1]["signal"]) == ("acceptance", "SIGTERM")
+    assert "run.finished" not in {line["kind"] for line in log}

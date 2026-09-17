@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import fcntl
 import functools
+import os
+import signal
 import subprocess
 import sys
 import time
@@ -11,7 +13,8 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Protocol
+from types import FrameType
+from typing import Any, NoReturn, Protocol
 
 # Editor scratch files: Emacs lock (.#x.py) and autosave (#x.py#), backups (x.py~).
 IGNORED_NAME_PREFIXES = (".#", "#")
@@ -47,6 +50,52 @@ def exclusive_run(root: Path) -> Iterator[None]:
     finally:
         fcntl.flock(handle, fcntl.LOCK_UN)
         handle.close()
+
+
+def write_text_atomic(path: Path, text: str) -> None:
+    """Temp file beside the target, then replace: no interruption leaves a partial file."""
+    temp = path.with_name(path.name + ".tmp")
+    temp.write_text(text, encoding="utf-8")
+    temp.replace(path)
+
+
+class Interrupted(BaseException):
+    """A signal landed mid-run. Unwind the finally blocks, then die with its status."""
+
+    def __init__(self, signum: int) -> None:
+        super().__init__(signum)
+        self.signum = signum
+
+    @property
+    def name(self) -> str:
+        return signal.Signals(self.signum).name
+
+    def die(self) -> NoReturn:
+        """End the process as the signal would have: default disposition, re-delivered."""
+        signal.signal(self.signum, signal.SIG_DFL)
+        os.kill(os.getpid(), self.signum)
+        raise SystemExit(128 + self.signum)  # the fallback that never runs
+
+
+@contextmanager
+def signals_raise() -> Iterator[None]:
+    """SIGTERM and SIGHUP raise Interrupted on their first delivery, so a finally can
+    restore what the run was writing; repeats while unwinding are ignored. Previous
+    handlers come back on exit."""
+    delivered: list[int] = []
+
+    def handler(signum: int, _frame: FrameType | None) -> None:
+        if delivered:
+            return
+        delivered.append(signum)
+        raise Interrupted(signum)
+
+    previous = {num: signal.signal(num, handler) for num in (signal.SIGTERM, signal.SIGHUP)}
+    try:
+        yield
+    finally:
+        for num, before in previous.items():
+            signal.signal(num, before)
 
 
 @dataclass(frozen=True)

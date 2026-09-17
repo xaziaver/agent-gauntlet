@@ -104,6 +104,10 @@ line beats a broken gate.
 `check` and `stop-check` both bound a run with `run.started` and `run.finished` carrying
 `command`, and both emit `run.started` inside the project lock, so a lock-rejected run of either
 leaves no line (item 4, 2026-09-15).
+A run killed by SIGTERM, SIGHUP or SIGINT during mutation restores the spec, writes one
+`run.interrupted` line naming the gate and the signal, and ends with the signal's status; a run
+killed by SIGKILL leaves its backup under `.gauntlet/mutation-backup/`, and the acceptance gate's
+next run restores from it before anything else and says so in `actual` (item 5, 2026-09-16).
 Every `run.finished` carries `tree`, the gated-tree hash defined under "Things that look wrong but
 are deliberate", and `files`, the number of files it covers — both `null` when the tree could not
 be hashed — so the log can always pair a run with the tree it measured, partial runs included. A
@@ -293,6 +297,13 @@ deliberate and worth the cost — those tests have caught things no unit test co
   `direct_url.json` names is a tree that may have moved since. `stop-check` never writes a
   record and nothing reads one; `.gauntlet/last-green.json` is still the skip cache and
   still not evidence (item 3, 2026-09-15).
+- **The mutation backup is gone after every completed run, and its presence means a strand.**
+  `_survivors` discards the backup right after its restore, so a file under
+  `.gauntlet/mutation-backup/` is evidence that a run died between a mutant write and its
+  restore — never a keepsake. That is what lets the acceptance gate restore from it at the
+  next start without overwriting a human's later edit, which a backup that persisted after
+  green runs would have done (measured 2026-09-15). Backups mirror the spec's path under the
+  directory, so two specs of one basename no longer share a file (item 5, 2026-09-16).
 
 ---
 
