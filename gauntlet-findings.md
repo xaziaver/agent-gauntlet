@@ -1024,9 +1024,51 @@ and the default cap: exit 2 after one iteration — one `agent.iteration`, one `
 stderr beginning with the blocked message; `tw3a` under the same: five iterations, as measured.
 Anything the throwaways show that this paragraph does not name is a stop.
 
+**Change, applied 2026-09-17.** First the extraction, `5b6688d`: `init`, `guard`, `_guard_context`
+and `AGENTS` to the new `cli_setup.py`, `cli.py` 288 → 226, twelve tests through `app` the pin (the
+commit subject says thirteen; twelve is the count). Then `d9e835d`, for this entry and "Retry loop
+burns attempts on non-agent-actionable failures" together. `_stages` applies the suffix "; mutation
+not run" to whichever early return it takes, at one place (`NOT_RUN`); a green `actual` is
+byte-identical. `stop.py` gained `APPROVAL_SYMBOLS`, `human_blocked(results)` — every failing gate
+has diagnostics and every one of them is `unapproved`, `modified` or `missing`; a gate `error` or an
+empty diagnostic list is the agent's — and `blocked_message`. `cli.py`'s `_stop_outcome` clears on
+green, escalates a human-blocked red run through `_escalate_blocked` with the session's count
+untouched (one `agent.escalated` with `reason: "human-blocked"` and the untouched `attempts`, the
+blocked `systemMessage`, exit 0), and counts every other red run as before; the cap path's
+`agent.escalated` carries `reason: "attempts"`; `_clear_attempts` serves the green path and the
+skip. `loop.py`'s `drive` ends after a human-blocked iteration, the blocked message on stderr.
+ARCHITECTURE.md's deliberate bullet and event-log sentence, GATES.md's acceptance sentence,
+CLAUDE.md's Stop-hook bullet. Eleven new tests plus `test_loop_gives_up_at_the_iteration_cap`'s
+vacuous assertion replaced by a count of two `agent.iteration` lines; own run
+`20260917T094153-80919` at `d9e835d`, made with `--record`: 608 tests in 47.6 s, coverage 97.04 /
+93.07, `cli.py` 248 with `check` and `stop_check` at 24, `acceptance.py` 291, tree
+`14cbc659ebc29a42…` over 98 and `harness.source` `e0672d331c6c74c8…` over 53, both equal to the
+shell pipelines from a clean clone, advisor-measured. Throwaway proofs, 2026-09-17, rebuilt to the
+ground report's description with the tool at `d9e835d`: `tw1` state B `1 unapproved or modified
+spec(s); mutation not run`, exit 2, one `missing` diagnostic, no backup seen, no scope record; state
+C `3 spec(s)`, byte-equal; `tw2` `3 spec(s), scenarios failing; mutation not run`; `tw3b` under
+`stop-check` with the default cap, twice: exit 0 both, the blocked `systemMessage` both,
+`.gauntlet/stop-attempts.json` never created, two `agent.escalated` lines with `attempts` 0 and
+`reason` `human-blocked`; `tw3b` plus a 32-line function under `[gates.size]`: exit 2, the human
+report, `s9` counted 1, no escalation; `tw3b` under `gauntlet loop`: exit 2 after one iteration, the
+blocked message first on stderr, where the ground had measured five; `tw3a` still five. Every row
+matched its prediction. Regression run `20260917T212700-8978` on the item-1 clone at `be87d38`,
+`.gauntlet/` and `mutants/` removed, Gauntlet at `d9e835d` in the venv with `verdict.harness()`
+printing the tip's values before the run: exit 0 in 880 s; all eleven tuples identical to the tag's,
+compared by the agent and again by the advisor from the archive; the log identical to item 5's
+fourteen lines with ids, times and durations stripped; no `agent.escalated`, no `approval.needed`;
+`run.finished` `a8a00163…` over 127; lock and tree unchanged; `ls .gauntlet/` as at item 5; the
+record's digest `9c7aececf56dc4f5…`. Then the skip, 0.147 s, one `run.reused`; export of the tag's
+run byte-equal to item 3's; export of the regression run equal to the live record in every key but
+`harness`. No duration was predicted. Residual this entry accepts by design: survivors on approved
+specs stay unmeasured while any spec is unapproved, modified or missing, and the gate now says so.
+
 **Routes to:** BACKLOG.md, v1.
 
-**Status.** Open.
+**Status.** Applied. `5b6688d` (extraction) and `d9e835d` (change) on `v1/item-6-approval-and-hook`,
+on top of the human findings commit `ab5d6d9`; throwaway proofs and regression run
+`20260917T212700-8978` with skip `20260917T214205-26154` on 2026-09-17, log archived at
+`~/gauntlet-review/item6-events-2026-09-17.jsonl` (14 lines, sha256 `42608d45f35a9846`).
 
 #### An approved spec no test module binds reports every mutant as surviving, and the diagnostic asserts the opposite cause
 
@@ -1397,7 +1439,13 @@ short-circuits mutation on an approval failure", decision (3).)*
 
 **Routes to:** BACKLOG.md, v1 item 2 AND v3. See the note for the v1 effort below — this adds a fourth category to that item's taxonomy, and the same distinction recurs in v3's transition query.
 
-**Status.** Open.
+**Status.** Applied, 2026-09-17, in `d9e835d` on `v1/item-6-approval-and-hook` (G3 item 6, decision
+(3)); the change and its proofs are recorded under "The acceptance gate short-circuits mutation on
+an approval failure". The fourth category is `stop.human_blocked`: approval findings only — a gate
+`error` stays the agent's. A human-blocked `stop-check` spends no attempt and escalates at once with
+`reason: "human-blocked"`; `gauntlet loop` stops after that iteration. Measured in the throwaways:
+two blocked stops, `attempts` 0 both, no counter file written; one agent-actionable stop counted;
+the loop at one iteration where the ground measured five.
 
 **Addition, 2026-08-24.** ClaimGate wired the mitigation this entry implies —
 `gauntlet stop-check --max-attempts 1` in `.claude/settings.json` — and it measurably works:
@@ -2125,7 +2173,14 @@ failure", decision (2).)*
 That entry covers failures the agent cannot act on; this one covers failures the agent *can* act on
 and must not, which is the more dangerous case because the remedy text is actionable and wrong.
 
-**Status.** Open.
+**Status.** Resolved by measurement, 2026-09-17, no code (G3 item 6, decision (2) in "The acceptance
+gate short-circuits mutation on an approval failure"). The cost measured here was removed by
+`--fail-fast` (2026-09-08), which stops a run at a red `tests` gate before the acceptance baseline,
+and by item 2's skip on a green tree; the spec-before-steps phase fails at the acceptance baseline
+in 0.3 s and ClaimGate's wrapper returns in 0.44 s (ground report 2026-09-17, `tw2`). Residual: a
+red tree never skips — the last-green record is written only on green — which items 2 and 6 bound to
+a cheap first failure. The sentence above that `stop_check` takes one option is stale: three at
+`d9e835d`.
 
 
 #### Mutant approval defaults to the widest scope

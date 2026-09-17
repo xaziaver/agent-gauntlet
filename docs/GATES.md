@@ -485,8 +485,10 @@ first failure by default. Exit 2 blocks the agent's stop and feeds the report ba
 (`command: stop-check`, `run.started` emitted inside the lock as `check`'s is since item 4,
 2026-09-15, so a lock-rejected run of either leaves no line),
 `run.finished` carrying the tree hash and its file count; like `check`, it writes the record only
-when every enabled gate ran over the whole tree and passed. The record is a cache, never evidence:
-a run is.
+when every enabled gate ran over the whole tree and passed. The record is a cache, never evidence: a
+run is. A red run whose every failure is an approval finding (`unapproved`, `modified`, `missing`)
+is human-blocked: it spends no attempt and escalates at once with a `systemMessage` beginning
+"Gauntlet is blocked on a human" (item 6, 2026-09-17).
 
 ## Reading a gate quickly
 
