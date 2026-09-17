@@ -18,8 +18,7 @@ from typing import Any, NoReturn
 import typer
 
 from gauntlet import config as config_mod
-from gauntlet import events, report, runner, scaffold
-from gauntlet import guard as guard_mod
+from gauntlet import events, report, runner
 from gauntlet import stop as stop_mod
 from gauntlet import tree as tree_mod
 from gauntlet import verdict as verdict_mod
@@ -29,9 +28,11 @@ from gauntlet.cli_events import events_app
 from gauntlet.cli_loop import loop_app
 from gauntlet.cli_mutants import mutant_app
 from gauntlet.cli_review import review_app
+from gauntlet.cli_setup import guard, init
 from gauntlet.cli_specs import spec_app
 from gauntlet.cli_status import status_app
-from gauntlet.cli_support import EXIT_CONFIG_ERROR, EXIT_GATE_FAILURE, EXIT_OK
+from gauntlet.cli_support import EXIT_CONFIG_ERROR as EXIT_CONFIG_ERROR
+from gauntlet.cli_support import EXIT_GATE_FAILURE, EXIT_OK
 from gauntlet.cli_support import fail as _fail
 from gauntlet.cli_support import resolve_config as _resolve_config
 from gauntlet.cli_support import select_gates as _select_gates
@@ -39,14 +40,13 @@ from gauntlet.cli_verdict import verdict_app
 from gauntlet.gates import base
 from gauntlet.gates.base import RunInProgressError, exclusive_run
 
-AGENTS = ("claude-code", "generic")
-
-
 app = typer.Typer(no_args_is_help=True, pretty_exceptions_enable=False)
 app.command("lock")(lock)
 app.command("verify")(verify)
 app.command("doctor")(doctor)
 app.command("version")(version)
+app.command("init")(init)
+app.command("guard")(guard)
 app.add_typer(loop_app, name="loop")
 app.add_typer(spec_app, name="spec")
 app.add_typer(mutant_app, name="mutant")
@@ -166,68 +166,6 @@ def check(
     finished = _finish(log, results, run)
     verdict_mod.record(record, results, run, selected, finished, log.run)
     _emit(results, cfg.max_diagnostics, json_out)
-
-
-def _guard_context() -> tuple[Path, config_mod.Config, dict[str, Any]]:
-    """Root, config, and hook payload — or exit 1, which Claude Code ignores."""
-    try:
-        root = config_mod.find_root()
-        cfg = config_mod.load(root)
-    except config_mod.ConfigError as exc:
-        typer.echo(f"guard: {exc}", err=True)
-        raise typer.Exit(code=EXIT_CONFIG_ERROR) from None
-    try:
-        payload = guard_mod.parse_payload(sys.stdin.read())
-    except guard_mod.PayloadError as exc:
-        typer.echo(f"guard: {exc}", err=True)
-        raise typer.Exit(code=EXIT_CONFIG_ERROR) from None
-    return root, cfg, payload
-
-
-@app.command()
-def guard() -> None:
-    """PreToolUse hook: block edits to protected paths. Reads hook JSON on stdin.
-
-    Exit 2 blocks the tool call and shows the message to the agent. Exit 1 is a
-    non-blocking error in Claude Code, so a broken config means the guard simply
-    does not apply rather than wedging the agent.
-    """
-    root, cfg, payload = _guard_context()
-    message = guard_mod.decide(payload, root, cfg.protected_paths)
-    if message is None:
-        raise typer.Exit(code=EXIT_OK)
-    events.Log(root).emit(
-        events.AGENT_BLOCKED,
-        path=guard_mod.target_path(payload),
-        tool=payload.get("tool_name"),
-        session=payload.get("session_id"),
-    )
-    typer.echo(message, err=True)
-    raise typer.Exit(code=EXIT_GATE_FAILURE)
-
-
-@app.command()
-def init(
-    agent: str = typer.Option("claude-code", help=f"One of: {', '.join(AGENTS)}"),
-    fast_gates: str = typer.Option(scaffold.FAST_GATES, help="Gates for the edit-time hook"),
-    dry_run: bool = typer.Option(False, "--dry-run", help="Print what would change, write nothing"),
-) -> None:
-    """Generate config, agent hooks, or CI integration for this project."""
-    if agent not in AGENTS:
-        _fail(f"unknown agent {agent!r}. Available: {list(AGENTS)}")
-    try:
-        root = config_mod.find_root()
-    except config_mod.ConfigError:
-        root = Path.cwd()  # a brand-new project: gauntlet.toml is about to be created
-
-    for path, content in scaffold.plan(root, agent, fast_gates):
-        if dry_run:
-            typer.echo(f"would write  {path}\n{content}")
-            continue
-        typer.echo(f"{scaffold.write(root, path, content).value:<10} {path}")
-
-    if not dry_run:
-        typer.echo("\nReview gauntlet.toml, then run `gauntlet lock` to approve it.")
 
 
 def _reuse(log: events.Log, session: str, record: tree_mod.GreenRecord, root: Path) -> NoReturn:
