@@ -21,6 +21,8 @@ from pathlib import Path
 
 from gauntlet import config as config_mod
 from gauntlet import events, report, runner
+from gauntlet import stop as stop_mod
+from gauntlet.gates import base
 
 DEFAULT_MAX_ITERATIONS = 5
 DEFAULT_AGENT_TIMEOUT = 1800
@@ -115,6 +117,14 @@ def _turn(command: str, prompt: str, cwd: Path, timeout: int, echo: Callable[...
         echo(f"agent exited {proc.returncode}: {proc.stderr.strip()[:500]}", err=True)
 
 
+def _blocked(results: list[base.GateResult], echo: Callable[..., None]) -> bool:
+    """A red iteration only a human can clear ends the loop: another turn cannot help."""
+    if not stop_mod.human_blocked(results):
+        return False
+    echo(stop_mod.blocked_message(""), err=True)
+    return True
+
+
 def drive(
     root: Path,
     cfg: config_mod.Config,
@@ -135,5 +145,7 @@ def drive(
             echo(f"GAUNTLET PASSED after {iteration} iteration(s)")
             return True, ""
         last_report = report.to_json(results, cfg.max_diagnostics)
+        if _blocked(results, echo):
+            return False, last_report
         prompt = remediation_prompt(settings.task, last_report)
     return False, last_report

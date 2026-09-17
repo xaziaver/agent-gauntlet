@@ -28,6 +28,7 @@ name = "acceptance"
 THRESHOLD = "approved, passing, and mutation-proof"
 SCOPE_RECORD = Path(".gauntlet") / "acceptance-scope.json"
 MAX_LISTED = 6
+NOT_RUN = "; mutation not run"
 
 
 @dataclass(frozen=True)
@@ -263,7 +264,8 @@ def _stages(
         ctx, features, steps, timeout
     )
     if failure is not None:
-        return failure
+        # Report, do not run: the stage that would have run says so in the summary.
+        return dataclasses.replace(failure, actual=f"{failure.actual}{NOT_RUN}")
     if not config.get("mutate_examples", True):
         return _result(True, f"{len(features)} spec(s) passing")
     return _mutation_result(features, _mutation_outcome(ctx, config, features, steps, approved))

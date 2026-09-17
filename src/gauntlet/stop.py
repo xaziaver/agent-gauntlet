@@ -12,9 +12,12 @@ import json
 from pathlib import Path
 from typing import Any
 
+from gauntlet.gates.base import GateResult
+
 ATTEMPTS_FILE = Path(".gauntlet") / "stop-attempts.json"
 DEFAULT_MAX_ATTEMPTS = 3
 UNKNOWN_SESSION = "unknown"
+APPROVAL_SYMBOLS = frozenset({"unapproved", "modified", "missing"})
 
 
 def attempts_path(root: Path) -> Path:
@@ -65,4 +68,28 @@ def escalation_message(count: int, lines: str) -> str:
     return (
         f"Gauntlet gates still failing after {count} attempts — stopping the retry loop "
         f"and handing this to you.\n{lines}"
+    )
+
+
+def _approval_only(result: GateResult) -> bool:
+    """Every diagnostic of a failing gate is an approval finding, and there is at least one."""
+    if result.error is not None or not result.diagnostics:
+        return False
+    return all(d.symbol in APPROVAL_SYMBOLS for d in result.diagnostics)
+
+
+def human_blocked(results: list[GateResult]) -> bool:
+    """True when every failure needs a human's approval and nothing needs the agent.
+
+    A gate that crashed, failed with no diagnostics, or reported any other kind of
+    finding is the agent's to act on, so the run is not blocked.
+    """
+    failed = [r for r in results if not r.passed]
+    return bool(failed) and all(_approval_only(r) for r in failed)
+
+
+def blocked_message(lines: str) -> str:
+    return (
+        "Gauntlet is blocked on a human: the failures below need approval (`gauntlet lock`), "
+        "not code. Nothing here is for the agent.\n" + lines
     )

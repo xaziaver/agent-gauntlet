@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from gauntlet import loop
+from gauntlet import events, loop
 from gauntlet.cli import EXIT_CONFIG_ERROR, EXIT_GATE_FAILURE, EXIT_OK, app
 
 runner = CliRunner()
@@ -53,6 +53,33 @@ def project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return tmp_path
 
 
+NOOP_AGENT = "import sys\nsys.stdin.read()\n"
+
+UNAPPROVED_SPEC_CONFIG = (
+    CONFIG
+    + """
+[gates.acceptance]
+features = "features/"
+steps = "tests/steps"
+"""
+)
+
+MISSING_INTERPRETER_CONFIG = """
+[project]
+language = "python"
+src = "src/"
+tests = "tests/"
+python = "nope/python"
+
+[gates.tests]
+"""
+
+
+def _iterations(project: Path) -> int:
+    log = events.read(events.events_path(project))
+    return sum(1 for i in log if i["kind"] == "agent.iteration")
+
+
 def _agent(project: Path, source: str) -> str:
     script = project / "agent.py"
     script.write_text(source)
@@ -92,7 +119,7 @@ def test_loop_gives_up_at_the_iteration_cap(project: Path) -> None:
         ["loop", "--cmd", _agent(project, HOPELESS_AGENT), "--task", "x", "--max-iterations", "2"],
     )
     assert result.exit_code == EXIT_GATE_FAILURE
-    assert (project / "calls.txt").exists() is False or True  # hopeless agent keeps no state
+    assert _iterations(project) == 2
 
 
 def test_loop_requires_a_task(project: Path) -> None:
@@ -116,3 +143,27 @@ def test_read_task_reads_the_file(tmp_path: Path) -> None:
     f = tmp_path / "t.txt"
     f.write_text("build a parser")
     assert loop.read_task("", f) == "build a parser"
+
+
+def test_the_loop_stops_after_a_human_blocked_iteration(project: Path) -> None:
+    """Five turns cannot approve a spec: the loop says so and ends after the first."""
+    (project / "gauntlet.toml").write_text(UNAPPROVED_SPEC_CONFIG)
+    (project / "features").mkdir()
+    (project / "features" / "a.feature").write_text("Feature: A\n\n  Scenario: S\n    Given x\n")
+    result = runner.invoke(app, ["loop", "--cmd", _agent(project, NOOP_AGENT), "--task", "x"])
+    assert result.exit_code == EXIT_GATE_FAILURE
+    assert _iterations(project) == 1
+    assert "Gauntlet is blocked on a human" in result.output
+    assert '"unapproved"' in result.output  # the report still follows the message
+
+
+def test_the_loop_still_retries_an_environment_error(project: Path) -> None:
+    """A missing interpreter is not an approval finding: the loop spends its cap as before."""
+    (project / "gauntlet.toml").write_text(MISSING_INTERPRETER_CONFIG)
+    result = runner.invoke(
+        app,
+        ["loop", "--cmd", _agent(project, NOOP_AGENT), "--task", "x", "--max-iterations", "2"],
+    )
+    assert result.exit_code == EXIT_GATE_FAILURE
+    assert _iterations(project) == 2
+    assert "Gauntlet is blocked on a human" not in result.output

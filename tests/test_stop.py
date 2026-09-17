@@ -3,7 +3,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from gauntlet import stop
+from gauntlet.gates.base import Diagnostic, GateResult
 
 
 def test_session_id_reads_the_payload() -> None:
@@ -68,3 +71,61 @@ def test_non_integer_counts_are_discarded(tmp_path: Path) -> None:
     path = tmp_path / "attempts.json"
     path.write_text(json.dumps({"a": "three", "b": 2}))
     assert stop.load_attempts(path) == {"b": 2}
+
+
+def _red(*diagnostics: Diagnostic, error: str | None = None) -> GateResult:
+    return GateResult(
+        gate="acceptance",
+        passed=False,
+        threshold="t",
+        actual="a",
+        diagnostics=list(diagnostics),
+        error=error,
+    )
+
+
+def _finding(symbol: str) -> Diagnostic:
+    return Diagnostic(file="features/a.feature", message="m", symbol=symbol)
+
+
+GREEN = GateResult(gate="size", passed=True, threshold="t", actual="a")
+
+
+@pytest.mark.parametrize(
+    ("results", "expected"),
+    [
+        pytest.param(
+            [GREEN, _red(_finding("unapproved"), _finding("modified"), _finding("missing"))],
+            True,
+            id="all approval symbols",
+        ),
+        pytest.param(
+            [_red(_finding("unapproved"), _finding("Quarters"))], False, id="one other symbol"
+        ),
+        pytest.param([_red(error="pytest exited 127")], False, id="error set"),
+        pytest.param(
+            [_red(_finding("unapproved"), error="tool crashed")],
+            False,
+            id="error set beside approval findings",
+        ),
+        pytest.param([_red()], False, id="no diagnostics"),
+        pytest.param([GREEN], False, id="nothing failed"),
+        pytest.param([], False, id="nothing ran"),
+        pytest.param(
+            [_red(_finding("unapproved")), _red(_finding("big"))],
+            False,
+            id="two gates, one agent-actionable",
+        ),
+    ],
+)
+def test_human_blocked_is_true_only_for_approval_findings(
+    results: list[GateResult], expected: bool
+) -> None:
+    """Every failure must be one only `gauntlet lock` clears; anything else is the agent's."""
+    assert stop.human_blocked(results) is expected
+
+
+def test_blocked_message_names_the_human_and_carries_the_report() -> None:
+    message = stop.blocked_message("✗ acceptance ...")
+    assert message.startswith("Gauntlet is blocked on a human: the failures below need approval")
+    assert message.endswith("Nothing here is for the agent.\n✗ acceptance ...")

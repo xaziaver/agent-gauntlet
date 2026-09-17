@@ -485,3 +485,42 @@ def test_a_sigterm_during_mutation_restores_the_spec_and_logs_run_interrupted(
     assert log[-1]["kind"] == "run.interrupted"
     assert (log[-1]["gate"], log[-1]["signal"]) == ("acceptance", "SIGTERM")
     assert "run.finished" not in {line["kind"] for line in log}
+
+
+def test_an_approval_failure_says_mutation_was_not_run(project: Path) -> None:
+    """The summary names the stage it skipped, so its absence is never inferred."""
+    result = acceptance.run(_ctx(project), CONFIG)
+    assert result.passed is False
+    assert result.actual == "1 unapproved or modified spec(s); mutation not run"
+
+
+def test_a_baseline_failure_says_mutation_was_not_run(project: Path) -> None:
+    _approve(project)
+    (project / "src" / "rating.py").write_text("def annual(monthly: int) -> int:\n    return 0\n")
+    result = acceptance.run(_ctx(project), CONFIG)
+    assert result.passed is False
+    assert result.actual == "1 spec(s), scenarios failing; mutation not run"
+
+
+def test_a_missing_approval_key_is_reported_and_mutation_is_not_run(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A rename the human re-approved leaves the old key dangling: red, and nothing runs."""
+    _approve(project)
+    (project / "features" / "rating.feature").rename(project / "features" / "premium.feature")
+    _approve(project, "premium")
+    recorder = _record_runs(project, monkeypatch, "premium.feature")
+    result = acceptance.run(_ctx(project), CONFIG)
+    assert recorder.calls == []
+    assert result.passed is False
+    findings = [(d.file, d.symbol) for d in result.diagnostics]
+    assert findings == [("features/rating.feature", "missing")]
+    assert result.actual == "1 unapproved or modified spec(s); mutation not run"
+
+
+def test_a_green_gate_s_actual_is_unchanged(project: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _approve(project)
+    _kill_every_mutant(project, monkeypatch)
+    result = acceptance.run(_ctx(project), CONFIG)
+    assert result.passed is True
+    assert result.actual == "1 spec(s)"

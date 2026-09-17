@@ -383,3 +383,76 @@ def test_the_lock_is_released_after_a_run(project: Path) -> None:
     runner.invoke(app, ["check", "--gates", "size"])
     result = runner.invoke(app, ["check", "--gates", "size"])
     assert result.exit_code == EXIT_GATE_FAILURE
+
+
+BLOCKED_PREFIX = (
+    "Gauntlet is blocked on a human: the failures below need approval (`gauntlet lock`), "
+    "not code. Nothing here is for the agent.\n"
+)
+
+
+def _unapproved_spec(project: Path) -> None:
+    """An acceptance gate with a spec no human has approved: red until `gauntlet lock`."""
+    (project / "gauntlet.toml").write_text(
+        CONFIG + '\n[gates.acceptance]\nfeatures = "features/"\nsteps = "tests/steps"\n'
+    )
+    (project / "features").mkdir()
+    (project / "features" / "a.feature").write_text("Feature: A\n\n  Scenario: S\n    Given x\n")
+
+
+def _escalations(project: Path) -> list[dict[str, Any]]:
+    return [i for i in events.read(events.events_path(project)) if i["kind"] == "agent.escalated"]
+
+
+def _attempts(project: Path) -> dict[str, int]:
+    path = project / ".gauntlet" / "stop-attempts.json"
+    return json.loads(path.read_text()) if path.exists() else {}
+
+
+def test_a_human_blocked_stop_check_escalates_without_counting_an_attempt(project: Path) -> None:
+    """A count of one from a real failure survives two human-blocked stops untouched."""
+    (project / "src" / "a.py").write_text(LONG_FUNCTION)
+    runner.invoke(app, ["stop-check"], input=STOP_PAYLOAD)
+    assert _attempts(project) == {"s1": 1}
+    (project / "src" / "a.py").unlink()
+    _unapproved_spec(project)
+    for _ in range(2):
+        result = runner.invoke(app, ["stop-check"], input=STOP_PAYLOAD)
+        assert result.exit_code == EXIT_OK
+        message = json.loads(result.output)["systemMessage"]
+        assert message.startswith(BLOCKED_PREFIX)
+        assert "unapproved" in message
+    assert _attempts(project) == {"s1": 1}
+    escalated = _escalations(project)
+    assert [(e["reason"], e["attempts"], e["session"]) for e in escalated] == [
+        ("human-blocked", 1, "s1"),
+        ("human-blocked", 1, "s1"),
+    ]
+
+
+def test_a_stop_check_red_for_an_agent_actionable_reason_still_counts(project: Path) -> None:
+    (project / "src" / "a.py").write_text(LONG_FUNCTION)
+    result = runner.invoke(app, ["stop-check"], input=STOP_PAYLOAD)
+    assert result.exit_code == EXIT_GATE_FAILURE
+    assert _attempts(project) == {"s1": 1}
+    assert _escalations(project) == []
+
+
+def test_a_stop_check_red_for_both_reasons_counts(project: Path) -> None:
+    """An approval finding beside a size finding is still the agent's turn."""
+    (project / "src" / "a.py").write_text(LONG_FUNCTION)
+    _unapproved_spec(project)
+    result = runner.invoke(app, ["stop-check", "--no-fail-fast"], input=STOP_PAYLOAD)
+    assert result.exit_code == EXIT_GATE_FAILURE
+    assert "size" in _text(result) and "acceptance" in _text(result)
+    assert _attempts(project) == {"s1": 1}
+    assert _escalations(project) == []
+
+
+def test_the_cap_escalation_carries_its_reason(project: Path) -> None:
+    (project / "src" / "a.py").write_text(LONG_FUNCTION)
+    result = runner.invoke(app, ["stop-check", "--max-attempts", "1"], input=STOP_PAYLOAD)
+    assert result.exit_code == EXIT_OK
+    assert "1 attempts" in json.loads(result.output)["systemMessage"]
+    (escalated,) = _escalations(project)
+    assert (escalated["reason"], escalated["attempts"]) == ("attempts", 1)
