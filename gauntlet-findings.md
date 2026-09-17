@@ -611,9 +611,63 @@ project `tw2`: two backup files during the run, at `features/a/rating.feature` a
 parent's death: gone within a second, as measured. Anything the matrix shows that this paragraph
 does not name is a stop.
 
+**Change, applied 2026-09-16.** First the extraction, `1b4302a`: `BACKUP_DIR` and `_backup` to
+the new `acceptance/strands.py`, `acceptance.py` 282 → 274, seventeen tests the pin. Then
+`b460b99`. `gates/base.py` gained `write_text_atomic` (temp beside the target, `Path.replace`),
+`Interrupted(BaseException)` with `signum`, `name` and `die()` (default disposition, re-delivered
+on its own pid, a `SystemExit(128 + signum)` fallback that never runs), and `signals_raise()`,
+whose handlers for SIGTERM and SIGHUP raise `Interrupted` on the first delivery and ignore repeats,
+the previous handlers restored on exit. `strands.py`: `backup` at the spec's path mirrored under
+`.gauntlet/mutation-backup/` (resolved paths, so `mutant approve`'s relative arguments work);
+`discard` unlinks and prunes empty directories up to `BACKUP_DIR`; `restore_all` puts back every
+backup whose target exists under the features directory and differs, discards every backup, and
+returns the count of those that differed. `_survivors` enters `signals_raise()` after its backup
+and around its `try/finally`, writes every mutant and the restore atomically, and discards the
+backup after the restore; `run` restores strands before spec discovery and prefixes `actual`
+with "N stranded spec(s) restored; " only when N > 0. `events.RUN_INTERRUPTED`; `runner.run_gates`
+catches `Interrupted` and `KeyboardInterrupt` around a gate, emits `run.interrupted` with the gate
+and the signal's name, and dies with the signal's status; `mutant approve` and `prune` die
+without a line. ARCHITECTURE.md's event-log paragraph and a new deliberate bullet, GATES.md's
+in-place-mutation paragraph. Thirteen new tests, one a real subprocess `gauntlet check` killed
+with SIGTERM once the backup exists and the spec differs (0.63 s); own run `20260916T221205-8596`
+at `b460b99`, made with `--record`: 589 tests in 57.2 s, coverage 96.9 / 92.68, `acceptance.py`
+289 with `_survivors` 22, tree `b694567726decaf1…` over 97 and `harness.source` `e77e56484a2fb409…`
+over 52, both equal to the shell pipelines from a clean clone, advisor-measured. The kill
+matrix, re-run 2026-09-16 in throwaways rebuilt to the ground report's description with the tool
+at `b460b99`: SIGINT (default disposition), SIGTERM, SIGHUP and `timeout 5` each left the spec
+equal to HEAD, no backup directory, an empty `git status`, exit 130 / 143 / 129 / 124, and a log
+of `run.started` then `run.interrupted` naming acceptance and the signal; SIGKILL left the strand
+(line 18, `45 -> 46`), ` M`, exit 137, the backup at `features/rating.feature` under the
+directory, and the next `gauntlet check --json` on that tree passed with `actual` `1 stranded
+spec(s) restored; 1 spec(s)`, exit 0, no backup and a clean tree after — where the ground had
+measured `1 unapproved or modified spec(s)`, exit 2, and the strand left. The same-basename
+project held one backup at a time, `features/a/rating.feature` then `features/b/rating.feature`,
+none after — the prediction's "two backup files during the run" was the advisor's wording for
+that and was read correctly; in the one-gate throwaway no `gate.finished` precedes
+`run.interrupted`, which the prediction's clause about gates before acceptance had nothing to
+name. No stray temp file under `features/` in any row; the flock free after every row. Regression
+run `20260916T223154-47209` on the item-1 clone at `be87d38`, `.gauntlet/` and `mutants/`
+removed, Gauntlet at `b460b99` in the venv with `verdict.harness()` printing the tip's values
+before the run: exit 0 in 1092 s; all eleven tuples identical to the tag's, compared by the agent
+and again by the advisor from the archive; the log identical to item 4's fourteen lines with ids,
+times and durations stripped, no `run.interrupted`; `run.finished` `a8a00163…` over 127; lock and
+tree unchanged; the record's digest `9c7aececf56dc4f5…`; one poll mid-run showed the backup
+directory holding `features/carrier_configuration.feature` alone; `ls .gauntlet/` after held no
+`mutation-backup`, the one difference the prediction named. Then the skip, 0.16 s, one
+`run.reused`; export of the tag's run byte-equal to item 3's; export of the regression run equal
+to the live record in every key but `harness`. Acceptance took 1060.299 s; no duration was
+predicted. ClaimGate's `docs/harness-findings.md` still records the pre-change behaviour and its
+Stop hook still carries no signal handling of its own; phase 4 rewrites both. Open: which signal
+Claude Code's hook timeout sends stays unmeasured — the tool now restores on any of the three
+catchable ones and repairs after the fourth.
+
 **Routes to:** BACKLOG.md, v1.
 
-**Status.** Open.
+**Status.** Applied. `1b4302a` (extraction) and `b460b99` (change) on
+`v1/item-5-restore-on-interrupt`, on top of the human findings commit `74d31df`; the kill
+matrix re-run 2026-09-16 in the rebuilt throwaways and the regression run
+`20260916T223154-47209` with skip `20260916T225018-64532`, log archived at
+`~/gauntlet-review/item5-events-2026-09-16.jsonl` (14 lines, sha256 `f7fbcc6d0fb67961`).
 
 **Second event, 2026-08-27 — a numeric strand, from a run killed by no agent.** A session-start
 check found `siu_indicators.feature` carrying `45 -> 46` in its working tree: an in-place numeric

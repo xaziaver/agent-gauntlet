@@ -122,6 +122,23 @@ Every session reads `CLAUDE.md` and this file. Then, per item:
 
 ## Status as of this handoff
 
+**2026-09-16, G3 item 5 applied.** On `v1/item-5-restore-on-interrupt` from `65ddae3`: `fa28bc4`
+(open), the human findings commit `74d31df` (design decisions (1)-(6) and two predictions,
+subject and kill matrix, ratified before code moved), `1b4302a` (extraction: `acceptance/strands.py`),
+`b460b99` (the change: `signals_raise` and `Interrupted.die()` in `gates/base.py`, atomic spec
+writes, backups mirrored and discarded after restore, `restore_all` at the gate's start with the
+count in `actual`, `run.interrupted` in the log; thirteen tests, one a real SIGTERM kill). Verified
+against `origin` by the advisor at every step. Two proofs: the kill matrix in the rebuilt
+throwaways — SIGINT, SIGTERM, SIGHUP and `timeout` restore and log the signal, SIGKILL strands and
+the next run repairs it and says so — and regression run `20260916T223154-47209`, `check --record`
+in the item-1 clone at `be87d38` with Gauntlet at `b460b99`: exit 0 in 1092 s, eleven tuples
+identical to the tag's (agent and advisor), log identical to item 4's with ids, times and
+durations stripped, `run.finished` `a8a00163…` over 127, lock `61c2ac4d30025e8c`, record digest
+`9c7aececf56dc4f5…`, and `.gauntlet/` without `mutation-backup` after, the one named difference.
+Skip `20260916T225018-64532`, 0.16 s. Merge to `main` is the human's next act; item 6 opens after
+it. Own baseline updated below. Debts: `acceptance.py` at 289 of 300; `check` at 24 of 25;
+`verdict compare` deferred; the acceptance path defaults still restated in `tree.py`.
+
 **2026-09-15, G3 item 4 applied (the `check` half).** On `v1/item-4-run-started-in-lock` from
 `a0386af`: `a92eb13` (open), `ecec591` (housekeeping outside the verdict path: `deferred_to([])`,
 `ShortGateLineError`), the human findings commit `6d64fba` (design decisions (1)-(6) and a "nothing
@@ -236,14 +253,16 @@ xargs -0 sha256sum | sha256sum` at that commit: `gauntlet` is installed with `uv
 
 **This repository's own baseline.** Nine gates configured: protect, static, size, complexity, tests,
 coverage, crap, duplication, acceptance; no `[gates.boundary]` or `[gates.mutation]`.
-The `gauntlet check --record` after item 4, run `20260915T121906-2825022`, stamped
-2026-09-15T12:19:06Z to 12:20:05Z, agent-quoted and read by the advisor from the paste: protect 3/3
-paths unchanged; static 0 findings; size worst function 25; complexity 6; tests 576/576 passing in
-58.108 s; coverage line 96.89, branch 92.5 against floors of 95, 90 and per-file 80; crap 9.32;
-duplication 0; acceptance "no feature files" (vacuous). Diagnostics 0 and error null on all nine;
-`run.finished` tree `60662e437dfce71e…` over 95 files; the record's `harness.source`
-`d6755bb005eb5b3e…` over 51, both recomputed by the advisor by the shell pipelines from a clean
-clone at `2eed979`. Before item 4 (run `20260915T101125-2799622`) the suite was 572 tests in 51.356
+The `gauntlet check --record` after item 5, run `20260916T221205-8596`, stamped
+2026-09-16T22:12:05Z to 22:13:03Z, agent-quoted and read by the advisor from the paste: protect
+3/3 paths unchanged; static 0 findings; size worst function 25; complexity 6; tests 589/589
+passing in 57.216 s; coverage line 96.9, branch 92.68 against floors of 95, 90 and per-file 80;
+crap 9.32; duplication 0; acceptance "no feature files" (vacuous). Diagnostics 0 and error null
+on all nine; `run.finished` tree `b694567726decaf1…` over 97 files; the record's `harness.source`
+`e77e56484a2fb409…` over 52, both recomputed by the advisor by the shell pipelines from a clean
+clone at `b460b99`. Before item 5 (run `20260915T121906-2825022`) the suite was 576 tests in
+58.108 s at 96.89 / 92.5 over 95 files.
+Before item 4 (run `20260915T101125-2799622`) the suite was 572 tests in 51.356
 s at 96.87 / 92.41 over 95 files. Before item 3 (run
 `20260914T161254-2726665`) the suite was 551 tests in 49.7 s at 96.76 / 92.23 over 90 files. Before
 item 2 (run `20260913T222626-2654730`) the suite was 511 tests in 50.161 s at 96.6 / 91.89. Before item 1 (run
@@ -251,11 +270,13 @@ item 2 (run `20260913T222626-2654730`) the suite was 511 tests in 50.161 s at 96
 item-1 tests that run a real pytest-bdd project account for about 9 s of the difference. Stop hook
 budget 600 s; a full own-run is about 51 s by the timestamps. The suite is `.venv/bin/pytest tests
 -q -p no:cacheprovider`; the `pytest` on PATH is not the venv's and collects nothing. Branch
-coverage has 2.5 points of headroom over its floor: a G3 change that adds an untested branch goes
+coverage has 2.68 points of headroom over its floor: a G3 change that adds an untested branch goes
 red here before it reaches the subject. Since item 2 the Stop hook skips whenever the hand `gauntlet check` was green on the same
 tree: a turn end that ran no gate is a `run.reused` line in the log naming that run, and only
-the log tells it from a crash. `cli.py` is at 288 of 300 lines and `check` at 24 of 25 since item 4;
-`verdict.py` is 210, `cli_verdict.py` 54, `tree.py` 252, `adapters/base.py` 11.
+the log tells it from a crash.
+`cli.py` is at 288 of 300 lines and `check` at 24 of 25 since item 4; `gates/acceptance.py` is
+289 with `_survivors` at 22 since item 5; `gates/base.py` 207, `acceptance/strands.py` 71,
+`runner.py` 144, `verdict.py` 210, `cli_verdict.py` 54, `tree.py` 252.
 
 **The inventory of 2026-09-12**, read-only, agent-produced, from which this file was written.
 Three source-line citations in the findings resolve at `a0ef78d` (`cli.py:151` and `cli.py:151-152`
