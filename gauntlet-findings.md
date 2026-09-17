@@ -945,6 +945,85 @@ time this project has needed that exact workaround (see "A gate requiring human 
 human what to review" above, which needed it for a different reason: truncated output rather than a
 skipped stage).
 
+**Design decisions for G3 item 6, advisor-recommended, human-ratified 2026-09-17.** Item 6 is
+this entry, "The Stop hook cannot be scoped" and "Retry loop burns attempts on non-agent-actionable
+failures", decided together from the ground report of 2026-09-17 (`5b35b69255e75813`), because they
+pull on one axis: what a red-for-a-human-reason tree costs per Stop-hook turn. (1) This entry:
+report, do not run. The property "The approval stage short-circuits before the expensive one" stands —
+on the subject an unapproved spec fails in 0.004 s where mutation costs 452-1385 s, and a red tree
+never skips (the last-green record is written only on green, measured), so running mutation past
+an approval failure would charge the full expensive stage on every turn of a tree the human has
+not yet reviewed. What the entry's realized cost demands and this preserves is the minimum its own
+text names: the gate says what it did not do. Both early returns of `_stages` — the approval stage
+and the baseline stage — return an `actual` with the suffix "; mutation not run" ("1 unapproved or
+modified spec(s); mutation not run", "3 spec(s), scenarios failing; mutation not run"); a green run's
+`actual` is byte-identical to today's; the JSON report carries the same string; no new event, no new
+field. A `missing` key alone stays red: the tool cannot tell a rename the human has already
+re-approved from an agent deleting an approved spec, and the second must stay blocked; the CLI remedy
+for a dangling key is the later "Renaming a spec orphans its approval" entry, not this item. (2) "The
+Stop hook cannot be scoped": no code. Its measured cost was addressed by two earlier changes — the
+hook's `--fail-fast` (default on since 2026-09-08) stops a run at a red `tests` gate before the
+acceptance baseline it used to reach, and item 2's skip removes the green-tree cost — and the
+spec-before-steps phase now fails at the acceptance baseline in 0.3 s, never reaching mutation, with
+ClaimGate's wrapper returning in 0.44 s (ground, `tw2`). The entry's sentence that `stop_check` takes
+one option is stale (three at `cf54898`). Its Status becomes resolved-by-measurement at the close, and
+the ground's finding that a red tree never skips is recorded there as the residual, which is what (3)
+and (1) bound. (3) "Retry loop burns attempts": the fourth category, narrowly. A red run is
+human-blocked when every failing gate has at least one diagnostic and every diagnostic's `symbol` is
+`unapproved`, `modified` or `missing` — the approval findings, the entry's own example and 79 of the
+archive's acceptance failures; a gate `error` (the missing interpreter, `tw3a`) is not in the
+category, because a pytest collection error is the same shape and is the agent's to fix. The
+predicate is `stop.human_blocked(results)`, beside the counter it informs. On `stop-check` a
+human-blocked red run is not counted — the session's count is neither incremented nor cleared — and
+escalates at once: exit 0, one `systemMessage` from `stop.blocked_message(lines)` ("Gauntlet is
+blocked on a human: the failures below need approval (`gauntlet lock`), not code. Nothing here is
+for the agent." then the report), and one `agent.escalated` line with `reason: "human-blocked"`; the
+cap path's `agent.escalated` gains `reason: "attempts"`. An agent-actionable red run, or a run red
+for both reasons, is unchanged: counted, bounced at exit 2, escalated at the cap. `gauntlet loop`
+takes the same predicate: `drive` ends after the iteration whose gates are human-blocked, echoing
+the blocked message, returning the report, exit 2 as at the cap, so five iterations are not spent
+on a lock the agent cannot write (`tw3b`, measured five); an environment error still retries to
+the cap (`tw3a`). `test_loop_gives_up_at_the_iteration_cap`'s vacuous second assertion becomes a
+count of `agent.iteration` lines. (4) `cli.py` is at 288 with `stop_check` and `check` at 24 of 25,
+so the first commit extracts `init` and `guard` to `cli_setup.py`, registered as `lock` and `verify`
+are, behaviour unchanged (item 3's ground priced it at 62 lines freed); `stop_check`'s body does not
+grow — the blocked branch lives in `_stop_outcome` and a `NoReturn` helper beside
+`_escalate_or_bounce`. (5) Not this item: `_baseline_stage`'s absolute diagnostic path (ground Q7),
+the dangling-key remedy (Q4), any `stop-check` option. Cost: two suffixes on failure strings, one
+predicate, one message, one field on one event, one early exit in the loop; on a green subject,
+nothing.
+
+**Predicted effect on the regression subject, 2026-09-17.** Nothing changes. Three invocations as
+at item 5, in the clone at `be87d38` with `.gauntlet/` and `mutants/` removed, this repository at
+the branch tip with porcelain empty, Gauntlet installed from the tip into the clone's venv and
+`verdict.harness()` equal to the tip's pipeline before the run. First, `gauntlet check --record <a
+path outside the clone>`: the eleven `gate.finished` lines carry the same `gate`, `passed`, `error`,
+`diagnostics` and `actual` as run `20260911T110451-2238600` — acceptance's `actual` exactly
+`16 spec(s), 73 reviewed-equivalent`, no suffix, because the approval and baseline stages pass; the
+record's `verdict_sha256` is `9c7aececf56dc4f5214bfc4a07cd729f347086039dc7ba9193c6edfa3d01ca42`;
+`run.finished` with `a8a00163534b873780f5a8eceb213b0f19e8056f712c9643b971d7432ed00493` over 127; the
+log identical to item 5's fourteen lines in kinds, order and content, run ids, timestamps and
+durations excepted; no `agent.escalated`, no `approval.needed`; `gauntlet.lock.json` byte-identical;
+the clone's tree clean after; `ls .gauntlet/` exactly as item 5 listed it. Second, `stop-check
+--max-attempts 1`: one `run.reused`, nothing else. Third, `verdict export` of the tag's run from a
+copy of the archive: byte-equal to item 3's `prototype-1-verdict.json`. No duration is predicted.
+And nothing else on the subject.
+
+**Predicted effect on the ground report's throwaways, 2026-09-17** — `tw1`, `tw2`, `tw3a`, `tw3b`
+rebuilt to the report's description if the scratchpad is gone, the tool at the branch tip. `tw1`
+state B (one dangling key): `gate.finished` acceptance `actual` `1 unapproved or modified spec(s);
+mutation not run`, `passed` false, one `missing` diagnostic, exit 2, no backup directory seen, no
+scope record; state C: `3 spec(s)`, unchanged byte for byte. `tw2` (steps absent): `3 spec(s),
+scenarios failing; mutation not run`. `tw3b` under `printf '{"session_id":"s9"}' | gauntlet
+stop-check` with the default cap, twice: exit 0 both times, each a `systemMessage` beginning
+"Gauntlet is blocked on a human", `.gauntlet/stop-attempts.json` without `s9` after both, two
+`agent.escalated` lines with `reason` `human-blocked` and `attempts` absent or 0 as implemented;
+`tw3b` with one spec also carrying a size violation in `src/` and `[gates.size]` enabled: exit 2,
+`s9` counted 1 — not human-blocked. `tw3b` under `gauntlet loop` with the ground's agent command
+and the default cap: exit 2 after one iteration — one `agent.iteration`, one `gate.finished` — and
+stderr beginning with the blocked message; `tw3a` under the same: five iterations, as measured.
+Anything the throwaways show that this paragraph does not name is a stop.
+
 **Routes to:** BACKLOG.md, v1.
 
 **Status.** Open.
@@ -1311,6 +1390,10 @@ instead of running again.
 *(Annotation, 2026-09-12: "v1 item 2" as above — `doc-updates.md` section 3's numbering, never
 applied. The fourth category lives in the note at the end of this file until the diagnostics sweep
 is queued.)*
+
+*(Design decisions, 2026-09-17: this entry is one third of G3 item 6; the fourth category's definition,
+what `stop-check` and `gauntlet loop` do with it, and the predictions are in "The acceptance gate
+short-circuits mutation on an approval failure", decision (3).)*
 
 **Routes to:** BACKLOG.md, v1 item 2 AND v3. See the note for the v1 effort below — this adds a fourth category to that item's taxonomy, and the same distinction recurs in v3's transition query.
 
@@ -2033,6 +2116,10 @@ failures, and roughly 36KB of persisted output nobody read. The advisor eventual
 telling the agent to run `gauntlet check --gates protect,static,size,complexity,boundary,duplication`
 by hand — which does not touch the Stop hook at all, so the full run still happened every turn. The
 workaround addressed the symptom the human could see and not the one costing the time.
+
+*(Design decisions, 2026-09-17: this entry is one third of G3 item 6; its decision — no code, resolved
+by measurement — and the prediction are in "The acceptance gate short-circuits mutation on an approval
+failure", decision (2).)*
 
 **Routes to:** BACKLOG.md, v1, beside "Retry loop burns attempts on non-agent-actionable failures."
 That entry covers failures the agent cannot act on; this one covers failures the agent *can* act on
