@@ -180,13 +180,17 @@ def save(registry: Registry, path: Path) -> None:
     """Write deterministically: sorted keys, stable indent, trailing newline.
 
     This file is meant to be read in a diff, so its ordering must not churn.
+    Temp file then replace: an interrupted save leaves the previous ledger intact.
     """
     payload = {
         "version": SCHEMA_VERSION,
         "entries": {key: _entry_payload(entry) for key, entry in sorted(registry.entries.items())},
     }
+    text = json.dumps(payload, indent=2, sort_keys=True) + "\n"
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    temp = path.with_name(path.name + ".tmp")
+    temp.write_text(text, encoding="utf-8")
+    temp.replace(path)
 
 
 def revoke(registry: Registry, key: str) -> Registry:
