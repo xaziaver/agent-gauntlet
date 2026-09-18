@@ -3344,6 +3344,48 @@ and the write leaves a file `registry.load` still parses.
 `test_a_successful_save_leaves_no_temp_file_beside_the_ledger` — the sibling is gone when `save`
 returns.
 
+**Amendment, 2026-09-18: design decisions (1) and (3) reversed (advisor-recommended,
+human-ratified).** The four-line shape decision (1) specifies is a 58-token clone of
+`tree.write_json` — `registry.py:189-195` against `tree.py:214-220` — and turns the duplication gate
+red at `max_duplicate_blocks = 0`. Measured in run `20260918T200440-25039`: `"gate": "duplication"`,
+`"actual": 1`, `"passed": false`, the gate's own remedy naming the extraction. Commit `3891136` kept
+the shape and bound the serialised text to a local, which shortens the identical token run below
+jscpd's threshold; that satisfies the gate without removing what the gate found, and is reversed
+here.
+
+The reasoning behind decision (1) was wrong on a fact, not on a preference. It held that
+`registry.py` importing any Gauntlet module would drag the gate machinery under the ledger.
+Measured: `src/gauntlet/gates/` carries no `__init__.py`, so importing `gauntlet.gates.base` runs
+nothing but that module; `gates/base.py` imports no Gauntlet module itself; and eleven modules
+outside `gates/` already import it — `tree.py`, `verdict.py`, `report.py`, `status.py`,
+`status_render.py`, `stop.py`, `cli.py`, `loop.py`, `artifacts.py`, `adapters/python.py` and
+`acceptance/strands.py`. `gates/base.py` is this project's shared leaf, not gate machinery, and
+`registry.py` importing it is the existing convention rather than a new coupling.
+
+**(4) The replacement shape.** `save` keeps its `mkdir` and its `json.dumps(payload, indent=2,
+sort_keys=True)` with the trailing newline, and hands the text to `write_text_atomic`
+(`gates/base.py:55-59`), imported by name as `tree.py` imports `run_cmd`. One import line and one
+changed line; no copy of the idiom is left in `registry.py`. Decision (3) is withdrawn — there is no
+third copy to collapse, and the trigger was never going to be a fourth call site while the gate
+sits at zero.
+
+**What the reversal does not change.** The bytes `save` produces, the five matrix rows and their
+predicted results, and the predicted effect on the regression subject all stand:
+`write_text_atomic` performs the same three operations the reversed shape inlined, `save` still
+owns the `mkdir`, and `gates.base` is already inside the runner's import closure, so the closure
+does not move either. The matrix is re-run at the new tip rather than carried across.
+
+**Measured at the reversed shape, and not named before.** An interrupted save leaves a 0-byte
+`gauntlet.lock.json.tmp` beside the ledger, which the next successful save replaces (matrix rows R3
+and R4). `Path.write_text` truncates its target at `open(..., "w")` before any byte reaches it —
+measured on CPython 3.12, not assumed — which is the window both arms of the matrix interrupt and
+the window a crash lands in.
+
+**Debt.** `tree.write_json` still carries its own copy of the idiom and could call
+`write_text_atomic` too; two copies remain, which is where the gate stood before this change. Not
+done here: `tree.py` is inside the runner's import closure and the change would need its own
+prediction.
+
 #### `run_cmd` decodes tool output strictly, so a non-UTF-8 byte from any tool is an uncaught exception in a hook
 
 **What happened.** `gates/base.py`'s `run_cmd` is `subprocess.run(..., text=True)` with the locale's
