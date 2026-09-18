@@ -84,6 +84,12 @@ anyway — `gauntlet.lock.json` is byte-identical
 (sha256 prefix `61c2ac4d30025e8c`), the ClaimGate working tree is clean after
 the run, and every other difference in the event log is one the prediction
 named. A difference the prediction did not name is a stop, not a correction.
+A change the subject cannot exercise — a signal path, an interrupted run, a
+failure mode the tag's green tree never enters — needs a second proof beside
+the subject run: a matrix of measurements in a throwaway, predicted row by row
+before the code moves and re-run at the branch tip after, with the before-state
+taken by the ground report. Items 5 and 6 were both decided by their matrices;
+their subject runs proved only that nothing else moved.
 
 **Changes that do not.** Documents, tests, the scaffold templates, `doctor`
 checks, anything the regression subject's run never executes. Proof is the
@@ -316,6 +322,11 @@ predicting durations had already said a single-run figure is not a prediction;
 state no duration, or state the regime and the band. Asking for a directory
 listing, in a prediction or a prompt, without naming the reference listing —
 every entry not named is a stop by rule, and item 3's agent stopped on six.
+Writing a prediction phrase that two readings fit — "two backup files during
+the run" was read, reasonably, as two over the run and not two at once; say
+which. Reporting a document's line width in bytes and calling it characters:
+`—`, `…` and `→` are multi-byte, so a 100-character line can be 103 bytes, and
+these files are wrapped by characters.
 
 ## Where things stand
 
@@ -383,7 +394,10 @@ document needs changing, apply targeted replacements to the real file with each
 anchor asserted to appear exactly once, then hand back the result. Retyping a
 long document to include an edit silently paraphrases the parts you were not
 changing, and the paraphrase is invisible in review because it reads fine.
-Report the hunk count so I can see the change footprint.
+Report the hunk count so I can see the change footprint, and say whether you
+are counting anchors or `git diff` hunks: two anchors a few lines apart fall
+inside one hunk at git's default context, so the two counts differ without
+either being wrong.
 
 **Context economy.** Every turn re-sends the whole thread, so cost compounds
 with conversation length rather than with what you did in a given turn. Prefer
@@ -422,8 +436,9 @@ including, and especially, when the thing that failed is a check you wrote.
 
 ## Areas where I will need you most
 
-What a verdict-path change whose prediction says "nothing changes" could have
-reached on the subject, and why it did not — item 4's `check` half is the first.
+Pricing the tail of v1 — item 7 is not one change but many small ones, and the
+risk shifts from getting a design wrong to letting a cheap change go unpriced
+or unpredicted because it looks too small to matter.
 Where a finding belongs — *Proposed changes*,
 *Designed boundaries* or *Properties to preserve* — because the last two are the
 regression checklist and a mislabel there costs more than one elsewhere. Which

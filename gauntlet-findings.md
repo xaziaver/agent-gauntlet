@@ -4228,6 +4228,13 @@ retry loop that classifies by gate name will treat one as a code failure. The 7h
 cases — nothing is rewritten — but the diagnostics item's fourth category needs to key on the cause,
 not the gate.
 
+*(Annotation, 2026-09-17: both halves are now decided, in G3 item 6. The fourth category keys on the
+cause — `stop.human_blocked`, true only when every failing gate's diagnostics are approval findings
+— so the 7h short-circuit is human-blocked and the 7i reopening, which fails `tests`, is not. The
+short-circuit itself stands, for the cost reason above, and the gate now says what it skipped:
+"; mutation not run" on both early returns of `_stages`. What this property protects is unchanged;
+what was open in it is closed.)*
+
 ### A stop-check whose first red gate is cheap ends in seconds
 
 Since 2026-09-08 `stop-check` stops at the first failing gate by default, and gate order is fixed
@@ -4283,6 +4290,55 @@ can check. `stop-check` writes no record and nothing reads one; the skip cache s
 property above says. The regression evidence is item 3's entry: a `--record` run equal to the tag's
 on the digest, a skip after it, and an export of the tag's run from the archive with seven null
 fields and the same digest.
+
+### A killed run restores the spec it was mutating, and a surviving backup means a strand
+
+Since 2026-09-16 (G3 item 5) the acceptance gate's mutation stage survives its own death in two
+layers, because one of the four ways to die cannot be caught. Layer one: `_survivors` runs inside
+`base.signals_raise()`, whose handlers for SIGTERM and SIGHUP raise `Interrupted` on the first
+delivery and ignore repeats, so the `finally` that restores the spec runs for those two as it
+always did for SIGINT; the runner catches `Interrupted` and `KeyboardInterrupt`, writes one
+`run.interrupted` line naming the gate and the signal, and calls `die()`, which restores the
+default disposition and re-delivers the signal to its own pid, so the process still ends with the
+signal's status and the flock still releases. Measured 2026-09-16 in a throwaway with the mutation
+in flight: SIGINT, SIGTERM, SIGHUP and coreutils `timeout` each left the spec equal to HEAD, an
+empty `git status`, no backup directory, and exits 130, 143, 129 and 124. Layer two, for SIGKILL,
+which none of that reaches: the backup under `.gauntlet/mutation-backup/` *is* the strand marker,
+because `_survivors` discards it immediately after its restore, so a file there means a run died
+between a mutant write and its restore. The next acceptance run restores from it before spec
+discovery, discards every backup, and says so — `1 stranded spec(s) restored; 1 spec(s)` in the
+same measurement, where the run before the change had reported `1 unapproved or modified spec(s)`,
+exit 2, and left the strand. Three things hold this up and a refactor must keep all three: the
+backup is discarded on success (a backup that persisted after green runs would make the automatic
+restore overwrite a human's later edit, which is what it did before this item), backups mirror the
+spec's path so two specs of one basename no longer share a file, and every write to a spec — each
+mutant and the restore — goes through `base.write_text_atomic`, so an interruption mid-write leaves
+a stray temp file rather than half a spec. The regression evidence is item 5's entry: the kill
+matrix above and a subject run whose only difference from the run before it was `.gauntlet/`
+holding no `mutation-backup` afterwards.
+
+### A red run only a human can clear costs no attempt and no mutation
+
+Since 2026-09-17 (G3 item 6) the Stop hook tells two kinds of red apart. `stop.human_blocked` is
+true when at least one gate failed and every failing gate has diagnostics whose every symbol is
+`unapproved`, `modified` or `missing` — the approval findings, the one class of failure no agent
+turn can clear. Such a run is neither counted nor cleared: `stop-check` escalates it at once, exit
+0, one `agent.escalated` line carrying the untouched count and `reason: "human-blocked"`, and a
+`systemMessage` beginning "Gauntlet is blocked on a human"; `gauntlet loop` ends after that
+iteration. Everything else is unchanged — counted, bounced at exit 2, escalated at the cap with
+`reason: "attempts"`. The line is drawn at the cause, not the gate, and deliberately narrowly: a
+gate `error` is the agent's, because a missing interpreter and a pytest collection error have the
+same shape and the second is fixable from a turn. Measured 2026-09-17 in the throwaways: two
+consecutive blocked stops left the attempt file unwritten and escalated both times; the same
+project with one size violation added counted its attempt and did not escalate; the loop stopped
+after one iteration where it had spent five. Beside it, the approval stage still short-circuits
+before mutation and now says so — both early returns of `_stages` end `actual` with "; mutation not
+run" — because running mutation past an unapproved spec would charge the whole expensive stage on
+every turn of a tree the human has not reviewed, and a red tree never skips: the last-green record
+is written only on green. The cost accepted by design is that survivors on approved specs stay
+unmeasured while any spec is unapproved, modified or missing; the gate names the omission rather
+than hiding it. A refactor that makes the counter read `passed` alone, or that lets an `error`
+count as human-blocked, gives back the budget this bought.
 
 ### Mutant locators are structural, not positional
 
@@ -4525,13 +4581,33 @@ cannot be validated that way is not first.
 4. *Run pairing in the event log is unreliable in two directions.* Patch ready, and entries 2 and 3
    both write to the boundary lines it fixes.
 5. *Interrupted mutation runs leave corrupted source.* A realized corruption inside an approved
-   spec, caught by a human's `git diff` and nothing else.
+   spec, caught by a human's `git diff` and nothing else. **Applied 2026-09-16** (`b460b99`,
+   closed `cfc4952`, merged to `main`): SIGTERM, SIGHUP and SIGINT restore through the gate's
+   `finally` and log `run.interrupted`; SIGKILL's strand is repaired at the next run from the
+   backup, which is now discarded after every restore and so marks a strand. Its property is
+   under *Properties to preserve*.
 6. *The acceptance gate short-circuits mutation on an approval failure*, then *The Stop hook cannot
    be scoped*, then *Retry loop burns attempts on non-agent-actionable failures* — each cost
-   several sessions, none corrupted anything.
+   several sessions, none corrupted anything. **Applied 2026-09-17** (`d9e835d`, closed
+   `065627a`, merged to `main`): the first reports what it skipped and still skips it; the
+   second is resolved by measurement, no code, its cost already removed by `--fail-fast` and
+   item 2's skip; the third is the fourth category, `stop.human_blocked`, narrow to approval
+   findings — a human-blocked stop spends no attempt and `gauntlet loop` stops after one
+   iteration. Its property is under *Properties to preserve*.
 7. Everything else in v1, in file order. The near-miss entries, ledger atomicity first, sit here:
    the ledger is the one artifact no gate can rebuild, so its near miss outranks other near misses
    without outranking realized cost.
+
+*(Annotation, 2026-09-17: items 1 to 6 are applied and merged; item 7 is next and is not one
+change but the tail of v1. Its first session reads the tail whole and prices it before anything
+moves: the near-miss entries, ledger atomicity first; the entries this effort deferred rather
+than fixed — `verdict compare`, the acceptance path defaults still restated in `tree.py`,
+`run_cmd`'s strict decoding, `_baseline_stage`'s absolute diagnostic path, and a dangling
+`spec:` key's missing CLI remedy under "Renaming a spec orphans its approval", which blocks v2;
+and the debts the applied items banked, each named in its Change-applied paragraph. The rhythm
+changes with it: one prediction per change, many of them small, rather than one design per
+session. What does not change is that each still states what it could reach on the subject and
+why it does not.)*
 
 **The v1 backlog's root-cause-diagnostics item needs a fourth category.** It
 currently distinguishes "tool failed," "tool found nothing," and "nothing to
