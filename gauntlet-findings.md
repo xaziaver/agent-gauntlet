@@ -3296,6 +3296,54 @@ the cheap addition this argues for: `spec approve` and `mutant approve` print a 
 `check` warns when `gauntlet.lock.json` differs from its committed state — the ledger is the one
 artifact where "uncommitted" and "at risk" are the same word.
 
+**Design decisions, advisor-recommended, human-ratified 2026-09-18.**
+
+(1) *The two lines are inlined in `registry.save` rather than borrowed.* The codebase already
+carries two copies of temp-then-replace — `tree.write_json` (`tree.py:212-217`) and
+`base.write_text_atomic` (`gates/base.py:55-59`, added at item 5) — so reusing either unifies
+nothing; it picks one of two and spends the ledger's independence to do it. `registry.py` imports no
+Gauntlet module today, and it holds the one artifact no gate can rebuild: a ledger that can be
+loaded and repaired without dragging in the gate machinery is worth more than a third call site.
+`save` keeps its `mkdir` and its `json.dumps(..., indent=2, sort_keys=True)` with the trailing
+newline, writes to a `<name>.tmp` sibling, and `Path.replace`s onto the target. The bytes it
+produces do not change.
+
+(2) *No `fsync`.* Neither existing pattern fsyncs the file or its directory, so a power loss can
+still lose the last write on some filesystems. Matching them keeps the change two lines and keeps
+the three copies comparable; durability past `Path.replace` is a different change and is not made
+here.
+
+(3) *Debt banked.* Three copies of the idiom now exist. They collapse into one stdlib-only helper
+when a fourth is wanted, not before.
+
+**Predicted effect on the regression subject.** Nothing moves. `registry.save` has five call sites —
+`cli_approvals.py:23`, `cli_mutants.py:36` and `:53`, `cli_review.py:37`, `cli_specs.py:24` — and
+none of them is in the runner's import closure; no gate calls it, and `gauntlet check` never writes
+the ledger. So the eleven `gate.finished` lines carry the same `gate`, `passed`, `error`,
+`diagnostics` and `actual` as the tag's, the record's `verdict_sha256` is `9c7aececf56dc4f5…`,
+`gauntlet.lock.json` is byte-identical at `61c2ac4d30025e8c`, `run.finished` is the tree
+`a8a00163…` over 127 files, `.gauntlet/` lists exactly `acceptance-scope.json coverage.json
+events.jsonl jscpd junit.xml last-green.json run.lock`, `git status --porcelain` in the clone is
+empty before and after — the tag carries no `*.tmp` ignore rule, so a stray `gauntlet.lock.json.tmp`
+would appear there — and nothing else.
+
+**Second proof: a predicted matrix in a throwaway.** `registry.py` is inside the runner's import
+closure, so this is a verdict-path change, but the line it edits is one the tag's green run never
+executes; the subject run therefore proves only that nothing else moved. Five rows, predicted before
+the code moves and re-run at the branch tip: a normal save produces bytes identical to today's and
+leaves no sibling `.tmp`; a save interrupted between the truncate and the write leaves today's
+ledger empty or cut short, with `registry.load` raising `RegistryError`; the same interruption under
+the change leaves the target's previous content intact and loadable; a stale
+`gauntlet.lock.json.tmp` sitting beside the ledger before a save does not survive it; a missing
+parent directory is still created.
+
+**Tests that pin it.** `test_a_saved_ledger_is_byte_identical_to_the_previous_writer` — the bytes
+`save` produces are unchanged, so the file still reads in a diff.
+`test_an_interrupted_save_leaves_the_previous_ledger_loadable` — a save killed between the truncate
+and the write leaves a file `registry.load` still parses.
+`test_a_successful_save_leaves_no_temp_file_beside_the_ledger` — the sibling is gone when `save`
+returns.
+
 #### `run_cmd` decodes tool output strictly, so a non-UTF-8 byte from any tool is an uncaught exception in a hook
 
 **What happened.** `gates/base.py`'s `run_cmd` is `subprocess.run(..., text=True)` with the locale's
