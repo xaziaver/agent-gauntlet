@@ -23,6 +23,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
+from gauntlet.gates.base import write_text_atomic
+
 SCHEMA_VERSION = 1
 DIGEST_PREFIX = "sha256:"
 
@@ -186,11 +188,8 @@ def save(registry: Registry, path: Path) -> None:
         "version": SCHEMA_VERSION,
         "entries": {key: _entry_payload(entry) for key, entry in sorted(registry.entries.items())},
     }
-    text = json.dumps(payload, indent=2, sort_keys=True) + "\n"
     path.parent.mkdir(parents=True, exist_ok=True)
-    temp = path.with_name(path.name + ".tmp")
-    temp.write_text(text, encoding="utf-8")
-    temp.replace(path)
+    write_text_atomic(path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
 
 
 def revoke(registry: Registry, key: str) -> Registry:
