@@ -3447,6 +3447,101 @@ pass, beside ledger atomicity.
 
 **Status.** Open.
 
+**Design decisions, advisor-recommended, human-ratified 2026-09-19.**
+
+(1) *Fail closed, not `errors="replace"`.* The entry offers both. Replacing undecodable bytes keeps
+every gate running but computes verdicts from mangled data: `git ls-files -z` would hash a name
+carrying U+FFFD and the run would go green on a tree that is not the tree. The complaint here is
+that the hook fails open and silently, and replacement keeps it failing open. So `run_cmd` catches
+`UnicodeDecodeError` and returns a failed result, in the shape it already uses for a timeout and a
+missing executable.
+
+(2) *`text=True` stays.* Capturing bytes and decoding each stream would name the failing stream and
+keep the good one, but it drops Python's universal-newline translation for every gate that parses
+stdout — the mutmut parser among them — to buy forensic detail the caller does not need. The
+exception carries the offending byte and its offset (measured: `printf 'a\377b'` raises
+`UnicodeDecodeError: utf-8 invalid start byte`, start 1, object `b'a\xffb'`) but not which stream
+it came from, and the message says so rather than guessing.
+
+(3) *`UNDECODABLE_RETURNCODE = 120`.* 124 and 127 borrow real shell meanings; there is no shell
+convention for output that will not decode, so borrowing 125 or 126 would be a false signal. 120 is
+inside the program-defined range, outside the shell's reserved codes, and distinct from 124.
+Nothing reads it: `TIMEOUT_RETURNCODE` is set and never read anywhere, and only
+`MISSING_TOOL_RETURNCODE` is read, at `adapters/python.py:189` and `gates/duplication.py:98`.
+
+(4) *Item 2's narrow fix comes out.* `tree._listing` catches `UnicodeDecodeError` from `run_cmd` and
+returns None — the `8b64ca0` amendment. After this change `run_cmd` never raises it, so that
+`except` cannot be reached, and the branch below it, `returncode != 0` → None, produces the
+identical outcome: git cannot say, a null tree, no skip. Leaving it would leave dead code and a test
+that passes only by mocking a condition the code can no longer produce. The clause and its test go;
+a new test exercises the same outcome through a real undecodable file name instead of a mock.
+
+**The extraction that precedes the change.** `run_cmd` is 24 lines of a 25 ceiling
+(`gates/base.py:171-194`), so its three — soon four — `CompletedProcess` constructions move into one
+`_failed(args, code, message)` helper on their own commit before the change, as items 5 and 6 put
+their extractions before theirs.
+
+**Predicted effect on the regression subject.** Nothing moves. `run_cmd` is executed by every gate
+that runs a tool, so this is a verdict-path change; but the new branch is taken only when a decode
+fails, and nothing in the subject's tree emits a byte the locale's encoding cannot decode — every
+gate of run `20260919T095612-48662` returned decodable output with `error` null. The extraction is
+behaviour-preserving by construction. So the eleven `gate.finished` lines carry the same `gate`,
+`passed`, `error`, `diagnostics` and `actual` as the tag's, the record's `verdict_sha256` is
+`9c7aececf56dc4f5…`, `gauntlet.lock.json` is byte-identical at `61c2ac4d30025e8c`, `run.finished` is
+the tree `a8a00163…` over 127 files, `.gauntlet/` lists seven entries after the `check` and eight
+after the `stop-check` skip, `git status --porcelain` in the clone is empty before and after — and
+nothing else.
+
+**Second proof: a predicted matrix in a throwaway.** Both arms loaded from the real committed files,
+one interpreter, no mocking of `run_cmd` itself. Five rows: a command whose output decodes returns
+an identical result on both arms, field for field; `printf 'a\377b'` raises `UnicodeDecodeError`
+out of the old arm's `run_cmd`; the same command under the new arm returns `returncode` 120 with
+empty stdout and a stderr naming the byte and its offset, and raises nothing; an undecodable byte on
+stderr with decodable stdout behaves the same way, since the wrapper does not distinguish the
+streams and does not claim to; and `tree._listing`, run against a working tree holding a file whose
+name git cannot decode, returns None on both arms — the observable behaviour decision (4) preserves.
+
+**Tests that pin it.** `test_output_that_cannot_be_decoded_becomes_a_failed_result_not_an_exception`
+— `run_cmd` returns `UNDECODABLE_RETURNCODE` where it used to raise.
+`test_the_undecodable_result_names_the_byte_and_its_offset` — the stderr it returns carries both.
+`test_a_tool_whose_output_decodes_is_returned_unchanged` — the ordinary path is untouched by the new
+clause. `test_a_file_name_git_cannot_decode_still_leaves_the_tree_unsayable` — `tree._listing`
+returns None through the returncode branch, against a real undecodable name rather than a mocked
+exception, replacing the test deleted under decision (4).
+
+**Change, applied 2026-09-20 (advisor-recommended, human-ratified).** On
+`v1/item-7-change-2-run-cmd-decoding` from `28caa08`: `95a6dd2` (the decisions, the extraction, the
+prediction, the matrix and the four test names), `ed747dd` (the extraction: `_failed(args, code,
+message)` in `gates/base.py`, both except clauses calling it, `run_cmd` 24 → 20, tests untouched at
+611/611; `cf5288d63c27bbbc` → `f03011f70be2f76d`), `b5aa430` (the change: `UNDECODABLE_RETURNCODE =
+120`; `run_cmd` catches `UnicodeDecodeError` and returns `_failed` with a message naming the
+command, the byte in hex and the offset, and saying which stream it cannot tell; the docstring
+lists the third case; `tree._listing` loses its `except UnicodeDecodeError` and keeps its
+`returncode != 0` branch;
+one mock-only test deleted, four added, 611 → 614; `gates/base.py` `f03011f70be2f76d` →
+`9a3b246addf40c97`, `tree.py` `d5a7ccc81d1da618` → `44d052e0ab720e96`). `run_cmd` now sits at 25 of
+25: the next change to it extracts first. Own runs `20260920T104940-109083` (A, 611/611) and
+`20260920T105337-110010` (B, 614/614), both nine green, coverage 97.04 → 97.05 line, 93.07 branch,
+duplication 0, worst function 25, complexity 6, crap 9.32.
+
+Two proofs. The matrix at `/tmp/g3-item7-change2-matrix`, each arm's `tree` bound to its own `base`
+and the binding proved by identity and by source digest before any row ran: every row as predicted
+— a decodable command identical field for field on both arms; `b'a\xffb'` on stdout raising
+`UnicodeDecodeError` out of the old arm's `run_cmd` and returning 120 with the byte and offset named
+under the new; the same on stderr; and `_listing` against a real file named `b"bad\xffname"`
+returning None on both arms, via the `except` at `tree.py:116` on the old and via `returncode != 0`
+at `tree.py:115` on the new, which is the outcome decision (4) preserves. The harness's own
+agreement check printed a false DIFFERS on those two rows, having looked for the guard's text in a
+string that reported only the `return None` line; the rows matched and the harness was left as it
+ran. And regression run `20260920T112316-111530`, `check --record` in the item-1 clone at `be87d38`
+with Gauntlet installed from `b5aa430` (harness `43407aa4e7458e98` over 53, equal to the tip's,
+printed from the clone's own interpreter): eleven tuples identical to the tag's on gate, passed,
+actual, error and diagnostics (agent and advisor), every `error` null and every `diagnostics` 0,
+`run.finished` `a8a00163…` over 127, lock `61c2ac4d30025e8c` byte-identical to `be87d38`'s, record
+digest `9c7aececf56dc4f5…` equal to the tag's own export from the archive at `main` (`de2c23a`),
+`.gauntlet/` seven entries after the check and eight after the skip, the clone's tree clean
+throughout, no `*.tmp` at any point. Skip `20260920T113821-128891`. Acceptance 863.854 s.
+
 #### An automatic retry loop repeats the one gate that rewrites the working tree
 
 **What happened.** The stop hook retries a failing `gauntlet check`. Observed at 2, 5, and 7

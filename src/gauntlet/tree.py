@@ -110,10 +110,7 @@ def _listing(root: Path, paths: list[str]) -> list[bytes] | None:
     if not paths:
         return None
     args = ["git", "ls-files", "-z", "-c", "-o", "--exclude-standard", "--", *paths]
-    try:
-        proc = run_cmd(args, cwd=root)
-    except UnicodeDecodeError:  # a file name git cannot say in text: never raise in a hook
-        return None
+    proc = run_cmd(args, cwd=root)
     if proc.returncode != 0:
         return None
     return sorted(name.encode("utf-8") for name in proc.stdout.split("\0") if name)
