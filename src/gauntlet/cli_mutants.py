@@ -10,6 +10,7 @@ import typer
 from gauntlet import config as config_mod
 from gauntlet import locking, registry, runner, specs
 from gauntlet import mutants as mutants_mod
+from gauntlet.acceptance import gherkin, mutation
 from gauntlet.acceptance.mutation import Mutant
 from gauntlet.adapters.python import CodeMutant
 from gauntlet.cli_support import EXIT_OK, fail, resolve_config
@@ -148,4 +149,43 @@ def mutant_list() -> None:
     for key, entry in sorted(scoped.entries.items()):
         reason = entry.reason or "(no reason recorded)"
         typer.echo(f"{registry.bare(key)}\n    {reason}  [{entry.reviewer or 'unknown'}]")
+    raise typer.Exit(code=EXIT_OK)
+
+
+def _read_feature_text(feature: Path) -> str:
+    """The bytes of one feature file as text, or a config error naming what stopped it."""
+    if not feature.is_file():
+        fail(f"no such feature file: {feature}")
+    try:
+        return feature.read_text(encoding="utf-8")
+    except UnicodeDecodeError as exc:
+        fail(f"{feature}: not UTF-8 at byte offset {exc.start}")
+
+
+def _preview_summary(feature: Path, found: list[Mutant]) -> str:
+    """The count by kind, because the kinds cost differently to re-review."""
+    examples = sum(1 for m in found if m.kind == mutation.KIND_EXAMPLE)
+    literals = sum(1 for m in found if m.kind == mutation.KIND_LITERAL)
+    return f"{feature}: {len(found)} mutants ({examples} example, {literals} literal)"
+
+
+@mutant_app.command("preview")
+def mutant_preview(
+    feature: Path = typer.Argument(..., help="The feature file to enumerate mutants for"),
+) -> None:
+    """List every mutant one feature file would generate, without running anything.
+
+    Reads the file and nothing else: no project, no approval, no ledger, nothing
+    written. One `locator<TAB>signature` line per mutant on stdout, the count by
+    kind on stderr; `diff` two listings to see what a spec edit strands.
+    Background steps yield no mutants, so a radius read from the listing is a floor.
+    """
+    text = _read_feature_text(feature)
+    try:
+        found = mutation.mutants(gherkin.parse(text, str(feature)))
+    except gherkin.GherkinError as exc:
+        fail(str(exc))
+    for mutant in found:
+        typer.echo(f"{mutant.locator}\t{mutant.signature}")
+    typer.echo(_preview_summary(feature, found), err=True)
     raise typer.Exit(code=EXIT_OK)
