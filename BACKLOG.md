@@ -306,14 +306,15 @@ xargs -0 sha256sum | sha256sum` at that commit: `gauntlet` is installed with `uv
 
 **This repository's own baseline.** Nine gates configured: protect, static, size, complexity, tests,
 coverage, crap, duplication, acceptance; no `[gates.boundary]` or `[gates.mutation]`.
-The `gauntlet check --record` after item 6, run `20260917T094153-80919`, stamped
-2026-09-17T09:41:53Z to 09:42:41Z, agent-quoted and read by the advisor from the paste: protect 3/3
-paths unchanged; static 0 findings; size worst function 25; complexity 6; tests 608/608 passing in
-47.619 s; coverage line 97.04, branch 93.07 against floors of 95, 90 and per-file 80; crap 9.32;
+The `gauntlet check --record` after item 7 change 2, run `20260920T105337-110010`, stamped
+2026-09-20T10:53:37Z to 10:54:28Z, agent-quoted and read by the advisor from the paste: protect 3/3
+paths unchanged; static 0 findings; size worst function 25; complexity 6; tests 614/614 passing in
+50.306 s; coverage line 97.05, branch 93.07 against floors of 95, 90 and per-file 80; crap 9.32;
 duplication 0; acceptance "no feature files" (vacuous). Diagnostics 0 and error null on all nine;
-`run.finished` tree `14cbc659ebc29a42…` over 98 files; the record's `harness.source`
-`e0672d331c6c74c8…` over 53, both recomputed by the advisor by the shell pipelines from a clean
-clone at `d9e835d`. Before item 6 (run `20260916T221205-8596`) the suite was 589 tests in 57.216 s
+`run.finished` tree `74f3b323859a5e60…` over 98 files; the harness `43407aa4e7458e98…` over 53,
+recomputed by the advisor by the shell pipeline from a clean clone at `899615e`. Before item 7
+(run `20260917T094153-80919`) the suite was 608 tests in 47.619 s at 97.04 / 93.07 over 98 files,
+harness `e0672d331c6c74c8…`. Before item 6 (run `20260916T221205-8596`) the suite was 589 tests in 57.216 s
 at 96.9 / 92.68 over 97 files.
 Before item 5 (run `20260915T121906-2825022`) the suite was 576 tests in
 58.108 s at 96.89 / 92.5 over 95 files.
@@ -331,8 +332,11 @@ tree: a turn end that ran no gate is a `run.reused` line in the log naming that 
 the log tells it from a crash.
 `cli.py` is at 248 of 300 lines since item 6 moved `init` and `guard` to `cli_setup.py`, with
 `check` and `stop_check` at 24 of 25; `gates/acceptance.py` is 291 with `_survivors` at 22;
-`loop.py` 151 with `drive` at 24; `stop.py` 95, `gates/base.py` 207, `acceptance/strands.py` 71,
-`runner.py` 144, `verdict.py` 210, `cli_verdict.py` 54, `tree.py` 252.
+`loop.py` 151 with `drive` at 24; `gates/base.py` 214 with `run_cmd` at 25 of 25 since item 7
+change 2; `acceptance/mutation.py` 247 with `_column_mutants` at 25 of 25; `registry.py` 241 since
+change 1 and `tree.py` 249 since change 2; `stop.py` 95, `acceptance/strands.py` 71, `runner.py`
+144, `verdict.py` 210, `cli_verdict.py` 54. The two functions at the ceiling each force an
+extraction before the next change to them.
 
 **The inventory of 2026-09-12**, read-only, agent-produced, from which this file was written.
 Three source-line citations in the findings resolve at `a0ef78d` (`cli.py:151` and `cli.py:151-152`

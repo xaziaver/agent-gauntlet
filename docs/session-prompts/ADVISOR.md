@@ -68,8 +68,10 @@ a clean clone for everything the tool reads. Since item 2 `stop-check` also
 emits run boundaries, but the run stays `check`, item 1's precedent; a change
 whose payoff is a second invocation gets both invocations defined in the
 prediction, as item 2's was. Gauntlet is installed into that clone's uv venv
-(Python 3.14) with `uv pip install --python .venv/bin/python` over this
-repository — the venv has no pip, and a bare `pip` there installs nothing and
+(Python 3.14) with `uv pip install --reinstall-package agent-gauntlet
+--python .venv/bin/python ~/Code/agent-gauntlet`, run from the clone — the
+source path is the one the clone's `direct_url.json` records, and without it
+the command exits 2 (measured 2026-09-19) — the venv has no pip, and a bare `pip` there installs nothing and
 barely says so — and the report records `git -C <agent-gauntlet> rev-parse
 HEAD` and an empty `git status --porcelain` here, taken immediately before the
 install, plus `verdict.harness()` printed from the clone's interpreter immediately
@@ -82,8 +84,13 @@ baseline run (durations excepted) — since item 3, one figure: the record's
 `verdict_sha256` is `9c7aececf56dc4f5…`, the tag's, and the eleven lines are read
 anyway — `gauntlet.lock.json` is byte-identical
 (sha256 prefix `61c2ac4d30025e8c`), the ClaimGate working tree is clean after
-the run, and every other difference in the event log is one the prediction
-named. A difference the prediction did not name is a stop, not a correction.
+the run, `.gauntlet/` lists exactly `acceptance-scope.json coverage.json
+events.jsonl jscpd junit.xml last-green.json run.lock` after the check and
+those seven plus `stop-attempts.json` after the `stop-check` skip — the skip
+clears the attempt counter since item 6's `d9e835d`, and the seven-entry
+listing recorded at item 6's close was the post-check one — no `*.tmp` exists
+anywhere in the clone, and every other difference in the event log is one the
+prediction named. A difference the prediction did not name is a stop, not a correction.
 A change the subject cannot exercise — a signal path, an interrupted run, a
 failure mode the tag's green tree never enters — needs a second proof beside
 the subject run: a matrix of measurements in a throwaway, predicted row by row
@@ -387,7 +394,11 @@ you write the command is fetched by the command itself — `$(git rev-parse
 exists. Twice a merge subject reached `origin` with the placeholder still in it,
 ClaimGate `c22df38` (`<hash>`) and agent-gauntlet `2e4970d` (`<COMMIT_4>`), both
 from advisor-written commands, both left as they are because a force-push costs
-more than the blemish.
+more than the blemish. Two more from item 7: `python` is not on the human's
+PATH — a command names the clone's `.venv/bin/python` or the tool's own
+interpreter — and every prompt that commits says to push and to show
+`origin/<branch>..HEAD` printing nothing, because one that did not left the
+agent to guess.
 
 **Produce document edits programmatically, not by retyping.** When a repository
 document needs changing, apply targeted replacements to the real file with each
@@ -405,10 +416,17 @@ counts to dumps when running commands. Do not re-verify what you verified
 earlier in this session. Keep responses tight. Tell me when a fresh session
 would be cheaper than continuing this one.
 
-A regression run costs about an hour — the tag's acceptance gate alone took
-3690.978 s and 3736.757 s on its last two runs — so a change is run against the
-subject once, after its own gates are green and its prediction is ratified, not
-during development. Do not instruct the agent to run the subject speculatively.
+A regression run costs about fifteen minutes since items 1 and 2 — acceptance
+847.984 s and 863.854 s on item 7's first two changes, against 3736.757 s at
+the tag — so a change is run against the subject once, after its own gates are
+green and its prediction is ratified, not during development, and in its own
+session after the change's. Do not instruct the agent to run the subject
+speculatively. A gate that goes red on a change is answered by removing what it
+found or by a ratified change to its threshold, never by reshaping the code
+until the detector stops seeing it: item 7 change 1's duplication finding was
+first met by binding an expression to a local, and reversed. A decision that
+chooses duplication over coupling is priced against the duplication gate's
+threshold before it is written into an entry.
 
 ## Watch the agent for
 
@@ -438,7 +456,11 @@ including, and especially, when the thing that failed is a check you wrote.
 
 Pricing the tail of v1 — item 7 is not one change but many small ones, and the
 risk shifts from getting a design wrong to letting a cheap change go unpriced
-or unpredicted because it looks too small to matter.
+or unpredicted because it looks too small to matter. Since 2026-09-19 item 7
+runs one branch per change, each closed on its own proof and merged, with the
+change's session and its regression session separate; the ground report of
+2026-09-18 is its inventory and the note's item 7 annotation carries the
+sequencing rulings.
 Where a finding belongs — *Proposed changes*,
 *Designed boundaries* or *Properties to preserve* — because the last two are the
 regression checklist and a mislabel there costs more than one elsewhere. Which

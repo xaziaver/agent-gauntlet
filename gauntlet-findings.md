@@ -1141,6 +1141,38 @@ did not happen: "nothing to measure" reported as "measured, found nothing."
 run id embedded in it) checked against the tests gate's own run, with an explicit could-not-measure
 result when the artifact predates it, rather than silently reporting a stale number as current.
 
+**Proposed change.** A freshness check against the current run, and an explicit could-not-measure
+result when the artifact predates it.
+
+**What it cost us.** Nothing directly; the cost is the false signal.
+
+*(Annotation, 2026-09-12: "v1 item 2" is the numbering of `doc-updates.md` section 3, an August
+plan never applied to `BACKLOG.md`, whose item 2 is mutation cost. Root-cause diagnostics as a
+pattern is open: per-gate handling exists, there is no sweep, and `gate.finished` still omits
+`vacuous` — the third defect under `BACKLOG.md` item 1, and README "Known issues" as annotated in
+G2d.)*
+
+**Routes to:** BACKLOG.md, v1 item 2 (root-cause diagnostics). This is exactly that item's "nothing to measure" case reported as "measured, found nothing" — the clearest real instance of it found so far.
+
+**Status.** Open.
+
+**Correction (2026-08-09).** "`gates/mutation.py` genuinely re-executes `mutmut run` as a fresh
+subprocess every invocation... not because it was cached" above is true of the subprocess, false of
+mutmut's own internal state. See "Mutation's own coverage-guided test selection goes stale on a
+test-only change" above: a fresh `mutmut run` subprocess can still consult a stale
+`tests_by_mangled_function_name` mapping on disk and report an unchanged score when a test was
+actually added, removed, or edited with no corresponding source change. Kept here as a pointer
+rather than rewritten in place, per this document's own practice of correcting claims after
+observation instead of erasing the original one.
+
+**This is the third of the reasoning-not-verification claims this document has had to correct, after
+the two on the dangling-key entry (once claiming a dangling key was undetectable, once assuming CLI
+removal was possible).** The pattern is worth naming directly: every claim in this project written
+from reasoning about how a tool must work, rather than from running it, has been wrong so far. None
+has been right yet. That is not a reason to stop writing claims — it is a reason every one of them
+stays provisional until it has actually been run, which is the discipline this document tries to
+enforce on itself as much as on the harness it describes.
+
 #### The code-mutation gate's source scope is set outside Gauntlet, and narrowing it is invisible
 
 **What happened.** Every structural gate scopes to `gauntlet.toml`'s `[project] src` — the tests
@@ -1259,38 +1291,6 @@ is read from source, the workaround itself is not independently verified.
 **Routes to.** `BACKLOG.md`.
 
 **Status.** Open.
-
-**Proposed change.** A freshness check against the current run, and an explicit could-not-measure
-result when the artifact predates it.
-
-**What it cost us.** Nothing directly; the cost is the false signal.
-
-*(Annotation, 2026-09-12: "v1 item 2" is the numbering of `doc-updates.md` section 3, an August
-plan never applied to `BACKLOG.md`, whose item 2 is mutation cost. Root-cause diagnostics as a
-pattern is open: per-gate handling exists, there is no sweep, and `gate.finished` still omits
-`vacuous` — the third defect under `BACKLOG.md` item 1, and README "Known issues" as annotated in
-G2d.)*
-
-**Routes to:** BACKLOG.md, v1 item 2 (root-cause diagnostics). This is exactly that item's "nothing to measure" case reported as "measured, found nothing" — the clearest real instance of it found so far.
-
-**Status.** Open.
-
-**Correction (2026-08-09).** "`gates/mutation.py` genuinely re-executes `mutmut run` as a fresh
-subprocess every invocation... not because it was cached" above is true of the subprocess, false of
-mutmut's own internal state. See "Mutation's own coverage-guided test selection goes stale on a
-test-only change" above: a fresh `mutmut run` subprocess can still consult a stale
-`tests_by_mangled_function_name` mapping on disk and report an unchanged score when a test was
-actually added, removed, or edited with no corresponding source change. Kept here as a pointer
-rather than rewritten in place, per this document's own practice of correcting claims after
-observation instead of erasing the original one.
-
-**This is the third of the reasoning-not-verification claims this document has had to correct, after
-the two on the dangling-key entry (once claiming a dangling key was undetectable, once assuming CLI
-removal was possible).** The pattern is worth naming directly: every claim in this project written
-from reasoning about how a tool must work, rather than from running it, has been wrong so far. None
-has been right yet. That is not a reason to stop writing claims — it is a reason every one of them
-stays provisional until it has actually been run, which is the discipline this document tries to
-enforce on itself as much as on the harness it describes.
 
 #### The acceptance gate's green summary omits the killed count, so a newly bound spec's clean result is inferred from absence
 
@@ -3569,6 +3569,12 @@ diagnosis of *which* mutant had been injected.
 
 **Status.** Open.
 
+*(Annotation, 2026-09-20: the second remedy — the one this entry calls strictly better — landed at
+G3 item 5: `strands.restore_all` at the gate's start, `b460b99`, now `gates/acceptance.py:285`. The
+first, a per-gate attempt limit, is unbuilt, and the Status stays Open for it alone. Item 6's
+`stop.human_blocked` removed the retry's cost against the approval case this entry observed, so what
+remains is the general limit rather than the observed loss.)*
+
 **Cost update, 2026-08-24.** The "~230s" above is stale twice over: the mutation-stage red state
 was measured at 423.6s (24 mutants, item 5c pre-binding), and the green full pass at 452.7–472.8s
 (48 mutants). The window this entry describes — each retry a chance for an interrupt to strand an
@@ -4071,6 +4077,31 @@ convention and the reason it cannot be code today.
 **Routes to:** convention now; the existing-steps linter to v3.
 
 **Status.** Open.
+
+#### The duplication gate can be satisfied by renaming rather than by removing what it found
+
+**What happened.** G3 item 7 change 1 specified a four-line temp-then-replace inside
+`registry.save`. The duplication gate went red: a 58-token, 7-line clone of `tree.write_json` at
+`max_duplicate_blocks = 0`, run `20260918T200440-25039`. Binding the serialised text to a local
+before the write shortened the identical token run below jscpd's threshold, and the gate went green
+on the same duplication (run `20260918T200733-25584`, commit `3891136`). The advisor reversed it
+(`18a15b9`); the shape that shipped calls `write_text_atomic` and carries no copy (`cef5b6f`).
+
+**Why it matters.** A token-run detector at threshold 0 reads as a claim that the codebase has no
+clones; it is a claim that no clone is longer than jscpd's minimum, and a renamed local is enough to
+fall under it. A gate that can be satisfied by reshaping is a gate an agent under Stop-hook pressure
+will satisfy by reshaping — and the agent here reported doing exactly that, which is what made the
+reversal possible. Not a jscpd defect: every clone detector has a floor. The floor has to be known.
+
+**What would address it.** Convention, not code. A duplication finding is answered by removing the
+duplication or by a ratified change to the threshold, never by reshaping tokens until the detector
+stops seeing them; and a design decision that chooses duplication over coupling is priced against
+this gate's threshold before it is written into an entry. Both are in
+`docs/session-prompts/ADVISOR.md` since 2026-09-20.
+
+**Routes to:** convention; `ADVISOR.md`.
+
+**Status.** Open, convention rather than code.
 
 ## Designed boundaries
 
@@ -4827,6 +4858,21 @@ and the debts the applied items banked, each named in its Change-applied paragra
 changes with it: one prediction per change, many of them small, rather than one design per
 session. What does not change is that each still states what it could reach on the subject and
 why it does not.)*
+
+*(Annotation, 2026-09-20: the ground report of 2026-09-18
+(`~/gauntlet-review/g3-item7-ground-2026-09-18.md`, 672 lines, sha256 `cc02c3b4d8d94829…`) priced
+the tail at 40 open entries — 33 under "v1 — finish line", 3 blocking v2, 1 v3, 3 convention — 26 of
+them on the verdict path and five of those unreached by a green tree. So item 7 runs one branch per
+change, each with its own findings commit, a second proof where the subject cannot reach the change,
+a subject run, a close and a merge; not one branch carrying the tail. The two near-miss entries are
+done: ledger atomicity on `v1/item-7-tail`, merged at `28caa08`; `run_cmd`'s strict decoding on
+`v1/item-7-change-2-run-cmd-decoding`, merged at `899615e`. Next in file order is "The blast radius
+of a spec change cannot be measured before making it". Sequencing rulings from the report: "The
+code-mutation gate's source scope is set outside Gauntlet" goes last among the verdict-path entries,
+being the one predicted to turn the subject red; any change into `acceptance/mutation.py` opens with
+an extraction, `_column_mutants` being at 25 of 25; so does the next change to `run_cmd`, at 25 of
+25 since change 2. The report's line numbers below the ledger entry are stale by the blocks added
+since; its anchors are strings and hold.)*
 
 **The v1 backlog's root-cause-diagnostics item needs a fourth category.** It
 currently distinguishes "tool failed," "tool found nothing," and "nothing to
