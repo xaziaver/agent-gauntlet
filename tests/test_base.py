@@ -107,6 +107,38 @@ def test_run_cmd_reports_a_missing_executable_instead_of_raising(tmp_path: Path)
     assert "on PATH" in proc.stderr
 
 
+UNDECODABLE = [sys.executable, "-c", "import sys; sys.stdout.buffer.write(b'a\\xffb')"]
+
+
+def test_output_that_cannot_be_decoded_becomes_a_failed_result_not_an_exception(
+    tmp_path: Path,
+) -> None:
+    proc = base.run_cmd(UNDECODABLE, cwd=tmp_path)
+    assert proc.returncode == base.UNDECODABLE_RETURNCODE
+    assert proc.stdout == ""
+
+
+def test_the_undecodable_result_names_the_byte_and_its_offset(tmp_path: Path) -> None:
+    proc = base.run_cmd(UNDECODABLE, cwd=tmp_path)
+    assert repr(sys.executable) in proc.stderr
+    assert "byte 0xff at offset 1" in proc.stderr
+    assert "cannot tell" in proc.stderr
+
+
+def test_a_tool_whose_output_decodes_is_returned_unchanged(tmp_path: Path) -> None:
+    args = [
+        sys.executable,
+        "-c",
+        "import sys; print('out'); print('err', file=sys.stderr); sys.exit(2)",
+    ]
+    direct = subprocess.run(args, cwd=tmp_path, capture_output=True, text=True, check=False)
+    proc = base.run_cmd(args, cwd=tmp_path)
+    assert proc.args == direct.args == args
+    assert proc.returncode == direct.returncode == 2
+    assert proc.stdout == direct.stdout == "out\n"
+    assert proc.stderr == direct.stderr == "err\n"
+
+
 def test_write_text_atomic_replaces_the_target_and_leaves_no_temp(tmp_path: Path) -> None:
     target = tmp_path / "spec.feature"
     target.write_text("before\n")

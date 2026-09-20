@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -146,14 +147,10 @@ def test_git_absent_means_no_hash(project: Path, monkeypatch: pytest.MonkeyPatch
     assert tree.measure(project, _cfg(project)) is None
 
 
-def test_a_file_name_git_cannot_decode_means_no_hash_rather_than_a_raise(
-    project: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    def undecodable(args: list[str], cwd: Path, timeout: int = 0) -> None:
-        raise UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte")
-
-    monkeypatch.setattr(tree, "run_cmd", undecodable)
-    assert tree.hash_tree(project, ["src"]) is None
+def test_a_file_name_git_cannot_decode_still_leaves_the_tree_unsayable(project: Path) -> None:
+    """The real `git ls-files -z` through the real `run_cmd`: no hash, and nothing raised."""
+    (project / "src" / os.fsdecode(b"bad\xffname")).write_text("x = 1\n")
+    assert tree._listing(project, ["src"]) is None
 
 
 def test_an_empty_path_list_is_never_hashed_as_the_whole_tree(project: Path) -> None:

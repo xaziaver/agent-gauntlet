@@ -20,6 +20,7 @@ from typing import Any, NoReturn, Protocol
 IGNORED_NAME_PREFIXES = (".#", "#")
 TIMEOUT_RETURNCODE = 124  # conventional shell timeout code
 MISSING_TOOL_RETURNCODE = 127  # conventional shell "command not found"
+UNDECODABLE_RETURNCODE = 120  # program-defined; borrows no shell meaning
 
 LOCK_FILE = Path(".gauntlet") / "run.lock"
 
@@ -176,8 +177,9 @@ def _failed(args: list[str], code: int, message: str) -> subprocess.CompletedPro
 def run_cmd(args: list[str], cwd: Path, timeout: int = 600) -> subprocess.CompletedProcess[str]:
     """Uniform subprocess wrapper: captured text output, no exception on nonzero exit.
 
-    A timeout or missing executable is returned as a normal result (code 124/127) rather
-    than raised, so a hung tool becomes a gate error instead of a traceback in an agent hook.
+    A timeout, missing executable or undecodable output is returned as a normal result (code
+    124/127/120) rather than raised, so a hung tool becomes a gate error instead of a traceback in
+    an agent hook.
     """
     try:
         return subprocess.run(
@@ -193,6 +195,10 @@ def run_cmd(args: list[str], cwd: Path, timeout: int = 600) -> subprocess.Comple
             MISSING_TOOL_RETURNCODE,
             f"could not run {args[0]!r}: {exc}. Is it installed and on PATH?",
         )
+    except UnicodeDecodeError as exc:
+        byte, offset = exc.object[exc.start], exc.start
+        why = f"byte 0x{byte:02x} at offset {offset}; stdout or stderr, the wrapper cannot tell"
+        return _failed(args, UNDECODABLE_RETURNCODE, f"could not decode {args[0]!r} output: {why}")
 
 
 def timed(fn: GateFn) -> GateFn:
