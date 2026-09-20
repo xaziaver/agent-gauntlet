@@ -460,8 +460,12 @@ per suite run (default 600 s).
 
 *Vacuous when:* no feature files.
 
-*Public seams:* `survivors_for` is public so that `gauntlet mutant list/approve` share the gate's
-exact code path — the CLI must never disagree with the gate about what survived.
+*Public seams:* `survivors_for` is public so that `gauntlet mutant approve` and `prune` share the
+gate's exact code path — the CLI must never disagree with the gate about what survived. Of the
+others, `list` reads the ledger and runs nothing, and `preview` stops at enumeration: on one file it
+makes the two calls `survivors_for` opens with, `mutation.mutants(gherkin.parse(text, path))`, and
+reads no configuration — so with `mutation_sample` set it lists more than the gate runs, and with
+`mutate_examples = false` the gate runs none of what it lists.
 
 **The trade.** Everything past the first gate is automated and runs on every turn. The human
 reviews two artifacts — the specifications, in plain language, and the short list of mutants

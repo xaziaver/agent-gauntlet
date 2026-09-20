@@ -316,6 +316,15 @@ deliberate and worth the cost — those tests have caught things no unit test co
   approval clears are the price, and the gate names it. A red run whose every failure is an
   approval finding is human-blocked: `stop-check` escalates it at once without spending an
   attempt, and `gauntlet loop` stops after that iteration (item 6, 2026-09-17).
+- **`gauntlet mutant preview` reads no configuration and no ledger, and its lines carry no line
+  number and no path.** It looks like the one `mutant` command that forgot `resolve_config`. The
+  file it prices may not be in a project yet, so it takes a path and nothing else and writes
+  nothing; what an edit strands is a `diff` of two listings, read against `mutant list`. A line is
+  `locator<TAB>signature` — exactly what an approval is keyed and hashed on — because a line number
+  or a path changes under edits that cost nothing and would turn that `diff` red for a blank line.
+  Adding either, or a configuration read, breaks the comparison the command exists for. It exits 1
+  on a file it cannot read, because an empty listing behind a success code is a radius of nothing
+  (item 7 change 3, 2026-09-20).
 
 ---
 

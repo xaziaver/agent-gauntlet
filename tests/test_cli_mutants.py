@@ -11,6 +11,7 @@ from typer.testing import CliRunner
 
 from gauntlet import cli_mutants, locking, registry, specs
 from gauntlet import mutants as mutants_mod
+from gauntlet.acceptance import gherkin, mutation
 from gauntlet.adapters.python import CodeMutant
 from gauntlet.cli import app
 from gauntlet.cli_support import EXIT_CONFIG_ERROR, EXIT_OK
@@ -311,3 +312,122 @@ def test_mutant_approve_dies_with_the_signal_after_restoring(
     assert died == [signal.SIGTERM]
     assert result.exit_code == 128 + signal.SIGTERM
     assert not (project / ".gauntlet" / "events.jsonl").exists()
+
+
+# A plain scenario beside the outline, so the preview sees both kinds of mutant.
+MIXED = (
+    FEATURE
+    + """\
+
+  Scenario: A round amount is standard
+    Given an amount of 100
+    Then the tier is "standard"
+"""
+)
+
+BACKGROUND_ONLY = """\
+Feature: Fixed givens
+
+  Background:
+    Given an amount of 100
+    And the tier is "standard"
+"""
+
+
+def _expected_listing(text: str, path: Path) -> str:
+    found = mutation.mutants(gherkin.parse(text, str(path)))
+    return "".join(f"{m.locator}\t{m.signature}\n" for m in found)
+
+
+def test_preview_lists_every_mutant_the_engine_generates_one_per_line(tmp_path: Path) -> None:
+    feature = tmp_path / "mixed.feature"
+    feature.write_text(MIXED)
+    result = runner.invoke(app, ["mutant", "preview", str(feature)])
+    assert result.exit_code == EXIT_OK
+    assert result.stdout == _expected_listing(MIXED, feature)
+    assert len(result.stdout.splitlines()) > 1
+
+
+def test_preview_needs_no_project_and_no_approval(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert not any((parent / "gauntlet.toml").exists() for parent in [tmp_path, *tmp_path.parents])
+    (tmp_path / "candidate.feature").write_text(FEATURE)
+    monkeypatch.chdir(tmp_path)
+    result = runner.invoke(app, ["mutant", "preview", "candidate.feature"])
+    assert result.exit_code == EXIT_OK
+    assert result.stdout == _expected_listing(FEATURE, Path("candidate.feature"))
+
+
+def test_preview_writes_nothing(project: Path) -> None:
+    def snapshot() -> tuple[list[str], bytes]:
+        files = sorted(str(p.relative_to(project)) for p in project.rglob("*"))
+        return files, locking.lock_path(project).read_bytes()
+
+    assert not (project / ".gauntlet").exists()
+    before = snapshot()
+    result = runner.invoke(app, ["mutant", "preview", "features/tiering.feature"])
+    assert result.exit_code == EXIT_OK
+    assert snapshot() == before
+    assert not (project / ".gauntlet").exists()
+
+
+def test_preview_counts_by_kind_on_stderr(tmp_path: Path) -> None:
+    feature = tmp_path / "mixed.feature"
+    feature.write_text(MIXED)
+    found = mutation.mutants(gherkin.parse(MIXED, str(feature)))
+    examples = [m for m in found if m.kind == mutation.KIND_EXAMPLE]
+    literals = [m for m in found if m.kind == mutation.KIND_LITERAL]
+    assert examples and literals
+    result = runner.invoke(app, ["mutant", "preview", str(feature)])
+    summary = (
+        f"{feature}: {len(found)} mutants ({len(examples)} example, {len(literals)} literal)\n"
+    )
+    assert result.stderr == summary
+    assert "mutants (" not in result.stdout
+
+
+def test_preview_of_a_missing_file_is_a_config_error(tmp_path: Path) -> None:
+    result = runner.invoke(app, ["mutant", "preview", str(tmp_path / "nope.feature")])
+    assert result.exit_code == EXIT_CONFIG_ERROR
+    assert result.stderr.startswith("config error: ")
+    assert result.stderr.count("\n") == 1
+    assert result.stdout == ""
+
+
+def test_preview_of_a_file_that_is_not_utf8_is_a_config_error(tmp_path: Path) -> None:
+    feature = tmp_path / "bad.feature"
+    feature.write_bytes(b"Feature: x\n\xff\n")
+    result = runner.invoke(app, ["mutant", "preview", str(feature)])
+    assert result.exit_code == EXIT_CONFIG_ERROR
+    assert result.stderr.startswith("config error: ")
+    assert result.stderr.count("\n") == 1
+    assert str(feature) in result.stderr
+    assert "11" in result.stderr.replace(str(feature), "")  # the offset, not the path's digits
+    assert result.stdout == ""
+
+
+def test_preview_of_text_with_no_feature_declaration_is_a_config_error(tmp_path: Path) -> None:
+    feature = tmp_path / "prose.feature"
+    feature.write_text("Scenario: nothing above me\n  Given an amount of 1\n")
+    result = runner.invoke(app, ["mutant", "preview", str(feature)])
+    assert result.exit_code == EXIT_CONFIG_ERROR
+    assert result.stderr.startswith("config error: ")
+    assert result.stderr.count("\n") == 1
+    assert "no Feature: declaration" in result.stderr
+    assert result.stdout == ""
+
+
+def test_a_background_only_feature_previews_as_zero_mutants_and_exits_zero(tmp_path: Path) -> None:
+    feature = tmp_path / "background.feature"
+    feature.write_text(BACKGROUND_ONLY)
+    result = runner.invoke(app, ["mutant", "preview", str(feature)])
+    assert result.exit_code == EXIT_OK
+    assert result.stdout == ""
+    assert result.stderr == f"{feature}: 0 mutants (0 example, 0 literal)\n"
+
+
+def test_the_preview_help_says_background_steps_yield_no_mutants() -> None:
+    result = runner.invoke(app, ["mutant", "preview", "--help"])
+    assert result.exit_code == EXIT_OK
+    assert "Background" in result.stdout
