@@ -224,6 +224,113 @@ one time it was recorded from reasoning (2 approvals recorded in QUEUE.md item
 
 **Status.** Open.
 
+**Design decisions, advisor-recommended, human-ratified 2026-09-20.**
+
+(1) *Exit status follows the file, not "0 always".* The proposal says the command exits 0 always. A
+path that is not a file, bytes that are not UTF-8, and text with no `Feature:` declaration each exit
+1 through `cli_support.fail`, as `mutant approve` already does for a missing feature; any file the
+parser accepts exits 0, however many mutants it yields, zero included. Exiting 0 on a file that
+could not be read would put an empty listing — a radius of nothing — behind a success code. Cost: a
+script that loops over paths has to check the status.
+
+(2) *It reads the file and nothing else.* No `resolve_config`, no project root, no ledger, no lock,
+no event, nothing written. The entry's use case is a candidate text that is not yet in the tree and
+may not be in a project at all, and a command that needs a `gauntlet.toml` above its argument cannot
+cost one. Two things follow and are the price. It cannot say how many approvals an edit would strand
+— that needs the ledger, and the figure stays a `diff` of two listings read against `gauntlet mutant
+list`. And it does not know the project's `[gates.acceptance]` table: with `mutation_sample` set the
+gate runs a seeded subset of what the preview lists, and with `mutate_examples = false` the gate
+runs no mutation stage at all (`gates/acceptance.py:269` — the key skips `literal` mutants too,
+whatever its name says). At the tag ClaimGate sets neither, so there the listing is exactly the
+gate's set.
+
+(3) *One file in, one listing out; two listings under `diff` are the two-input form.* The 2026-08-30
+addition under "Mutant approval keys are content-addressed on the whole row" says this command
+should accept two inputs, not one. Ruled against, as advice with a cost: a built-in diff is a second
+output format, a second set of tests and a choice of what counts as "the same mutant" that `diff`
+already makes correctly once the lines are stable, and decision (4) makes them stable. The
+proposal's `<paths...>` is narrowed to one path for the same reason — a line that does not carry its
+file is only unambiguous when there is one file. Cost: a multi-file radius is a shell loop, and a
+candidate held at another ref is `git show <ref>:<path>` into a temporary file first; there is no
+`-` for standard input.
+
+(4) *The line is `locator<TAB>signature`, in the engine's order; the count goes to stderr.* The
+locator already carries the scenario and the kind, and the locator plus the signature is exactly
+what an approval is keyed and hashed on (`mutants.key_for`, `mutants.py:65-71`), so two lines differ
+if and only if an approval would be stranded or a new judgment asked for. No line number and no file
+path on the line, deliberately: both change under edits that cost nothing, and would turn the `diff`
+red for an inserted blank line or a copy in `/tmp`. Measured at `328ff5f` over the sixteen specs at
+`prototype-1`: no two mutants of one file share a locator and a signature, and no locator or
+signature contains a tab or a newline. One summary line per run goes to stderr — `<path>: <n>
+mutants (<e> example, <l> literal)` — so stdout is mutants only and `wc -l` is the count. The split
+is there because the kinds cost differently — of the 73 mutant approvals in the ledger at
+`prototype-1`, 65 are `example` and 8 are `literal` — and the line is there at all because
+`gherkin.parse` ignores what it does not recognise, so a wrong file with a `Feature:` line in it is
+a quiet zero, and the count is what shows it.
+
+(5) *The help says what the listing cannot see.* "Background steps are invisible to acceptance
+mutation entirely" is this file's own entry, and its realized cost was an engine-based radius of two
+specs where the real one was seven. A preview lends the tool's authority to exactly that figure, so
+the command's help and its README row both say that Background steps yield no mutants and that a
+radius read from the listing is a floor.
+
+(6) *It does not go through `survivors_for`, and that is not a disagreement with the gate.*
+`survivors_for` opens with `mutation.mutants(gherkin.parse(text, str(path)))`
+(`gates/acceptance.py:50`) and the preview makes the same two calls on the same decoded text; what
+it skips is everything after — sampling, scoping, the run. `docs/GATES.md` says `survivors_for` is
+public so that `mutant list/approve` share the gate's path; `mutant list` reads the ledger and never
+calls it, the callers are `approve` and `prune`, and the sentence is corrected in this change's
+documents step with the preview named as the reader that stops at enumeration.
+
+**Why this is outside the verdict path, and what proves the part that is not.** The change is
+`src/gauntlet/cli_mutants.py`, `tests/test_cli_mutants.py`, `README.md`, `docs/GATES.md` and
+`ARCHITECTURE.md`; it touches none of `gates/`, `acceptance/`, `runner.py`, `cli.py` or `adapters/`.
+The ground report's reason — `check` never enters `cli_mutants.py` — is true of its function bodies
+and false of the module: `cli.py:29` imports `mutant_app` at load and `cli.py:52` mounts it, so
+every `gauntlet check` and every `stop-check` hook imports `cli_mutants.py`, and Typer builds the
+click command for every subcommand in the tree before it dispatches to one. Measured in a throwaway
+(typer 0.27.2; this repository locks 0.27.0): a subcommand whose declaration Typer cannot build
+raises `RuntimeError` when `check` is invoked. So the body of `mutant_preview` is outside the
+subject's run and its declaration — the decorator, the argument, the one new module-level import,
+`gauntlet.acceptance.gherkin`, which `gates/acceptance.py` already imports — is on every
+invocation's path, the hook's included. What proves the declaration is the second shape's own proof
+and nothing extra: this repository's `gauntlet check` and every `CliRunner` test build the whole
+tree, so a green own-run at the branch tip is a run in which the declaration built. The same
+correction applies to the reason given for every other second-shape entry in the ground report,
+`status.py` among them (`cli_status.py:10` imports it at load), and each restates it when its turn
+comes.
+
+**Effect on the regression subject.** No subject run; this is the second shape. The verdict cannot
+move: `verdict_sha256` is computed from five fields of each `gate.finished` line and nothing else
+(`verdict.py:62-66`), and no gate's code changes. The harness does move — `verdict.harness` hashes
+every analyzable file under the package, `cli_mutants.py` among them — so `43407aa4e7458e98…` stops
+being `main`'s harness when this merges, and the next verdict-path change's regression session
+recomputes the figure from its own branch tip rather than quoting one.
+
+**Measured row, before.** Advisor-measured on an uncommitted prototype over `328ff5f`, the sixteen
+feature files from `git archive prototype-1 features`, one invocation per file: stdout 1263 lines in
+total, stderr summaries summing to 808 `example` and 455 `literal` — the engine's enumeration at the
+tag, to the mutant. A missing path, a file holding a real `0xff` byte and text with no `Feature:`
+line each exit 1 with one `config error:` line; a feature holding only a Background exits 0 with `0
+mutants`; nothing is created in the working directory. The advisor re-measures the same rows from a
+clone at the branch tip; the prototype's 30 added lines took `cli_mutants.py` from 151 to 181 of 300
+with `mutant_preview` at 16 of 25, which is a floor to check against and not a target.
+
+**Tests that pin it.** `test_preview_lists_every_mutant_the_engine_generates_one_per_line` — stdout
+is the engine's enumeration for the file, `locator<TAB>signature`, in the engine's order, and
+nothing else. `test_preview_needs_no_project_and_no_approval` — a feature file in a directory with
+no `gauntlet.toml` above it, never approved, exits 0 with its listing. `test_preview_writes_nothing`
+— the project's file listing and the ledger's bytes are the same before and after, and no
+`.gauntlet/` appears. `test_preview_counts_by_kind_on_stderr` — the summary line carries the total
+and the `example`/`literal` split and is not on stdout.
+`test_preview_of_a_missing_file_is_a_config_error`,
+`test_preview_of_a_file_that_is_not_utf8_is_a_config_error` and
+`test_preview_of_text_with_no_feature_declaration_is_a_config_error` — each exits 1 with one line
+and no listing, the second against real bytes rather than a mocked raise.
+`test_a_background_only_feature_previews_as_zero_mutants_and_exits_zero` — the blind spot, pinned as
+behaviour. `test_the_preview_help_says_background_steps_yield_no_mutants` — decision (5), by the
+property and not the phrasing. Nine tests, 614 to at least 623.
+
 #### Mutation's own coverage-guided test selection goes stale on a test-only change
 
 **What happened.** Not requested — found while verifying whether a unit test was still load-bearing
