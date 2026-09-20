@@ -148,6 +148,7 @@ Each gate is opt-in: no `[gates.x]` table, no gate.
 | `gauntlet lock` / `verify` | Approve configuration / check it hasn't drifted |
 | `gauntlet spec approve` / `list` | Approve acceptance specifications |
 | `gauntlet mutant approve[-code]` / `list` / `prune[-code]` | Classify surviving mutants |
+| `gauntlet mutant preview <feature>` | Price a spec edit before making it: every mutant the file would generate, one `locator<TAB>signature` line each on stdout, the count by kind on stderr. Reads the file and nothing else — no project, no approval, no ledger — so it works on a candidate copy anywhere; `diff` two listings to see which approvals an edit strands. Background steps yield no mutants, so a radius read from it is a floor. Exits 1 on a file it cannot read |
 | `gauntlet events` | Recent activity: runs, gate results, approvals, escalations |
 | `gauntlet loop --cmd "..." --task "..."` | Drive an agent that can't be hooked |
 | `gauntlet guard` / `stop-check` | Hook entry points (not run by hand). `stop-check` runs no gate when the gated tree is unchanged since the last wholly green run, naming that run (`--no-skip-unchanged` forces a run); otherwise it stops at the first failing gate, in the fixed order cheap-first and acceptance last; `--no-fail-fast` runs them all |
