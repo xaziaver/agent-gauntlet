@@ -403,7 +403,7 @@ def test_preview_of_a_file_that_is_not_utf8_is_a_config_error(tmp_path: Path) ->
     assert result.stderr.startswith("config error: ")
     assert result.stderr.count("\n") == 1
     assert str(feature) in result.stderr
-    assert "11" in result.stderr  # the offset of the 0xff byte
+    assert "11" in result.stderr.replace(str(feature), "")  # the offset, not the path's digits
     assert result.stdout == ""
 
 
