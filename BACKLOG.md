@@ -119,9 +119,28 @@ Every session reads `CLAUDE.md` and this file. Then, per item:
 | G3 item 4 | the entry "Run pairing in the event log is unreliable in two directions" in full — its ready patch, re-anchored by string, and its 2026-09-15 annotation are the brief; "The stop-check records no tree hash" decision (6) and its Change-applied paragraph (the stop-check half, already applied); `src/gauntlet/cli.py` `check`, `_stop_gates`, `_locked_run` and `_finish`; `src/gauntlet/status.py` and `cli_events.py` for every reader of `run.started`; `tests/test_cli.py` `test_a_concurrent_run_exits_zero_rather_than_interleaving` |
 | G3 item 5 | the entry "Interrupted mutation runs leave corrupted source" in full — its events, the 2026-09-14 annotation, and the design decisions and prediction paragraphs once they exist are the brief; "An automatic retry loop repeats the one gate that rewrites the working tree" for the backup-diff-plus-digest argument; `src/gauntlet/gates/acceptance.py` `_backup` and `_survivors`; `src/gauntlet/adapters/python.py` `run_acceptance`; ClaimGate's `.claude/hooks/stop-check.sh` and `.claude/settings.json` at `be87d38`, read-only, for how the hook is bounded and killed; `tests/test_acceptance_gate.py::test_mutation_restores_the_feature_file` |
 | G3 item 6 | the three entries the note names — "The acceptance gate short-circuits mutation on an approval failure", "The Stop hook cannot be scoped, and the prescribed workflow produces a phase where it cannot pass", "Retry loop burns attempts on non-agent-actionable failures" — in full with their annotations, and the design decisions and prediction paragraphs once they exist; `src/gauntlet/gates/acceptance.py` `_stages` and the three stage functions; `src/gauntlet/cli.py` `stop_check` and `_stop_gates`; `src/gauntlet/loop.py`; ClaimGate's `.claude/settings.json` and `.claude/hooks/stop-check.sh` at `be87d38`, read-only |
+| G3 item 7 | `gauntlet-findings.md` "Note for the v1 effort" item 7 and its 2026-09-17 annotation — the tail of v1, one prediction per change rather than one design per session; the near-miss entries, ledger atomicity first ("The approval ledger is written non-atomically, and it is the one artifact no gate can rebuild", then "`run_cmd` decodes tool output strictly, so a non-UTF-8 byte from any tool is an uncaught exception in a hook"); then every entry under "Proposed changes to Gauntlet" whose `**Status.**` line does not begin "Applied" or "Resolved", in file order, with the entries this effort deferred rather than fixed among them; the Change-applied paragraphs of items 3 to 6 for the debts they banked |
 | G3, any entry | `gauntlet-findings.md` "Note for the v1 effort", then the entry in full; `ARCHITECTURE.md` "Contracts you must not break" and "Conventions"; `docs/GATES.md` for the gate touched |
 
 ## Status as of this handoff
+
+**2026-09-19, G3 item 7 change 1 applied (ledger atomicity).** On
+`v1/item-7-tail` from `414f899`: `8d0f2c0` (open: the reading-table row and item 6's status
+sentence), the human findings commit `aff05b4` (design decisions (1)-(3), the predicted effect on
+the subject, the second-proof matrix and three test names), `3891136` (the change and its three
+tests), `18a15b9` (the amendment: decisions (1) and (3) reversed, after the duplication gate went
+red on the specified shape at threshold 0 and after the premise that `registry.py` cannot import a
+Gauntlet module was measured false — `gates/` has no `__init__.py`, `gates/base.py` imports none,
+and eleven modules outside `gates/` already import it), `cef5b6f` (decision (4): `save` hands its
+text to `write_text_atomic`). Verified against `origin` by the advisor at every step. Two proofs:
+the matrix, run at both implementations with its nine result lines byte-identical; and regression
+run `20260919T095612-48662` in the item-1 clone at `be87d38` with Gauntlet at `cef5b6f`, harness
+equal to the tip's, eleven tuples identical to the tag's, `run.finished` `a8a00163…` over 127, lock
+`61c2ac4d30025e8c`, record digest `9c7aececf56dc4f5…`, skip `20260919T101114-65625`, acceptance
+847.984 s against the tag's 3736.757 s. `.gauntlet/` holds seven entries after a `check` and eight
+after a skip, since item 6's `d9e835d`; the seven-entry listing recorded at item 6's close was the
+post-check one. Item 7 is a sequence and not one change: from here it runs one branch per change,
+each merged on its own proof. Merge to `main` is the human's next act.
 
 **2026-09-17, G3 item 6 applied.** On `v1/item-6-approval-and-hook` from `a3d4605`: `cf54898`
 (open), the human findings commit `ab5d6d9` (design decisions (1)-(5) across the three entries and
@@ -135,8 +154,7 @@ report's throwaways, every row as predicted; and regression run `20260917T212700
 --record` in the item-1 clone at `be87d38` with Gauntlet at `d9e835d`: exit 0 in 880 s, eleven
 tuples identical to the tag's (agent and advisor), log identical to item 5's with ids, times and
 durations stripped, `run.finished` `a8a00163…` over 127, lock `61c2ac4d30025e8c`, record digest
-`9c7aececf56dc4f5…`. Skip `20260917T214205-26154`, 0.147 s. Merge to `main` is the human's next act;
-the note's item 7 — everything else in v1, in file order, near-miss entries first — opens after it.
+`9c7aececf56dc4f5…`. Skip `20260917T214205-26154`, 0.147 s. Merged to `main` at `4b76ca4`; item 7 opens on `v1/item-7-tail`.
 Own baseline updated below. Debts: `acceptance.py` at 291 of 300; `check` and `stop_check` at 24 of
 25; `drive` at 24; `verdict compare` deferred; the acceptance path defaults still restated in
 `tree.py`; a dangling `spec:` key has no CLI remedy ("Renaming a spec orphans its approval").

@@ -23,6 +23,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
+from gauntlet.gates.base import write_text_atomic
+
 SCHEMA_VERSION = 1
 DIGEST_PREFIX = "sha256:"
 
@@ -180,13 +182,14 @@ def save(registry: Registry, path: Path) -> None:
     """Write deterministically: sorted keys, stable indent, trailing newline.
 
     This file is meant to be read in a diff, so its ordering must not churn.
+    Temp file then replace: an interrupted save leaves the previous ledger intact.
     """
     payload = {
         "version": SCHEMA_VERSION,
         "entries": {key: _entry_payload(entry) for key, entry in sorted(registry.entries.items())},
     }
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    write_text_atomic(path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
 
 
 def revoke(registry: Registry, key: str) -> Registry:

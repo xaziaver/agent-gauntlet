@@ -148,3 +148,77 @@ def test_verify_absent_and_unapproved_is_not_a_finding() -> None:
     assert finding.status is Status.ABSENT
     assert finding.expected is None
     assert finding.actual is None
+
+
+EXPECTED_LEDGER = """\
+{
+  "entries": {
+    "config:gauntlet.toml": {
+      "approved_at": "2026-01-01T00:00:00+00:00",
+      "digest": "sha256:1b846f20c14c6663a3ff28aeae86d83a8e6d841585e91c20542c90607aca24fb",
+      "reason": "reviewed by hand",
+      "reviewer": "ada"
+    },
+    "spec:features/z.feature": {
+      "approved_at": "2026-07-28T00:00:00+00:00",
+      "digest": "sha256:46aa5ea64a93dd2dba8ba866754c54398eb29645f0abfdda9a215762eaf8cbaf"
+    }
+  },
+  "version": 1
+}
+"""
+
+
+def test_a_saved_ledger_is_byte_identical_to_the_previous_writer(tmp_path: Path) -> None:
+    """Writing through a temp file must not move a byte: the ledger is read in a diff.
+
+    The expectation is spelled out rather than re-serialized, so a change to what
+    `save` emits fails here instead of being reproduced by the test.
+    """
+    path = tmp_path / "gauntlet.lock.json"
+    reg = registry.approve(
+        registry.Registry(), "spec:features/z.feature", CONTENT, when="2026-07-28T00:00:00+00:00"
+    )
+    reg = registry.approve(
+        reg,
+        "config:gauntlet.toml",
+        OTHER,
+        when="2026-01-01T00:00:00+00:00",
+        reason="reviewed by hand",
+        reviewer="ada",
+    )
+    registry.save(reg, path)
+    assert path.read_text(encoding="utf-8") == EXPECTED_LEDGER
+
+
+def test_an_interrupted_save_leaves_the_previous_ledger_loadable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A Ctrl-C inside the write costs the new approval, never the ones already recorded.
+
+    The fault lands in the real `save`, in the window a crash opens: the file being
+    written has been opened and truncated, and no byte has reached it yet.
+    """
+    path = tmp_path / "gauntlet.lock.json"
+    registry.save(_approved(), path)
+    previous = path.read_bytes()
+
+    def truncate_then_interrupt(self: Path, *args: object, **kwargs: object) -> int:
+        with self.open("w", encoding="utf-8"):
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr(Path, "write_text", truncate_then_interrupt)
+    with pytest.raises(KeyboardInterrupt):
+        registry.save(_approved("z.toml", OTHER), path)
+    monkeypatch.undo()
+
+    assert path.read_bytes() == previous
+    assert registry.load(path).entries["gauntlet.toml"].digest == registry.digest(CONTENT)
+
+
+def test_a_successful_save_leaves_no_temp_file_beside_the_ledger(tmp_path: Path) -> None:
+    """The sibling is consumed by the replace, and a stale one does not outlive a save."""
+    path = tmp_path / "gauntlet.lock.json"
+    path.with_name(path.name + ".tmp").write_text("{ half a ledger", encoding="utf-8")
+    registry.save(_approved(), path)
+    assert [child.name for child in sorted(tmp_path.iterdir())] == ["gauntlet.lock.json"]
