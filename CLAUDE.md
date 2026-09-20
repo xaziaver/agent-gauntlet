@@ -40,18 +40,26 @@ Everything above the block is hand-written and survives `init`; edit only there.
   memory of one. `check` and `stop-check` both emit `run.started` and `run.finished`; a
   `stop-check` that skips emits one `run.reused` line instead. The hook skips whenever your own
   `gauntlet check` was green on the same tree, so its line at a turn end is read from the log,
-  never inferred. A `systemMessage` beginning "Gauntlet is blocked on a human" means stop and
-  say so; the fix is the human's.
+  never inferred — and never by the turn itself: the hook fires after your report is written,
+  so when a prompt asks for a hook line it means the previous turn's. A `systemMessage`
+  beginning "Gauntlet is blocked on a human" means stop and say so; the fix is the human's.
 - The suite is `.venv/bin/pytest tests -q -p no:cacheprovider`. The `pytest` on PATH is not
   the venv's and collects nothing.
-- The Stop hook budget is 600 s (`.claude/settings.json`) against a full own-run of under
-  40 s by the event timestamps. Branch coverage has under two points of headroom over its
-  floor; a change that adds an untested branch goes red here before it reaches the subject.
+- The Stop hook budget is 600 s (`.claude/settings.json`) against a full own-run of about a minute
+  by the event timestamps. Branch coverage has about three points of headroom over its floor; a
+  change that adds an untested branch goes red here before it reaches the subject. The current
+  figures are in `BACKLOG.md`'s own-baseline paragraph, and that paragraph wins over this one.
 - ClaimGate is frozen at the annotated tag `prototype-1` (`be87d38`) and is never modified
   by this project: no spec, approval, test, source or configuration change, and no run of
-  its gates except a regression run the prompt orders. A regression run costs about an
-  hour and is never speculative. Its report records `git rev-parse HEAD` and an empty
-  `git status --porcelain` in this repository, taken immediately before the run.
+  its gates except a regression run the prompt orders. A regression run costs about
+  fifteen minutes since G3 item 1 and is never speculative. Its report records
+  `git rev-parse HEAD` and an empty `git status --porcelain` in this repository, taken
+  immediately before the run.
+- Since 2026-09-20 G3 item 7 runs as packages: one branch per package, and inside it **one commit
+  per findings entry**, so a regression run that departs from its prediction can be bisected by
+  commit. Never fold two entries into one commit, never start an entry the prompt did not name, and
+  report each entry's judgments under that entry's name. The packages and their order are in
+  `BACKLOG.md`'s G3 stage section and the findings note's item 7.
 - Documents this agent edits: `BACKLOG.md`, `ARCHITECTURE.md`, `docs/GATES.md`,
   `README.md`, this file. In `gauntlet-findings.md` it edits exactly two things, from text
   the prompt gives verbatim: the `**Status.**` line of the entry being applied and that

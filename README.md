@@ -563,6 +563,30 @@ __pycache__` and rebuild.
 a "what changed" diff needs another source. Without a committed version it says so plainly rather
 than guessing — but the diff is unavailable for uncommitted or untracked files.
 
+**A mutation score can be served from mutmut's cache.** mutmut keeps its test-selection mapping
+under `mutants/`, and Gauntlet runs `mutmut run` against whatever is there. Weaken or delete a test
+without touching source and the gate can report the old score: reproduced three times on the project
+Gauntlet was proven on, in the passing direction, and met twice more unprompted, once in each
+direction. *Workaround:* `rm -rf mutants/` before any run whose number you will record, and trust a
+score on a commit that adds a function only from a cold run. *Fix:* first in `BACKLOG.md`'s v1 tail
+(package P1).
+
+**Most quoted-literal acceptance mutants are killed without calling your code.** A quoted string in
+a step line is mutated by appending a marker *after* the closing quote, so under pytest-bdd's
+`parsers.re` the mutated line binds to no step and the test fails at step resolution — 109 of 129
+such mutants on the proving project. `Examples`-cell mutants and bare numbers are real tests.
+*Workaround:* none honest. Do not loosen a step pattern so the marked line binds; carry a value that
+needs protecting in an `Examples` column, and use `gauntlet mutant preview <feature>` to see each
+mutant's kind before a spec is locked. *Fix:* scheduled (package P7), after the ledger-key change it
+depends on.
+
+**The ledger's mutant keys change format once before v1 ships.** Two literals on one step line share
+a locator today, so the ledger cannot address both; and a key carries its whole `Examples` row, so a
+cosmetic edit to a neighbouring cell stales an approval. Both are scheduled as one change (package
+P2) so a ledger restales once, with a migration for every key whose judgment is unchanged. The
+design is not written yet, so what the migration cannot carry is not yet known. Approvals made
+before it will need that migration.
+
 ## Planned work
 
 **Not yet built, in rough priority order.**
@@ -601,9 +625,12 @@ only describes where each version line is going and where the product's boundary
 
 Eleven gates, the approval ledger, hooks, status and review, the event log. Proven on two
 projects: this repository, and an FNOL intake service built end to end under the gates and frozen
-at its `prototype-1` tag as the regression subject for every change made here. What remains for
-the v1 line is polish rather than capability — see `BACKLOG.md`, which sequences it. The v1 line
-is done when every gate can run on a project it fits without being weakened to pass.
+at its `prototype-1` tag as the regression subject for every change made here. What remains for the
+v1 line is sequenced in `BACKLOG.md` as ten packages. Most of it is polish; three things are not,
+and an adopter should read them under Known issues first: a mutation score that can be served from
+cache, acceptance mutants that die before they reach the code, and one change to the ledger's key
+format. The v1 line is done when every gate can run on a project it fits without being weakened to
+pass, and when a number a gate prints is a measurement that happened.
 
 ### v2 — the workspace
 
