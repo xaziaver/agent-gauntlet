@@ -532,6 +532,10 @@ The agent recognised the pattern from the gated project's documentation, cleared
 cold figure; the narrow rule above — a mutation score on a commit that adds a function is only
 meaningful from a cold run — held on its second live test. Status unchanged, open.
 
+*(Annotation, 2026-09-20, from the full read of every open entry against `c958ebb`: still true —
+`adapters/python.py::run_mutmut` runs `mutmut run` and nothing else, and `gates/mutation.py` has no
+freshness logic. Package P1, first in the order: the highest impact per effort in the file.)*
+
 #### The acceptance gate re-runs every mutant on every check, and the green path now costs eight minutes
 
 **What happened.** A passing `gauntlet check` on ClaimGate main measured the acceptance gate at
@@ -639,7 +643,12 @@ session, growing monotonically. No correctness cost.
 
 **Routes to.** `BACKLOG.md`.
 
-**Status.** Open.
+**Status.** Applied by G3 items 1 and 2; closed by ruling 2026-09-20 (advisor-recommended,
+human-ratified). The cost this entry recorded was the Stop-event price of a green, unchanged tree.
+Item 2's `.gauntlet/last-green.json` made that 0.2 s, and item 1's per-mutant scoping cut a full
+pass on the subject from 3736.757 s to about 850 s. Not built, and not pursued in v1: reuse of
+per-spec results on a *changed* tree. It has no correctness cost, and any build of it is bound by
+the constraint above — an approved mutant is never skipped. A v2 candidate.
 
 #### Interrupted mutation runs leave corrupted source
 
@@ -1271,6 +1280,12 @@ real.
 
 **Status.** Open. Not patched: Gauntlet is frozen for the duration of the ClaimGate project.
 
+*(Annotation, 2026-09-20, from the full read of every open entry against `c958ebb`: cheaper than
+when written. Since G3 item 1, `acceptance/binding.py` computes which module binds which feature,
+and `gates/acceptance.py` says of the unbound case "a feature no module binds runs the whole
+directory — more enforcement, not less", which is exactly this entry's vacuous run. What is missing
+is a state and a diagnostic, not a collector. Package P1.)*
+
 #### The coverage gate reports a stale artifact as a current result
 
 **What happened.** The tests gate errored at collection — a spec rename had broken a binding file's
@@ -1376,6 +1391,13 @@ with the gate source (the gate runs bare `mutmut run`; every scope decision live
 cost us" paragraph above should now read: realized, mildly — shipped shell code sits outside code
 mutation behind a green 100.0%, on design grounds the entry anticipated.
 
+*(Annotation, 2026-09-20, from the full read of every open entry against `c958ebb`: this entry is
+two changes. Setting `vacuous` when `total == 0` for any reason is small and unreached on the tag
+(757 killed); it goes to package P1. Asserting that the language tool's scope covers `ctx.src`
+predicts a finding on the frozen subject for a *deliberate* design — ClaimGate's shell sits outside
+`source_paths` on purpose — so it must report the scope and never fail on it, or the subject cannot
+be green again. That half stays last among the verdict-path work, package P9, as ruled 2026-09-19.)*
+
 #### Four analysis gates scope to `src` alone, so step definitions are outside static, size, complexity and duplication
 
 **What happened.** `gates/base.py::GateContext.tool_targets` hands external tools `[str(self.src)]`
@@ -1417,6 +1439,12 @@ the author was the advisor, not the agent.
 **Routes to.** `BACKLOG.md` for the duplication-scope change; README for the scope statement.
 
 **Status.** Open.
+
+*(Annotation, 2026-09-20, from the full read of every open entry against `c958ebb`: v1 takes the
+form this entry itself offers: state the scope where the gates are described, and give `duplication`
+the steps directory — the second only if the detector measures zero over the tag's
+`tests/acceptance`, which is measurable before the change. `static`, `size` and `complexity` over
+tests is left as a designed boundary to be written when the change lands. Package P9.)*
 
 #### The mutation gate reports one project-wide total with no per-module attribution
 
@@ -1508,6 +1536,13 @@ check.sh` (`housekeeping/stop-check-skip`, `206911d`), which prints `gauntlet st
 gated tree unchanged since green run …` on a skip and nothing on a full pass. The wrapper is
 ClaimGate's alone; agent-gauntlet's hook settings are the scaffold's. Two readings of one silence
 as a lost summary is the case for the pass-path `systemMessage`.)*
+
+*(Annotation, 2026-09-20, from the full read of every open entry against `c958ebb`: a constraint on
+the build, for this entry and "The mutation gate reports one project-wide total" alike. `actual` is
+one of the five fields `verdict_sha256` reads (`verdict.py:62-66`), so text added to either gate's
+`_summary` moves the verdict digest for ever and re-baselines every later comparison. The counts go
+in a new `gate.finished` field and in the printed report, which the verdict cannot see. Package P6,
+with the pass-path `systemMessage` and the two `status` entries.)*
 
 #### Retry loop burns attempts on non-agent-actionable failures
 
@@ -2438,54 +2473,15 @@ uses: a signature/locator diff between two refs or candidate texts, which is als
 `mutant preview` command proposed under "The blast radius of a spec change cannot be measured before
 making it" should accept — two inputs, not one.
 
-#### Acceptance mutation cannot distinguish a deliberately inert value from an untested one
-
-**What happened.** Seven survivors on `siu_indicators.feature` are all threshold-literal
-mutations, and they survive for three different reasons — a distinction only
-visible after working through each one, since the gate reports them
-identically.
-
-**Two are deliberately inert** (lines 84 and 134): no policy inception date is
-present, so the indicator resolves to NOT_EVALUATED with reason
-NO_POLICY_INCEPTION_DATE regardless of the threshold's value. The threshold is
-supplied precisely to prove the result comes from the missing input rather
-than a missing threshold; isolating that variable is the scenario's purpose,
-so mutating it correctly changes nothing.
-
-**Four are margin, not inertness** (lines 147, 148, 167, 168): the threshold
-is doing its job, but the example values sit far enough from it that a
-plus-or-minus-one mutation cannot cross the boundary — 62 days against 45/46,
-40 days against both 45/46 and 30/31. The boundaries themselves are proven in
-dedicated boundary scenarios, which is where a one-day mutation does kill.
-
-**One is guard-dominated** (line 118): the mutation alters the upper bound,
-but the scenario exercises the lower one — the inception date postdates the
-loss date, so the `0 <=` check rejects the negative interval before the upper
-bound is consulted.
-
-**Why it matters.** Supplying an inert value to isolate which fact actually drives an outcome is good
-specification design, not a gap in the scenario. The gate cannot tell that apart from a value the
-scenario simply forgot to check — both present identically as a surviving mutant — so it demands the
-same human judgment for each. The equivalent-mutant approval then becomes the only record that the
-inertness was deliberate rather than an oversight.
-
-The original draft of this entry recorded four of seven as deliberately inert. That was wrong — two are. It came from a human reviewer reasoning about the scenarios from memory rather than working each mutation through, and was corrected when the agent producing the survivor breakdown checked the actual mechanics of each. Recorded because the error is the entry's own subject: a cluster of identical-looking survivors invites a single explanation, and the single explanation was wrong for five of the seven.
-
-**What would address it.** None obvious, and possibly none wanted — the gate asking is arguably the
-correct behavior; the alternative is the gate guessing at scenario intent, which is worse. Recorded so
-the pattern is recognized rather than rediscovered per scenario: a reviewer seeing a cluster of
-threshold-literal survivors should work through each one's actual mechanics before assuming a single
-explanation covers them, since the three mechanisms above present identically.
-
-**Proposed change.** None proposed.
-
-**What it cost us.** Nothing measurable — this is a recognition aid, not a defect with a cost to
-tally.
-
-**Routes to:** Nowhere yet. Recognition aid; may belong under Designed boundaries once decided.
-
-**Status.** Open, low priority. May be a designed boundary rather than a defect; recorded as a
-proposed-changes entry rather than moved to that section because it hasn't been decided which it is.
+*(Annotation, 2026-09-20, from the full read of every open entry against `c958ebb`: re-keying is in
+v1, ruled by the owner against the advisor's recommendation to defer: a key format is a persisted
+contract in every downstream lock file, so anything built on the old keys after v1 inherits the
+churn. It lands in package P2 with "Acceptance mutant locators are not unique", so a ledger restales
+once, and with a migration. The design closes both channels named above — the key, and the
+value-ordered tie-break that re-aims a swap from a neighbouring row — or says which it leaves, and
+does not weaken the self-verifying property. The reporting half lands separately, in P3, with the
+stale-approval remedy: a stale or modified approval diagnosed by cause — relocated, superseded,
+re-aimed.)*
 
 #### A same-outcome enumeration guarantees one surviving mutant per row
 
@@ -2603,6 +2599,12 @@ count alone suggests.
 
 **Status.** Open.
 
+*(Annotation, 2026-09-20, from the full read of every open entry against `c958ebb`: v1 takes the
+authoring rule, as documentation, in package P10: make the expectation a column; never add a loading
+row to a mixed-outcome table; measure a draft with `gauntlet mutant preview` before it is locked.
+The engine half — classifying a swap as structurally equivalent — goes to v2: its detection rule has
+grown to three cases across three additions, and the last of them warns that a detector which cannot
+tell them apart makes tables worse.)*
 
 #### The acceptance gate's remedy names a command that re-baselines a different gate
 
@@ -2914,6 +2916,13 @@ one" — grouped with acceptance-mutation-coverage gaps.
 
 **Status.** Open.
 
+*(Annotation, 2026-09-20, from the full read of every open entry against `c958ebb`: ordering. The
+remedy reuses literal-text mutation, and per "Every quoted-literal mutant is vacuous" a quoted
+Background value mutated today dies at step resolution and proves nothing. The same holds for
+"Mutation cannot reach a fixed Given". Both wait for that entry — package P8 after P7 — and P8 is
+re-priced when P7 lands. One benefit is not blocked: a Background mutant of any kind gives the
+blast-radius diff a locator to see.)*
+
 #### Step data tables are discarded by the Gherkin IR, so nothing downstream can reach them
 
 **What happened.** Found reviewing ClaimGate item 5a's redraft of `features/carrier_configuration.feature`
@@ -2999,6 +3008,10 @@ implements them.
 
 **Status.** Open.
 
+*(Annotation, 2026-09-20, from the full read of every open entry against `c958ebb`: v1 takes the
+minimum this entry names — `parse` does not silently discard a construct it cannot represent, and a
+one-row outline is diagnosed — in package P8. Table-cell mutation, which needs the parser, the IR
+and a new mutant kind, goes to v2.)*
 
 #### Every quoted-literal mutant is vacuous under a well-formed step pattern
 
@@ -3094,6 +3107,15 @@ markers die. The two facts together mean the marker mechanism currently works by
 library choice; a project on `parsers.parse` throughout would see a very different kill count for
 the same spec. Both facts are the coding agent's observations, recorded by ClaimGate in
 `docs/harness-findings.md` on 2026-09-05; not independently re-run here.
+
+*(Annotation, 2026-09-20, from the full read of every open entry against `c958ebb`: two things. The
+2026-09-12 annotation above says literal mutants "never bear an approval"; measured from
+`prototype-1`'s lock, 8 of the 73 mutant approvals are kind `literal` (7 in
+`siu_indicators.feature`, 1 in `carrier_configuration.feature`), numeric thresholds in step text,
+which mutate in place and survive. The shorthand is false of the ledger too, by 8 of 73. And
+ordering: this entry is the keystone of the engine work — Background, fixed-Given and every mutant
+count rest on it — and "Acceptance mutant locators are not unique" warns that closing this one first
+makes that one manifest. So: P2 (keys), then this, P7, then P8.)*
 
 #### The boolean substitution is lowercased and preemptive, so a case-different enumeration is unprotected
 
@@ -3249,6 +3271,13 @@ management, since this is a correctness question about the ledger's addressing s
 **Status.** Open. Found 2026-08-26 by measuring locator counts against mutant counts per spec; there
 was no prior art in this document or in ClaimGate's `harness-findings.md`, and the uniqueness of a
 locator had been checked once, for one file, and never recorded as not guaranteed.
+
+*(Annotation, 2026-09-20, from the full read of every open entry against `c958ebb`: package P2, with
+the re-keying of "Mutant approval keys are content-addressed on the whole row", and a migration: the
+digests do not change, so a ledger's keys can be rewritten mechanically, in a downstream project and
+in the regression clone alike. The predicted effect on the subject is exact — the tag's 8 `literal`
+approvals move key, the other 65 do not. Also unblocks `--locator` and the per-mutant reason, which
+address a mutant by its locator.)*
 
 #### `LITERAL_PATTERN`'s single-quote alternative matches English possessives
 
@@ -3434,7 +3463,10 @@ an approval from a pasted multi-command block.
 
 **Routes to.** `BACKLOG.md`.
 
-**Status.** Open.
+**Status.** Applied, 2026-09-19, as G3 item 7 change 1 on `v1/item-7-tail` (`3891136`, `18a15b9`,
+`cef5b6f`), merged at `28caa08`; see "Change, applied" below. *(This line read "Open." until the
+save point of 2026-09-20: the close added the paragraph and left the line, so the file over-counted
+its own open entries. From change 3 on, a close sets the Status line.)*
 
 **Second near miss, 2026-08-24, different mechanism.** The procedural workaround above — commit
 the ledger before and after every approval run — failed silently in practice. A
@@ -3596,7 +3628,9 @@ pass, beside ledger atomicity.
 
 **Routes to:** `BACKLOG.md`, v1, small.
 
-**Status.** Open.
+**Status.** Applied, 2026-09-20, as G3 item 7 change 2 on `v1/item-7-change-2-run-cmd-decoding`
+(`ed747dd`, `b5aa430`), merged at `899615e`; see "Change, applied" below. *(Read "Open." until the
+save point of 2026-09-20, for the reason given under the ledger entry above.)*
 
 **Design decisions, advisor-recommended, human-ratified 2026-09-19.**
 
@@ -3718,7 +3752,11 @@ diagnosis of *which* mutant had been injected.
 
 **Routes to.** `BACKLOG.md`.
 
-**Status.** Open.
+**Status.** Applied by G3 items 5 and 6; closed by ruling 2026-09-20 (advisor-recommended,
+human-ratified). The remedy this entry calls strictly better — restore on startup — is
+`strands.restore_all` since item 5, and item 6's `stop.human_blocked` ended the retry against the
+approval case this entry observed. Not built, and not pursued: the per-gate attempt limit, which by
+this entry's own argument answers neither the timeout kill nor the interrupt kill.
 
 *(Annotation, 2026-09-20: the second remedy — the one this entry calls strictly better — landed at
 G3 item 5: `strands.restore_all` at the gate's start, `b460b99`, now `gates/acceptance.py:285`. The
@@ -3871,6 +3909,30 @@ definition", ground-measured); `adapters/base.py` 20 → 11 lines, `RunResult` a
 three imports only the protocol used; `grep -rn AcceptanceAdapter src tests` prints nothing;
 regression run `20260915T124953-2826892` identical to the tag's.
 
+#### `mutate_examples = false` turns off every acceptance mutant, not only the `example` kind
+
+**What happened.** Read from source at `c958ebb` while pricing `gauntlet mutant preview`, which
+reads no configuration and so had to say what configuration could make the gate's set differ from
+its listing. `gates/acceptance.py:269` returns `N spec(s) passing` before the mutation stage when
+`mutate_examples` is false. The engine has two kinds, `example` and `literal`; the key names one and
+switches off both — 455 of the tag's 1263 mutants are `literal`. The `gauntlet.toml` template
+carries the key as a bare commented line and `docs/GATES.md` lists it with its default and no
+meaning.
+
+**Why it matters.** A reader who sets it to stop Examples-cell mutation while keeping the numeric
+literals — the one literal class that reaches the code today — gets no acceptance mutation at all
+behind a passing gate whose summary changes by one word.
+
+**What would address it.** Say what the key does where it is described: the template's comment and
+`docs/GATES.md`. Renaming a configuration key is a breaking change to every project's
+`gauntlet.toml` and is not proposed.
+
+**What it cost us.** Nothing. Read, not run.
+
+**Routes to:** BACKLOG.md, v1 — documentation, package P10.
+
+**Status.** Open.
+
 ### v1, blocking v2
 
 ARCHITECTURE.md's rule is that the workspace is a client reading "the event
@@ -3978,6 +4040,14 @@ one scenario, so `--scenario` could not isolate the five that were new.
 
 **Status.** Open.
 
+*(Annotation, 2026-09-20, from the full read of every open entry against `c958ebb`: one design with
+two other entries. Extending `gauntlet review`'s per-item walker to the mutant namespace, as
+proposed above, makes "Approval scope is coarser than the judgments it records" and "Mutant approval
+defaults to the widest scope" the same change seen from `mutant approve`. Package P4, after P2, with
+"A gate requiring human review must show the human what to review". The design leaves room for the
+dependency-locator field proposed under "Approval reasons go stale silently where the key does
+not".)*
+
 #### Renaming a spec orphans its approval and leaves a dangling key
 
 **What happened.** Approval keys are `spec:<path>`. Renaming `siu_flags.feature` to
@@ -4084,6 +4154,11 @@ engine can only see if someone points it at the other file — which is the chec
 **Routes to:** BACKLOG.md, v3. Cheap enough to land in v1 if convenient, but it only starts mattering at the scale v3's orchestration implies.
 
 **Status.** Open.
+
+*(Annotation, 2026-09-20, from the full read of every open entry against `c958ebb`: outside G3 item
+7 by ruling — routed v3 by its own words. For whoever builds it: since G3 item 1,
+`acceptance/binding.py` computes which step module binds which feature, which is half of the report
+this entry asks for.)*
 
 ### Convention, not code
 
@@ -4194,6 +4269,11 @@ validating prose, and it covers the commonest case. Worth carrying to whoever im
 `--locator` scoping proposed under "Approval scope is coarser than the judgments it records": both
 want the same addressing.
 
+*(Annotation, 2026-09-20, from the full read of every open entry against `c958ebb`: v1 takes the
+three conventions as documentation, in package P10: identify a case by its role, never by line, file
+or example value; date any claim about the wider suite. The checkable half — an approval naming the
+locator its justification rests on — is a ledger-schema feature for v2, and P4 leaves room for it.)*
+
 #### An Examples token with no producer in its bound step is invisible until the suite runs
 
 **What happened.** Two step phrasings existed for the same field: a shared step that assigns the raw
@@ -4229,6 +4309,9 @@ convention and the reason it cannot be code today.
 
 **Status.** Open.
 
+*(Annotation, 2026-09-20, from the full read of every open entry against `c958ebb`: v1 takes the
+convention as one sentence of spec-writing guidance, package P10. The linter stays routed v3.)*
+
 #### The duplication gate can be satisfied by renaming rather than by removing what it found
 
 **What happened.** G3 item 7 change 1 specified a four-line temp-then-replace inside
@@ -4253,6 +4336,10 @@ this gate's threshold before it is written into an entry. Both are in
 **Routes to:** convention; `ADVISOR.md`.
 
 **Status.** Open, convention rather than code.
+
+*(Annotation, 2026-09-20, from the full read of every open entry against `c958ebb`: the convention
+reaches this repository's advisor through `ADVISOR.md` and no gated project's agent. One sentence in
+the scaffold's `CLAUDE.md` gate block carries it to every project. Package P10.)*
 
 ## Designed boundaries
 
@@ -4454,6 +4541,84 @@ deliverable with its own queue item, not an assumed side effect of a rule existi
 review should ask "what calls this?" of every gated module. ClaimGate now carries the wiring as
 explicit items (7f, 7h) with the gap named in their entries.
 
+
+### Acceptance mutation cannot distinguish a deliberately inert value from an untested one
+
+**What happened.** Seven survivors on `siu_indicators.feature` are all threshold-literal
+mutations, and they survive for three different reasons — a distinction only
+visible after working through each one, since the gate reports them
+identically.
+
+**Two are deliberately inert** (lines 84 and 134): no policy inception date is
+present, so the indicator resolves to NOT_EVALUATED with reason
+NO_POLICY_INCEPTION_DATE regardless of the threshold's value. The threshold is
+supplied precisely to prove the result comes from the missing input rather
+than a missing threshold; isolating that variable is the scenario's purpose,
+so mutating it correctly changes nothing.
+
+**Four are margin, not inertness** (lines 147, 148, 167, 168): the threshold
+is doing its job, but the example values sit far enough from it that a
+plus-or-minus-one mutation cannot cross the boundary — 62 days against 45/46,
+40 days against both 45/46 and 30/31. The boundaries themselves are proven in
+dedicated boundary scenarios, which is where a one-day mutation does kill.
+
+**One is guard-dominated** (line 118): the mutation alters the upper bound,
+but the scenario exercises the lower one — the inception date postdates the
+loss date, so the `0 <=` check rejects the negative interval before the upper
+bound is consulted.
+
+**Why it matters.** Supplying an inert value to isolate which fact actually drives an outcome is good
+specification design, not a gap in the scenario. The gate cannot tell that apart from a value the
+scenario simply forgot to check — both present identically as a surviving mutant — so it demands the
+same human judgment for each. The equivalent-mutant approval then becomes the only record that the
+inertness was deliberate rather than an oversight.
+
+The original draft of this entry recorded four of seven as deliberately inert. That was wrong — two are. It came from a human reviewer reasoning about the scenarios from memory rather than working each mutation through, and was corrected when the agent producing the survivor breakdown checked the actual mechanics of each. Recorded because the error is the entry's own subject: a cluster of identical-looking survivors invites a single explanation, and the single explanation was wrong for five of the seven.
+
+**What would address it.** None obvious, and possibly none wanted — the gate asking is arguably the
+correct behavior; the alternative is the gate guessing at scenario intent, which is worse. Recorded so
+the pattern is recognized rather than rediscovered per scenario: a reviewer seeing a cluster of
+threshold-literal survivors should work through each one's actual mechanics before assuming a single
+explanation covers them, since the three mechanisms above present identically.
+
+**Proposed change.** None proposed.
+
+**What it cost us.** Nothing measurable — this is a recognition aid, not a defect with a cost to
+tally.
+
+**Routes to:** Nowhere yet. Recognition aid; may belong under Designed boundaries once decided.
+
+**Status.** A designed boundary, ruled 2026-09-20 (advisor-recommended, human-ratified), and moved
+here from *Proposed changes*, where it had sat undecided since it was written. The gate asking is
+the correct behaviour; the alternative is the gate guessing at a scenario's intent. Kept as a
+recognition aid: three mechanisms — deliberately inert, margin, guard-dominated — present
+identically as threshold-literal survivors, and the single explanation was wrong for five of the
+seven.
+
+### A command's declaration runs on every invocation; only its body is outside a check
+
+**What happened.** G3 item 7 change 3 added a subcommand to `cli_mutants.py` and was classed as
+outside the verdict path because the subject's `gauntlet check` "never enters" that module. True of
+its function bodies and false of the module. `cli.py` imports every `cli_*` module at load and
+mounts its Typer app, and Typer builds the click command for every subcommand in the tree before it
+dispatches to one. Measured in a throwaway: a subcommand whose declaration Typer cannot build raises
+`RuntimeError` when `check` is invoked. `cli_status.py` imports `status` at load in the same way.
+
+**Why it matters.** The Stop hook is `gauntlet stop-check`. A declaration fault in any command — an
+annotation Typer cannot convert, a module-level import that fails — crashes the hook, exit 1, which
+Claude Code ignores: the silent turn end this repository already treats as proving nothing. A change
+can be green on the subject and still do that.
+
+**The boundary.** This is how a Typer application works and it is not proposed for change. What
+follows from it is the proof: for a CLI-only change the reason it is outside the verdict path is
+"the body is never called on a check, and the declaration is proved by this repository's own
+`gauntlet check` and by every `CliRunner` test, each of which builds the whole tree" — never "the
+module is not imported". The ground report of 2026-09-18 gives the second reason for all thirteen of
+its second-shape entries; each restates it when its package is priced.
+
+**Status.** A designed boundary, recorded 2026-09-20 (advisor-recommended, human-ratified). First
+stated in the "Why this is outside the verdict path" paragraph of "The blast radius of a spec change
+cannot be measured before making it".
 
 ## Properties to preserve
 
@@ -5024,6 +5189,84 @@ being the one predicted to turn the subject red; any change into `acceptance/mut
 an extraction, `_column_mutants` being at 25 of 25; so does the next change to `run_cmd`, at 25 of
 25 since change 2. The report's line numbers below the ledger entry are stale by the blocks added
 since; its anchors are strings and hold.)*
+
+*(Annotation, 2026-09-20, second of the day — the tail re-planned; supersedes "one branch per
+change" above. After change 3 (`gauntlet mutant preview`, merged at `c958ebb`) the advisor read
+every open entry in full against the source at `c958ebb`, and the owner ruled the same day. **The
+rule:** item 7 runs one branch per *package*, one commit per entry inside it, one findings block
+carrying each entry's decisions, one subject run at the package's tip where the package is on the
+verdict path, one close that sets every Status line, one merge; a run that departs from its
+prediction is bisected by commit. **Closed without a branch:** "The acceptance gate re-runs every
+mutant on every check" (paid by items 1 and 2) and "An automatic retry loop repeats the one gate
+that rewrites the working tree" (paid by items 5 and 6); "Acceptance mutation cannot distinguish a
+deliberately inert value from an untested one" moved to *Designed boundaries*; "No cross-spec impact
+check" is v3 by its own words and outside item 7. **Reduced, the remainder named in each entry's
+annotation:** the same-outcome enumeration, step data tables, approval reasons, the Examples token.
+Re-keying was *not* deferred: the owner ruled it into v1 against the advisor's recommendation,
+because a key format is a persisted contract. **The order** is impact per effort, except that an
+entry able to change whether another is worth doing, or what it means, goes first so the rest can be
+re-priced: P2 before the approval work that addresses mutants by locator; P7 before P8; and P7 after
+every package that wants a green subject to compare against, because it is the one that moves the
+baseline. 35 entries, ten packages, nine subject runs:
+
+- **P1 — Trustworthy numbers — a gate reporting a measurement that did not happen.** "Mutation's own
+  coverage-guided test selection goes stale on a test-only change"; "The coverage gate reports a
+  stale artifact as a current result"; "An approved spec no test module binds reports every mutant
+  as surviving, and the diagnostic asserts the opposite cause". Plus the `vacuous`-on-zero half of
+  "The code-mutation gate's source scope is set outside Gauntlet". Pays the extraction out of
+  `gates/acceptance.py` (291 of 300 lines), which P3, P4 and P6 also land in. Subject runs: 1.
+- **P2 — Ledger keys, once.** "Acceptance mutant locators are not unique, so the ledger cannot
+  address every mutant"; "Mutant approval keys are content-addressed on the whole row". With a key
+  migration, so a downstream lock — and the regression clone's — is rewritten mechanically.
+  Checkpoint: if the subject cannot stay green under the migration, the order below is re-ruled
+  before anything else moves. Subject runs: 1.
+- **P3 — Remedies and messages that name the wrong thing.** "The acceptance gate's remedy names a
+  command that re-baselines a different gate"; "The stale-approval remedy asserts one cause for a
+  condition with two, and emits an incomplete command"; "`mutant prune` classifies against a
+  survivor run with no baseline check, so a red suite marks every approval stale"; "A stop-check's
+  stderr on a broad failure exceeds the host's hook-output limit"; "Interpreter fallback lands on
+  Gauntlet's own venv silently, and the error names the wrong thing". Plus the reporting half of the
+  whole-row-keys entry. The largest package; it splits if its pricing finds two entries that
+  collide. Subject runs: 1.
+- **P4 — Approve one mutant at a time — two of the three v2 blockers.** "The approval ledger has no
+  per-mutant reason"; "Approval scope is coarser than the judgments it records, and it is now
+  shaping the Gherkin"; "Mutant approval defaults to the widest scope"; "A gate requiring human
+  review must show the human what to review". Needs P2. Subject runs: 1.
+- **P5 — Spec un-approve and rename — the third v2 blocker.** "Renaming a spec orphans its approval
+  and leaves a dangling key". CLI only. Subject runs: 0.
+- **P6 — What the human sees.** "The acceptance gate's green summary omits the killed count, so a
+  newly bound spec's clean result is inferred from absence"; "The mutation gate reports one
+  project-wide total with no per-module attribution"; "`status --run` reports "nothing needs your
+  approval" beside the survivors it just counted"; "The two ledger figures most quoted in prose are
+  the two no status surface reports". Counts in a new event field and the printed report, never in
+  `actual`. Subject runs: 1.
+- **P7 — Engine: real kills.** "Every quoted-literal mutant is vacuous under a well-formed step
+  pattern"; "`LITERAL_PATTERN`'s single-quote alternative matches English possessives"; "The boolean
+  substitution is lowercased and preemptive, so a case-different enumeration is unprotected". Needs
+  P2. The one package that moves the subject by design: one predicted baseline reset. Checkpoint: P8
+  is re-priced when this lands. Subject runs: 1.
+- **P8 — Engine: reach.** "Background steps are invisible to acceptance mutation entirely";
+  "Mutation cannot reach a fixed Given, so a specification can state a rule nothing protects"; "Step
+  data tables are discarded by the Gherkin IR, so nothing downstream can reach them"; "A ragged
+  Examples row parses silently and under-generates mutants". Needs P7. The data-table entry in its
+  minimum form. Subject runs: 1.
+- **P9 — Scope of gates.** "Four analysis gates scope to `src` alone, so step definitions are
+  outside static, size, complexity and duplication"; "The code-mutation gate's source scope is set
+  outside Gauntlet, and narrowing it is invisible". The second entry's scope report last of all
+  verdict-path work, as ruled 2026-09-19; it reports and never fails. Subject runs: 2.
+- **P10 — Scaffold, configuration and guidance.** "Hook configuration has no home outside the file
+  `init` rewrites"; "Files written through shell heredocs never meet the edit-time size hook";
+  "Approval reasons go stale silently where the key does not"; "An Examples token with no producer
+  in its bound step is invisible until the suite runs"; "The duplication gate can be satisfied by
+  renaming rather than by removing what it found"; "A same-outcome enumeration guarantees one
+  surviving mutant per row"; "`mutate_examples = false` turns off every acceptance mutant, not only
+  the `example` kind". Last, so the guidance describes what shipped. Subject runs: 0.
+
+`grep -c '^\*\*Status\.\*\* Open' gauntlet-findings.md` prints 36 at this save point: the 35 above
+and the v3 entry. Every close from here sets its Status lines, so that number is the tail's length
+and needs no inventory to read. The ground report's classification of CLI-only entries as outside
+the verdict path stands, and its *reason* does not: see "A command's declaration runs on every
+invocation; only its body is outside a check" under *Designed boundaries*.)*
 
 **The v1 backlog's root-cause-diagnostics item needs a fourth category.** It
 currently distinguishes "tool failed," "tool found nothing," and "nothing to

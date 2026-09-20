@@ -88,6 +88,15 @@ name is a stop, not a correction. Item 1 additionally leaves `src/gauntlet/accep
 `src/gauntlet/acceptance/gherkin.py`, `src/gauntlet/mutants.py` and `src/gauntlet/registry.py`
 untouched, so the engine's enumeration at the tag (1263 = 808 `example` + 455 `literal`) cannot move.
 
+Item 7 is the tail of v1 and, since the ruling of 2026-09-20, runs as ten packages rather than one
+branch per entry: each package on its own `v1/item-7-p<n>-<name>` branch, one commit per findings
+entry inside it, one findings block carrying every entry's decisions, one regression run at the
+package's tip where the package is on the verdict path, one close that sets each entry's
+`**Status.**` line, one merge. A run that departs from its prediction is bisected by commit. The
+packages, their entries, their order and the two checkpoints (after P2 and after P7) are the second
+2026-09-20 annotation under item 7 of the findings note; the count of entries still open is
+`grep -c '^\*\*Status\.\*\* Open' gauntlet-findings.md`.
+
 ## Not in the order
 
 Open at `a0ef78d` per the inventory of 2026-09-12, and not sequenced by the note. **[human]** marks a
@@ -119,10 +128,28 @@ Every session reads `CLAUDE.md` and this file. Then, per item:
 | G3 item 4 | the entry "Run pairing in the event log is unreliable in two directions" in full — its ready patch, re-anchored by string, and its 2026-09-15 annotation are the brief; "The stop-check records no tree hash" decision (6) and its Change-applied paragraph (the stop-check half, already applied); `src/gauntlet/cli.py` `check`, `_stop_gates`, `_locked_run` and `_finish`; `src/gauntlet/status.py` and `cli_events.py` for every reader of `run.started`; `tests/test_cli.py` `test_a_concurrent_run_exits_zero_rather_than_interleaving` |
 | G3 item 5 | the entry "Interrupted mutation runs leave corrupted source" in full — its events, the 2026-09-14 annotation, and the design decisions and prediction paragraphs once they exist are the brief; "An automatic retry loop repeats the one gate that rewrites the working tree" for the backup-diff-plus-digest argument; `src/gauntlet/gates/acceptance.py` `_backup` and `_survivors`; `src/gauntlet/adapters/python.py` `run_acceptance`; ClaimGate's `.claude/hooks/stop-check.sh` and `.claude/settings.json` at `be87d38`, read-only, for how the hook is bounded and killed; `tests/test_acceptance_gate.py::test_mutation_restores_the_feature_file` |
 | G3 item 6 | the three entries the note names — "The acceptance gate short-circuits mutation on an approval failure", "The Stop hook cannot be scoped, and the prescribed workflow produces a phase where it cannot pass", "Retry loop burns attempts on non-agent-actionable failures" — in full with their annotations, and the design decisions and prediction paragraphs once they exist; `src/gauntlet/gates/acceptance.py` `_stages` and the three stage functions; `src/gauntlet/cli.py` `stop_check` and `_stop_gates`; `src/gauntlet/loop.py`; ClaimGate's `.claude/settings.json` and `.claude/hooks/stop-check.sh` at `be87d38`, read-only |
-| G3 item 7 | `gauntlet-findings.md` "Note for the v1 effort" item 7 and its 2026-09-17 annotation — the tail of v1, one prediction per change rather than one design per session; the near-miss entries, ledger atomicity first ("The approval ledger is written non-atomically, and it is the one artifact no gate can rebuild", then "`run_cmd` decodes tool output strictly, so a non-UTF-8 byte from any tool is an uncaught exception in a hook"); then every entry under "Proposed changes to Gauntlet" whose `**Status.**` line does not begin "Applied" or "Resolved", in file order, with the entries this effort deferred rather than fixed among them; the Change-applied paragraphs of items 3 to 6 for the debts they banked |
+| G3 item 7 | `gauntlet-findings.md` "Note for the v1 effort" item 7 and its annotations, the second of 2026-09-20 above all — the ten packages, their entries by exact heading, the order and the checkpoints; then, in full, every entry of the package in flight with its 2026-09-20 annotation, and "A command's declaration runs on every invocation; only its body is outside a check" under *Designed boundaries* for any CLI-only entry. Background, from before the packages: the tail of v1, one prediction per change rather than one design per session; the near-miss entries, ledger atomicity first ("The approval ledger is written non-atomically, and it is the one artifact no gate can rebuild", then "`run_cmd` decodes tool output strictly, so a non-UTF-8 byte from any tool is an uncaught exception in a hook"); then every entry under "Proposed changes to Gauntlet" whose `**Status.**` line does not begin "Applied" or "Resolved", in file order, with the entries this effort deferred rather than fixed among them; the Change-applied paragraphs of items 3 to 6 for the debts they banked |
 | G3, any entry | `gauntlet-findings.md` "Note for the v1 effort", then the entry in full; `ARCHITECTURE.md` "Contracts you must not break" and "Conventions"; `docs/GATES.md` for the gate touched |
 
 ## Status as of this handoff
+
+**2026-09-20, item 7 re-planned into ten packages.** After change 3 merged at `c958ebb` the advisor
+read all 38 entries then open, in full, against the source at `c958ebb`; the owner ruled the same
+day and the findings save point records it. Two entries closed as already paid — the acceptance
+gate's re-run cost by items 1 and 2, the retry loop by items 5 and 6; one moved to *Designed
+boundaries*; the v3 entry left item 7; four were reduced to the part v1 needs, the rest named for v2
+or v3 in each entry's annotation; one new entry (`mutate_examples`) and one new designed boundary (a
+command's declaration runs on every invocation) were added; the Status lines of changes 1 and 2,
+left at "Open." by their closes, were corrected. 35 entries remain, in ten packages and nine
+regression runs, where one branch per entry was 36 and about 25. Order: P1 trustworthy numbers (the
+mutmut cache's false pass, the stale coverage artifact, the unbound spec, `vacuous` on zero mutants
+— and the extraction `gates/acceptance.py` needs at 291 of 300); P2 ledger keys once, locator
+uniqueness and re-keying with a migration; P3 remedies and messages; P4 approve one mutant at a
+time; P5 spec un-approve and rename; P6 what the human sees, kept out of `actual`; P7 engine, real
+kills; P8 engine, reach; P9 scope of gates, the mutation scope report last; P10 scaffold,
+configuration and guidance. Re-keying is in v1 by the owner's ruling, against the advisor's
+recommendation to defer. Next: the advisor prices P1; no agent moves before its findings block is
+ratified.
 
 **2026-09-20, G3 item 7 change 3 applied (`gauntlet mutant preview`).** On
 `v1/item-7-change-3-mutant-preview` from `328ff5f`, no open commit: the human findings commit
@@ -139,10 +166,9 @@ each commit — run `20260920T143457-139464` at the tip, 623/623, 97.07 / 93.11,
 98, agent-quoted — and the entry's measured row re-run by the advisor from a clone: 1263 lines over
 the tag's sixteen specs, 808 `example` and 455 `literal`, equal to the engine's enumeration. The
 harness moved, `43407aa4e7458e98…` → `5fa4fb351e88f318…` over 53: the next verdict-path change's
-regression session recomputes it and quotes nobody's. Item 7 stands at three of the ground report's
-33 v1 entries applied; the entries of changes 1 and 2 still read `**Status.** Open.` and are
-corrected at the next save point. Merge to `main` is the human's next act; change 4 opens with the
-advisor pricing the next open entry in file order.
+regression session recomputes it and quotes nobody's. Item 7 stood at three of the ground report's
+33 v1 entries applied. Merged to `main` at `c958ebb`; what follows is not a change 4 but package P1
+— see the paragraph above.
 
 **2026-09-20, G3 item 7 change 2 applied (`run_cmd` fails closed on undecodable output).** On
 `v1/item-7-change-2-run-cmd-decoding` from `28caa08`, no open commit — the reading table already
@@ -326,13 +352,17 @@ xargs -0 sha256sum | sha256sum` at that commit: `gauntlet` is installed with `uv
 
 **This repository's own baseline.** Nine gates configured: protect, static, size, complexity, tests,
 coverage, crap, duplication, acceptance; no `[gates.boundary]` or `[gates.mutation]`.
-The `gauntlet check --record` after item 7 change 2, run `20260920T105337-110010`, stamped
-2026-09-20T10:53:37Z to 10:54:28Z, agent-quoted and read by the advisor from the paste: protect 3/3
-paths unchanged; static 0 findings; size worst function 25; complexity 6; tests 614/614 passing in
-50.306 s; coverage line 97.05, branch 93.07 against floors of 95, 90 and per-file 80; crap 9.32;
+The hand `gauntlet check` at the tip of item 7 change 3, run `20260920T143457-139464` at `99ba679`,
+stamped 2026-09-20T14:34:57Z to 14:36:19Z, agent-quoted and read by the advisor from the paste:
+protect 3/3 paths unchanged; static 0 findings; size worst function 25; complexity 6; tests 623/623
+passing in 80.951 s on a loaded machine (48.152 s in run `20260920T131929-135627` an hour earlier,
+same source); coverage line 97.07, branch 93.11 against floors of 95, 90 and per-file 80; crap 9.32;
 duplication 0; acceptance "no feature files" (vacuous). Diagnostics 0 and error null on all nine;
-`run.finished` tree `74f3b323859a5e60…` over 98 files; the harness `43407aa4e7458e98…` over 53,
-recomputed by the advisor by the shell pipeline from a clean clone at `899615e`. Before item 7
+`run.finished` tree `21144da3b678ad49…` over 98 files; the harness `5fa4fb351e88f318…` over 53,
+recomputed by the advisor by the shell pipeline from a clean clone at `c958ebb`. Before item 7
+change 3 (run `20260920T105337-110010`) the suite was 614 tests in 50.306 s at 97.05 / 93.07 over 98
+files, harness `43407aa4e7458e98…`.
+Before item 7
 (run `20260917T094153-80919`) the suite was 608 tests in 47.619 s at 97.04 / 93.07 over 98 files,
 harness `e0672d331c6c74c8…`. Before item 6 (run `20260916T221205-8596`) the suite was 589 tests in 57.216 s
 at 96.9 / 92.68 over 97 files.
@@ -346,7 +376,7 @@ item 2 (run `20260913T222626-2654730`) the suite was 511 tests in 50.161 s at 96
 item-1 tests that run a real pytest-bdd project account for about 9 s of the difference. Stop hook
 budget 600 s; a full own-run is about 51 s by the timestamps. The suite is `.venv/bin/pytest tests
 -q -p no:cacheprovider`; the `pytest` on PATH is not the venv's and collects nothing. Branch
-coverage has 3.07 points of headroom over its floor: a G3 change that adds an untested branch goes
+coverage has 3.11 points of headroom over its floor: a G3 change that adds an untested branch goes
 red here before it reaches the subject. Since item 2 the Stop hook skips whenever the hand `gauntlet check` was green on the same
 tree: a turn end that ran no gate is a `run.reused` line in the log naming that run, and only
 the log tells it from a crash.
@@ -355,7 +385,8 @@ the log tells it from a crash.
 `loop.py` 151 with `drive` at 24; `gates/base.py` 214 with `run_cmd` at 25 of 25 since item 7
 change 2; `acceptance/mutation.py` 247 with `_column_mutants` at 25 of 25; `registry.py` 241 since
 change 1 and `tree.py` 249 since change 2; `stop.py` 95, `acceptance/strands.py` 71, `runner.py`
-144, `verdict.py` 210, `cli_verdict.py` 54. The two functions at the ceiling each force an
+144, `verdict.py` 210, `cli_verdict.py` 54,
+`cli_mutants.py` 191 since change 3. The two functions at the ceiling each force an
 extraction before the next change to them.
 
 **The inventory of 2026-09-12**, read-only, agent-produced, from which this file was written.

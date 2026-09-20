@@ -105,6 +105,19 @@ path — a file list against the runner's import graph, not an assertion. A chan
 that claims this shape and touches `gates/`, `acceptance/`, `runner.py`,
 `cli.py` or `adapters/` is the first shape in disguise.
 
+And the reason has to be the right one. `cli.py` imports every `cli_*` module at
+load and Typer builds every subcommand before it dispatches to one, so a
+CLI-only change's *declaration* — its decorator, annotations and module-level
+imports — runs on every `check` and every Stop hook; only its *body* is outside
+the subject's run. "The module is never imported" was written for all thirteen
+second-shape entries of the 2026-09-18 ground report and is false of every one.
+The reason that holds: the body is never called on a check, and the declaration
+is proved by the tool's own `gauntlet check` and by every `CliRunner` test, each
+of which builds the whole tree. It is a designed boundary in the findings file
+since 2026-09-20. Such a change also moves the harness digest and cannot move
+`verdict_sha256`, so the next verdict-path change recomputes the harness rather
+than quoting the last one.
+
 **Both.** Any judgment the implementation makes beyond the brief is reported,
 numbered, before merge; you rule on each number — ratify or reverse, with cost
 — and write the findings-entry text verbatim into the prompt. The agent splices
@@ -242,9 +255,15 @@ Run it at the ref before the change and at the branch after, over
 the engine yields 1263 mutants over sixteen specs: 808 of kind `example` and
 455 of kind `literal`. Those two numbers are the first thing any engine change
 is checked against, and the kind split matters: quoted-literal mutants die at
-step resolution and never reach the ledger, so a change that moves the `literal`
-count and nothing else can still be verdict-identical, and one that moves the
-`example` count almost never is.
+step resolution and bear no approval, but `literal` also covers bare numbers,
+which mutate in place, survive and are approved — 8 of the tag's 73 mutant
+approvals are kind `literal`, 65 `example` (measured from the lock, 2026-09-20;
+this paragraph said "never reach the ledger" until then, and the sentence went
+into a findings block before it was checked). So a change that moves only
+quoted-literal mutants can still be verdict-identical; one that moves numeric
+literals or `example` mutants almost never is. And the tag's acceptance `actual`
+carries no mutant total: an engine change that only adds or removes *killed*
+mutants cannot move the verdict, only new survivors or stale approvals can.
 
 **Three kinds of number, and label which one you are giving.** A *measurement*
 comes from running something — the regression run, the engine, the tool's own
@@ -300,8 +319,9 @@ matters. The file you measure is the file you send: one copy, hashed after the
 last edit, transcribed into the prompt from that copy — a script-assembled draft
 and a hand-typed prompt once diverged by two lines and the stated digest was
 wrong. Pricing a change by the engine's total rather than by kind — say whether
-a figure is `example`, `literal`, or both, because only the first bears
-approvals. Doubting a recorded figure before reading the status paragraph that
+a figure is `example`, `literal`, or both, because the kinds cost differently:
+65 and 8 of the tag's 73 approvals.
+Doubting a recorded figure before reading the status paragraph that
 records it. Quoting a verification figure measured before your own last edit to
 the thing measured — an exact `git diff --numstat` given as a check was taken
 from a test run made two amendments earlier, and stopped a correct agent turn
@@ -371,7 +391,10 @@ happens. A `stop-check` that ran its gates and passed
 prints nothing, one that skipped prints one line naming the green run it
 deferred to, and a *crashed* `stop-check` exits 1, which Claude Code ignores, so on this
 repository — where the tool under change is the checker — silence at a turn end
-is confirmed from the event lines, never inferred.
+is confirmed from the event lines, never inferred. The hook fires after the
+agent's report is written, so no turn can quote its own line: ask the next turn
+for every line after the last one reported, or ask me for a `tail`. A prompt
+that orders a turn to quote its own Stop-hook line orders the impossible.
 
 **Verify rather than accept.** Recompute date arithmetic. When a prediction
 says "nothing changes," ask what the change could have reached and why it did
@@ -456,11 +479,24 @@ including, and especially, when the thing that failed is a check you wrote.
 
 Pricing the tail of v1 — item 7 is not one change but many small ones, and the
 risk shifts from getting a design wrong to letting a cheap change go unpriced
-or unpredicted because it looks too small to matter. Since 2026-09-19 item 7
-runs one branch per change, each closed on its own proof and merged, with the
-change's session and its regression session separate; the ground report of
-2026-09-18 is its inventory and the note's item 7 annotation carries the
-sequencing rulings.
+or unpredicted because it looks too small to matter. Since the ruling of
+2026-09-20 item 7 runs as ten packages, not one branch per change: one branch
+per package, one commit per entry, one findings block carrying every entry's
+decisions, one subject run at the tip where the package is on the verdict path,
+one close, one merge, and a bisect by commit when a run departs from its
+prediction. The second 2026-09-20 annotation under the note's item 7 is the work
+list — packages, entries by exact heading, order, and two checkpoints: after P2
+(can the subject stay green under the key migration) and after P7 (re-price P8).
+Pricing a package means reading every entry in it in full and saying where two
+of them collide; a package that cannot be held in one findings block splits, and
+that is the only way the ten grows. The close sets every entry's `**Status.**`
+line: changes 1 and 2 closed additively and left "Open." behind them, and the
+file over-counted its own tail until 2026-09-20.
+`grep -c '^\*\*Status\.\*\* Open' gauntlet-findings.md` is the tail's length. A
+prototype offered to the agent as scale is run through size *and* complexity
+first, or says which it skipped: change 3's went red on complexity at 7 against
+6. And read the new tests' assertions for what else the asserted string could
+match — change 3 shipped `"11" in result.stderr` beside a pytest temporary path.
 Where a finding belongs — *Proposed changes*,
 *Designed boundaries* or *Properties to preserve* — because the last two are the
 regression checklist and a mislabel there costs more than one elsewhere. Which
