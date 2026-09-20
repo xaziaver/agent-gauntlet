@@ -3509,6 +3509,39 @@ clause. `test_a_file_name_git_cannot_decode_still_leaves_the_tree_unsayable` —
 returns None through the returncode branch, against a real undecodable name rather than a mocked
 exception, replacing the test deleted under decision (4).
 
+**Change, applied 2026-09-20 (advisor-recommended, human-ratified).** On
+`v1/item-7-change-2-run-cmd-decoding` from `28caa08`: `95a6dd2` (the decisions, the extraction, the
+prediction, the matrix and the four test names), `ed747dd` (the extraction: `_failed(args, code,
+message)` in `gates/base.py`, both except clauses calling it, `run_cmd` 24 → 20, tests untouched at
+611/611; `cf5288d63c27bbbc` → `f03011f70be2f76d`), `b5aa430` (the change: `UNDECODABLE_RETURNCODE =
+120`; `run_cmd` catches `UnicodeDecodeError` and returns `_failed` with a message naming the
+command, the byte in hex and the offset, and saying which stream it cannot tell; the docstring
+lists the third case; `tree._listing` loses its `except UnicodeDecodeError` and keeps its
+`returncode != 0` branch;
+one mock-only test deleted, four added, 611 → 614; `gates/base.py` `f03011f70be2f76d` →
+`9a3b246addf40c97`, `tree.py` `d5a7ccc81d1da618` → `44d052e0ab720e96`). `run_cmd` now sits at 25 of
+25: the next change to it extracts first. Own runs `20260920T104940-109083` (A, 611/611) and
+`20260920T105337-110010` (B, 614/614), both nine green, coverage 97.04 → 97.05 line, 93.07 branch,
+duplication 0, worst function 25, complexity 6, crap 9.32.
+
+Two proofs. The matrix at `/tmp/g3-item7-change2-matrix`, each arm's `tree` bound to its own `base`
+and the binding proved by identity and by source digest before any row ran: every row as predicted
+— a decodable command identical field for field on both arms; `b'a\xffb'` on stdout raising
+`UnicodeDecodeError` out of the old arm's `run_cmd` and returning 120 with the byte and offset named
+under the new; the same on stderr; and `_listing` against a real file named `b"bad\xffname"`
+returning None on both arms, via the `except` at `tree.py:116` on the old and via `returncode != 0`
+at `tree.py:115` on the new, which is the outcome decision (4) preserves. The harness's own
+agreement check printed a false DIFFERS on those two rows, having looked for the guard's text in a
+string that reported only the `return None` line; the rows matched and the harness was left as it
+ran. And regression run `20260920T112316-111530`, `check --record` in the item-1 clone at `be87d38`
+with Gauntlet installed from `b5aa430` (harness `43407aa4e7458e98` over 53, equal to the tip's,
+printed from the clone's own interpreter): eleven tuples identical to the tag's on gate, passed,
+actual, error and diagnostics (agent and advisor), every `error` null and every `diagnostics` 0,
+`run.finished` `a8a00163…` over 127, lock `61c2ac4d30025e8c` byte-identical to `be87d38`'s, record
+digest `9c7aececf56dc4f5…` equal to the tag's own export from the archive at `main` (`de2c23a`),
+`.gauntlet/` seven entries after the check and eight after the skip, the clone's tree clean
+throughout, no `*.tmp` at any point. Skip `20260920T113821-128891`. Acceptance 863.854 s.
+
 #### An automatic retry loop repeats the one gate that rewrites the working tree
 
 **What happened.** The stop hook retries a failing `gauntlet check`. Observed at 2, 5, and 7

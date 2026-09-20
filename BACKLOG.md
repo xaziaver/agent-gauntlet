@@ -124,6 +124,22 @@ Every session reads `CLAUDE.md` and this file. Then, per item:
 
 ## Status as of this handoff
 
+**2026-09-20, G3 item 7 change 2 applied (`run_cmd` fails closed on undecodable output).** On
+`v1/item-7-change-2-run-cmd-decoding` from `28caa08`, no open commit — the reading table already
+carries item 7's row: the human findings commit `95a6dd2` (design decisions (1)-(4): fail closed
+rather than `errors="replace"`, keep `text=True`, `UNDECODABLE_RETURNCODE = 120` outside the shell's
+reserved codes, item 2's now-unreachable narrow fix in `tree._listing` comes out; the extraction,
+the prediction, the matrix and four test names), `ed747dd` (extraction: `_failed` in
+`gates/base.py`, `run_cmd` 24 → 20), `b5aa430` (the change and its tests, 611 → 614, one mock-only
+test replaced by one against a real undecodable file name). Verified against `origin` by the
+advisor at every step. Two proofs: the matrix, each arm's `tree` bound to its own `base`, every row
+as predicted, R5 returning None on both arms through different branches; and regression run
+`20260920T112316-111530` in the item-1 clone at `be87d38` with Gauntlet at `b5aa430`, harness equal
+to the tip's, eleven tuples identical to the tag's, `run.finished` `a8a00163…` over 127, lock
+`61c2ac4d30025e8c`, record digest `9c7aececf56dc4f5…`, skip `20260920T113821-128891`, acceptance
+863.854 s. Debt: `run_cmd` at 25 of 25 beside `_column_mutants`. Merge to `main` is the human's next
+act; change 3 opens on its own branch.
+
 **2026-09-19, G3 item 7 change 1 applied (ledger atomicity).** On
 `v1/item-7-tail` from `414f899`: `8d0f2c0` (open: the reading-table row and item 6's status
 sentence), the human findings commit `aff05b4` (design decisions (1)-(3), the predicted effect on
