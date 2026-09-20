@@ -124,6 +124,26 @@ Every session reads `CLAUDE.md` and this file. Then, per item:
 
 ## Status as of this handoff
 
+**2026-09-20, G3 item 7 change 3 applied (`gauntlet mutant preview`).** On
+`v1/item-7-change-3-mutant-preview` from `328ff5f`, no open commit: the human findings commit
+`b55a32d` (design decisions (1)-(6): the exit status follows the file, it reads the file and nothing
+else, one file in with `diff` as the two-input form, `locator<TAB>signature` with the count by kind
+on stderr, the Background blind spot in the help, no `survivors_for`; and the second-shape reason
+corrected — `cli.py` imports every `cli_*` module at load and Typer builds every subcommand before
+it dispatches to one, so a command's declaration is on every invocation's path, the Stop hook's
+included, and only its body is outside the subject's run), `87f7877` (the command and nine tests,
+614 → 623, `cli_mutants.py` 151 → 191 of 300), `e9be636` (README, `docs/GATES.md`,
+`ARCHITECTURE.md`), `99ba679` (one assertion strengthened, shown to fail first). Verified against
+`origin` by the advisor at every step. Second shape, so no regression run: own gates nine green at
+each commit — run `20260920T143457-139464` at the tip, 623/623, 97.07 / 93.11, tree `21144da3…` over
+98, agent-quoted — and the entry's measured row re-run by the advisor from a clone: 1263 lines over
+the tag's sixteen specs, 808 `example` and 455 `literal`, equal to the engine's enumeration. The
+harness moved, `43407aa4e7458e98…` → `5fa4fb351e88f318…` over 53: the next verdict-path change's
+regression session recomputes it and quotes nobody's. Item 7 stands at three of the ground report's
+33 v1 entries applied; the entries of changes 1 and 2 still read `**Status.** Open.` and are
+corrected at the next save point. Merge to `main` is the human's next act; change 4 opens with the
+advisor pricing the next open entry in file order.
+
 **2026-09-20, G3 item 7 change 2 applied (`run_cmd` fails closed on undecodable output).** On
 `v1/item-7-change-2-run-cmd-decoding` from `28caa08`, no open commit — the reading table already
 carries item 7's row: the human findings commit `95a6dd2` (design decisions (1)-(4): fail closed

@@ -222,7 +222,10 @@ one time it was recorded from reasoning (2 approvals recorded in QUEUE.md item
 
 **Routes to:** BACKLOG.md, v1.
 
-**Status.** Open.
+**Status.** Applied, 2026-09-20, as G3 item 7 change 3 on `v1/item-7-change-3-mutant-preview`:
+`87f7877` (the command), `e9be636` (documents), `99ba679` (one assertion). Two things in the
+proposal above were ruled against and are not what shipped: "exiting 0 always" (decision (1) below)
+and `<paths...>` (decision (3)).
 
 **Design decisions, advisor-recommended, human-ratified 2026-09-20.**
 
@@ -330,6 +333,47 @@ and no listing, the second against real bytes rather than a mocked raise.
 `test_a_background_only_feature_previews_as_zero_mutants_and_exits_zero` — the blind spot, pinned as
 behaviour. `test_the_preview_help_says_background_steps_yield_no_mutants` — decision (5), by the
 property and not the phrasing. Nine tests, 614 to at least 623.
+
+**Change, applied 2026-09-20 (advisor-recommended, human-ratified).** On
+`v1/item-7-change-3-mutant-preview` from `328ff5f`: `b55a32d` (the decisions, the corrected
+second-shape reason, the measured row and the nine test names), `87f7877` (the command, in
+`cli_mutants.py`: purely additive, 40 lines in 2 hunks, the module 151 → 191 of 300, with
+`_read_feature_text` 8 lines, `_preview_summary` 5 and `mutant_preview` 19 of 25 by `ast`; the nine
+tests, 614 → 623, none mocking the parser, the engine or the file read; `5b7e4e9754df8d83` →
+`a895c606e4a4c94c`), `e9be636` (documents: the README row; `docs/GATES.md`'s public-seams sentence
+corrected, since `mutant list` never called `survivors_for`; an `ARCHITECTURE.md` entry under
+"Things that look wrong but are deliberate"), `99ba679` (one assertion: the non-UTF-8 test looked
+for the offset `11` anywhere in a stderr that also carries pytest's temporary path, whose digits can
+supply it; it now looks outside the path, and was shown to fail with the offset taken out of the
+message before it was committed). Four agent judgments, each ratified. The count by kind was
+extracted to `_preview_summary` after the complexity gate measured the first draft at 7 against 6 —
+the gate's own remedy, and the advisor's prototype had been offered as scale without being run
+through that gate. The path prints as `Path` renders it, so `./x.feature` reads `x.feature` on the
+stderr line, which is not the stream anyone diffs. The no-project test first asserts that no
+`gauntlet.toml` exists at or above its directory, so it fails rather than passes on a machine where
+one does. And the module is 191 lines, not the prototype's 181, which was a floor.
+
+Proof, second shape. Own runs `20260920T131749-135098` at `87f7877`, `20260920T131929-135627` at
+`e9be636` and `20260920T143457-139464` at `99ba679`, each nine gates green with every `error` null
+and every `diagnostics` 0: 623/623, coverage 97.05 → 97.07 line and 93.07 → 93.11 branch, worst
+function 25, complexity 6, crap 9.32, duplication 0, gated tree `9af38914…` and then `21144da3…`
+over 98 — agent-quoted, read by the advisor. Each of the two turns ended in one `run.reused` line
+naming its hand run (`20260920T132159-136157`, `20260920T143701-140127`), the first read from the
+log by the following turn and the second by the human: a turn cannot quote its own, and the prompt
+that asked it to was wrong. The measured row, re-run by the advisor from a clone at `e9be636` —
+`99ba679` changes no source — over the sixteen specs of `git archive prototype-1 features`: stdout
+1263 lines, stderr summaries summing to 808 `example` and 455 `literal`, `validation.feature`'s 165
+lines byte-equal to the engine called directly; a missing path, a real `0xff` byte (offset 11) and
+text with no `Feature:` line each exit 1 with one `config error:` line and an empty stdout; a
+Background-only feature exits 0 with `0 mutants (0 example, 0 literal)`; nothing created in the
+working directory; `check --help` builds with the declaration in the tree. The harness moved as
+predicted, `43407aa4e7458e98…` → `5fa4fb351e88f318…` over 53. No subject run, and nothing
+`verdict_sha256` reads has changed.
+
+Not claimed. The sentence above that this command "incidentally answers the truncated-review-output
+entry above" is stale twice: that entry, "A gate requiring human review must show the human what to
+review", now sits below this one, and it is about survivors, which exist only after a run; a preview
+enumerates and cannot show them. It stays open on its own terms.
 
 #### Mutation's own coverage-guided test selection goes stale on a test-only change
 
