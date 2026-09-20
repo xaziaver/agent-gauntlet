@@ -3386,6 +3386,40 @@ the window a crash lands in.
 done here: `tree.py` is inside the runner's import closure and the change would need its own
 prediction.
 
+**Change, applied 2026-09-19 (advisor-recommended, human-ratified).** On
+`v1/item-7-tail` from `414f899`: `aff05b4` (the decisions, the predicted effect, the second-proof
+matrix and the three test names), `3891136` (the change as decision (1) specified it, with the
+serialised text bound to a local because the four-line shape is a 58-token clone of
+`tree.write_json` and turns the duplication gate red at `max_duplicate_blocks = 0`), `18a15b9` (the
+amendment reversing decisions (1) and (3)), `cef5b6f` (decision (4): `save` hands its text to
+`write_text_atomic`, leaving no copy of the idiom in `registry.py`; `567ee1e0f54a43b1` →
+`97a56486fe036f6e`, 3/4 over 2 hunks). `tests/test_registry.py` was written at `3891136` and never
+edited after it — `45fa2e9847436fcb` under both implementations, its three tests passing under each,
+which is what shows they pin behaviour and not shape. Own run `20260919T094133-46305`: nine green,
+611 tests, coverage 97.04 / 93.07, duplication 0, worst function 25, complexity 6, crap 9.32.
+
+Two proofs. The matrix, run twice — at `3891136` and again at `cef5b6f`, the harness copied
+byte-for-byte and both arms loaded from the real committed files — with its nine result lines
+byte-identical across the two and every row as predicted: an interrupted save leaves today's ledger
+at 0 bytes with `registry.load` raising `RegistryError`, and the same interruption under the change
+leaves the previous content intact and loadable beside a 0-byte `gauntlet.lock.json.tmp` that the
+next save replaces. And regression run `20260919T095612-48662`, `check --record` in the item-1 clone
+at `be87d38` with Gauntlet installed from `cef5b6f` — harness `140a09de8559f7d0` over 53 files,
+printed from the clone's own interpreter and equal to the tip's: eleven tuples identical to the
+tag's on gate, passed, actual, error and diagnostics (agent and advisor), `run.finished`
+`a8a00163…` over 127, lock `61c2ac4d30025e8c` byte-identical to `be87d38`'s, record digest
+`9c7aececf56dc4f5…` equal to the tag's own export from the archive, the clone's tree clean before
+and after, and no `gauntlet.lock.json.tmp` at any point. Skip `20260919T101114-65625`. The
+acceptance gate cost 847.984 s against the tag's 3736.757 s — items 1 and 2 at work, and outside the
+proof.
+
+**The reference listing, corrected.** `.gauntlet/` holds seven entries after `check` and eight after
+a `stop-check` skip: the skip calls `_clear_attempts` (`cli.py:197` → `cli.py:106-110` →
+`stop.py:45-47`), which writes `stop-attempts.json`. That was added at item 6's own change,
+`d9e835d`, whose subject names it, so item 6's run left eight entries as well and the seven-entry
+listing recorded at its close was taken after the check rather than after the skip. Not a difference
+and not this change's: none of `save`'s five call sites is inside the runner's import closure.
+
 #### `run_cmd` decodes tool output strictly, so a non-UTF-8 byte from any tool is an uncaught exception in a hook
 
 **What happened.** `gates/base.py`'s `run_cmd` is `subprocess.run(..., text=True)` with the locale's

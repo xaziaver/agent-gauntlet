@@ -124,6 +124,24 @@ Every session reads `CLAUDE.md` and this file. Then, per item:
 
 ## Status as of this handoff
 
+**2026-09-19, G3 item 7 change 1 applied (ledger atomicity).** On
+`v1/item-7-tail` from `414f899`: `8d0f2c0` (open: the reading-table row and item 6's status
+sentence), the human findings commit `aff05b4` (design decisions (1)-(3), the predicted effect on
+the subject, the second-proof matrix and three test names), `3891136` (the change and its three
+tests), `18a15b9` (the amendment: decisions (1) and (3) reversed, after the duplication gate went
+red on the specified shape at threshold 0 and after the premise that `registry.py` cannot import a
+Gauntlet module was measured false — `gates/` has no `__init__.py`, `gates/base.py` imports none,
+and eleven modules outside `gates/` already import it), `cef5b6f` (decision (4): `save` hands its
+text to `write_text_atomic`). Verified against `origin` by the advisor at every step. Two proofs:
+the matrix, run at both implementations with its nine result lines byte-identical; and regression
+run `20260919T095612-48662` in the item-1 clone at `be87d38` with Gauntlet at `cef5b6f`, harness
+equal to the tip's, eleven tuples identical to the tag's, `run.finished` `a8a00163…` over 127, lock
+`61c2ac4d30025e8c`, record digest `9c7aececf56dc4f5…`, skip `20260919T101114-65625`, acceptance
+847.984 s against the tag's 3736.757 s. `.gauntlet/` holds seven entries after a `check` and eight
+after a skip, since item 6's `d9e835d`; the seven-entry listing recorded at item 6's close was the
+post-check one. Item 7 is a sequence and not one change: from here it runs one branch per change,
+each merged on its own proof. Merge to `main` is the human's next act.
+
 **2026-09-17, G3 item 6 applied.** On `v1/item-6-approval-and-hook` from `a3d4605`: `cf54898`
 (open), the human findings commit `ab5d6d9` (design decisions (1)-(5) across the three entries and
 two predictions), `5b6688d` (extraction: `init` and `guard` to `cli_setup.py`, `cli.py` 288 → 226),
