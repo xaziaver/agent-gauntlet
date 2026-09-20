@@ -168,6 +168,11 @@ class Gate(Protocol):
     def run(self, ctx: GateContext, config: dict[str, Any]) -> GateResult: ...
 
 
+def _failed(args: list[str], code: int, message: str) -> subprocess.CompletedProcess[str]:
+    """The result `run_cmd` returns in place of an exception: no stdout, the reason on stderr."""
+    return subprocess.CompletedProcess(args=args, returncode=code, stdout="", stderr=message)
+
+
 def run_cmd(args: list[str], cwd: Path, timeout: int = 600) -> subprocess.CompletedProcess[str]:
     """Uniform subprocess wrapper: captured text output, no exception on nonzero exit.
 
@@ -179,18 +184,14 @@ def run_cmd(args: list[str], cwd: Path, timeout: int = 600) -> subprocess.Comple
             args, cwd=cwd, capture_output=True, text=True, timeout=timeout, check=False
         )
     except subprocess.TimeoutExpired:
-        return subprocess.CompletedProcess(
-            args=args,
-            returncode=TIMEOUT_RETURNCODE,
-            stdout="",
-            stderr=f"timed out after {timeout}s: {' '.join(args[:3])}",
+        return _failed(
+            args, TIMEOUT_RETURNCODE, f"timed out after {timeout}s: {' '.join(args[:3])}"
         )
     except (FileNotFoundError, PermissionError) as exc:
-        return subprocess.CompletedProcess(
-            args=args,
-            returncode=MISSING_TOOL_RETURNCODE,
-            stdout="",
-            stderr=f"could not run {args[0]!r}: {exc}. Is it installed and on PATH?",
+        return _failed(
+            args,
+            MISSING_TOOL_RETURNCODE,
+            f"could not run {args[0]!r}: {exc}. Is it installed and on PATH?",
         )
 
 
