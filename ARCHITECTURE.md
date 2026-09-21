@@ -47,7 +47,10 @@ src/gauntlet/
 │   └── …
 ├── acceptance/          language-independent Gherkin pipeline
 │   ├── gherkin.py       text -> IR, with positions
-│   └── mutation.py      IR -> mutants, and applying them
+│   ├── mutation.py      IR -> mutants, and applying them
+│   ├── binding.py       which step modules bind a feature, reread on every call
+│   ├── strands.py       spec backups under mutation, and the strands a killed run leaves
+│   └── report.py        the acceptance gate's wording; the top-level report.py renders gate results
 └── adapters/            the only language-specific code
     ├── base.py          RunResult, the adapter protocol
     └── python.py        pytest, pytest-bdd, mutmut, interpreter resolution
@@ -266,8 +269,17 @@ deliberate and worth the cost — those tests have caught things no unit test co
   names the paths each spec's mutants ran against; it is rewritten on every mutation stage and
   never read. Gates have no event sink and the runner owns `gate.finished`, so putting it in the
   log would have changed every gate's line for one gate's convenience (item 1, 2026-09-13).
-- **A spec no step module binds runs the whole steps directory.** The fallback is more enforcement,
-  not less; it is also what every mutant did before per-mutant scoping, so it needs no opt-in.
+- **A spec with no literal binding is probed before it is mutated, and only a computed-path binding
+  runs the whole steps directory.** `acceptance/binding.py` reads the `scenarios(...)` literals in
+  the step files, and a literal is proof. But a spec bound through a computed path
+  (`scenarios(str(FEATURES / "c.feature"))`) binds nothing statically and is mutated correctly by
+  the whole-directory run, so "statically unbound means unbound" would turn every such project
+  red. One probe — the file written empty, against the whole directory — tells the two apart: a
+  module that binds the file errors at collection, and a suite that still passes never read it.
+  The spec nothing binds is reported *not measured* and fails with no survivor count, because
+  every mutant of a file nothing reads survives and the count would say nothing; `mutant approve`
+  refuses it rather than banking judgments about a suite that never ran (package P1,
+  2026-09-21).
 - **The gated-tree hash is a shell pipeline, and `.gauntlet/last-green.json` is a cache, not
   evidence.** `stop-check` skips every gate when the tree it would measure equals the tree of the
   last wholly green run. The tree is the paths a gate reads — `[project] src` and `tests`,
@@ -303,7 +315,7 @@ deliberate and worth the cost — those tests have caught things no unit test co
   record and nothing reads one; `.gauntlet/last-green.json` is still the skip cache and
   still not evidence (item 3, 2026-09-15).
 - **The mutation backup is gone after every completed run, and its presence means a strand.**
-  `_survivors` discards the backup right after its restore, so a file under
+  `_surviving` discards the backup right after its restore, so a file under
   `.gauntlet/mutation-backup/` is evidence that a run died between a mutant write and its
   restore — never a keepsake. That is what lets the acceptance gate restore from it at the
   next start without overwriting a human's later edit, which a backup that persisted after
@@ -325,6 +337,29 @@ deliberate and worth the cost — those tests have caught things no unit test co
   Adding either, or a configuration read, breaks the comparison the command exists for. It exits 1
   on a file it cannot read, because an empty listing behind a success code is a radius of nothing
   (item 7 change 3, 2026-09-20).
+- **Every mutmut run is cold: `run_mutmut` removes `mutants/` before it starts mutmut.** mutmut
+  keys the reuse of its per-function test selection on source and test names, never test
+  content, and `mutmut run` offers no bypass, so a warm run reported 100% after a test's assertions
+  were removed. The removal is in the adapter, not the gate, so the CLI's code-survivor path is
+  cold too; a cache that cannot be removed is a tool failure and mutmut is not run, because a
+  number from a cache Gauntlet could not clear is the number this exists to stop reporting
+  (package P1, 2026-09-21).
+- **The tests gate deletes `junit.xml` and `coverage.json` before it produces them.** A collection
+  error rewrites the first and leaves the second, and the coverage and crap gates read whatever is
+  on disk. Deleting first makes a stale read impossible rather than detected; a run id or an mtime
+  comparison would need a sidecar for what an `unlink` settles (package P1, 2026-09-21).
+- **Zero mutants under filters is recognised by mutmut's words, and fails closed if they change.**
+  A `--changed` run whose changed modules all lie outside `[tool.mutmut] source_paths` makes mutmut
+  raise `nothing matches`; the adapter reads that on the full output, before the error is cut to
+  800 characters, and the gate passes vacuously with the filters in `actual`. If mutmut rewords it
+  the run is a tool failure, as every zero total was before. A zero total with no filters stays a
+  tool failure: a whole project with no mutants is a broken configuration (package P1, 2026-09-21).
+- **The forty-survivor inspection cap stays, and the arithmetic is conservative.** One
+  `mutmut show` is a subprocess at about 0.6 s, and a thousand of them inside a Stop hook is a
+  timeout that fails open. So survivors past the cap are not described but are counted:
+  unresolved, in the denominator, `N not inspected` in `actual`, and no approval is called stale
+  while any survivor is uninspected. A project carrying more than forty survivors counts its
+  approved mutants past the cap as unresolved until the list is shorter (package P1, 2026-09-21).
 
 ---
 
