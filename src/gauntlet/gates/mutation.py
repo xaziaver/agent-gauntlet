@@ -165,6 +165,18 @@ def _nothing_changed(threshold: dict[str, Any]) -> GateResult:
     )
 
 
+def _no_mutants(threshold: dict[str, Any], filters: list[str]) -> GateResult:
+    """`--changed` is edit-time feedback: a module mutmut was never pointed at is the same
+    answer as nothing changed, with the filters attached as the tell."""
+    return GateResult(
+        gate=name,
+        passed=True,
+        threshold=threshold,
+        actual=f"no mutants in changed modules: {', '.join(filters)}",
+        vacuous=True,
+    )
+
+
 def _tool_failure(threshold: dict[str, Any], error: str) -> GateResult:
     return GateResult(
         gate=name, passed=False, threshold=threshold, actual=None, error=explain(error)[:800]
@@ -185,4 +197,6 @@ def run(ctx: GateContext, config: dict[str, Any]) -> GateResult:
     outcome = python_adapter.run_mutmut(ctx.project_root, ctx.python, filters, timeout)
     if not outcome.ok:
         return _tool_failure(threshold, outcome.error)
+    if outcome.total == 0:
+        return _no_mutants(threshold, filters)
     return _classified_result(ctx, outcome, min_score, require_review)

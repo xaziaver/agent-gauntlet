@@ -137,3 +137,60 @@ def test_code_survivors_for_the_cli_run_cold_too(
     survivors = mutation.survivors_for(project, "python", [], 60)
     assert [m.name for m in survivors] == ["m.x_f__mutmut_2"]
     assert present_when_invoked == [False, False]
+
+
+NOTHING_MATCHES = (
+    "Traceback (most recent call last):\n"
+    '  File "mutmut/__main__.py", line 1, in run\n'
+    "AssertionError: Filtered for specific mutants, but nothing matches\n"
+)
+OTHER_FAILURE = (
+    "Traceback (most recent call last):\n"
+    '  File "mutmut/__main__.py", line 1, in run\n'
+    "ModuleNotFoundError: No module named 'pytest'\n"
+)
+
+
+def _mutmut_saying(stderr: str):
+    """mutmut's process: no progress line, so no total, and this on stderr."""
+
+    def fake(args: list[str], cwd: Path, timeout: int = 600) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(args=args, returncode=1, stdout="", stderr=stderr)
+
+    return fake
+
+
+def test_filters_that_match_no_mutant_are_a_vacuous_pass_that_names_them(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    changed = [project / "src" / "pkg" / "shell" / "io.py"]
+    monkeypatch.setattr(python_adapter, "run_cmd", _mutmut_saying(NOTHING_MATCHES))
+    result = mutation.run(_ctx(project, changed=changed), {"scope": "changed"})
+    assert result.passed is True
+    assert result.vacuous is True
+    assert result.actual == "no mutants in changed modules: pkg.shell.io*"
+    assert result.error is None
+
+
+def test_a_mutmut_failure_under_filters_is_still_a_tool_failure(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    changed = [project / "src" / "pkg" / "shell" / "io.py"]
+    monkeypatch.setattr(python_adapter, "run_cmd", _mutmut_saying(OTHER_FAILURE))
+    result = mutation.run(_ctx(project, changed=changed), {"scope": "changed"})
+    assert result.passed is False
+    assert result.vacuous is False
+    assert result.actual is None
+    assert "ModuleNotFoundError" in (result.error or "")
+
+
+def test_no_mutants_on_a_full_run_is_still_a_tool_failure(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A whole project with no mutants is a broken configuration, whatever mutmut says."""
+    monkeypatch.setattr(python_adapter, "run_cmd", _mutmut_saying(NOTHING_MATCHES))
+    result = mutation.run(_ctx(project), {"scope": "full"})
+    assert result.passed is False
+    assert result.vacuous is False
+    assert result.actual is None
+    assert "nothing matches" in (result.error or "")

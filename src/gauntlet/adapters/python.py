@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import re
 import shutil
+import subprocess
 import sys
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -21,6 +22,7 @@ SURVIVED = "survived"
 MUTANT_SUFFIX = re.compile(r"__mutmut_\d+$")
 MUTMUT_PROGRESS = re.compile(r"(?:^|\s)(\d+)/(\d+)(?:\s|$)")
 MUTANTS_DIR = "mutants"  # mutmut's copy of the tree and its results, which it reuses
+NOTHING_MATCHES = "nothing matches"  # mutmut's words when the filters name no mutant
 
 
 def interpreter(root: Path, configured: str | None = None) -> str:
@@ -198,6 +200,16 @@ def _clear_cache(root: Path) -> str | None:
     return None
 
 
+def _no_mutants(proc: subprocess.CompletedProcess[str], filters: list[str]) -> MutationRun:
+    """A zero total is a broken configuration - unless filters were given and mutmut said
+    they matched nothing, which is a run with nothing to do and is reported as one.
+    Recognised by mutmut's words, read before the error is cut to 800 characters; if
+    mutmut rewords them the result is today's tool failure, the closed direction."""
+    if filters and NOTHING_MATCHES in proc.stdout + proc.stderr:
+        return MutationRun(ok=True, total=0)
+    return MutationRun(ok=False, error=(proc.stderr or proc.stdout).strip()[:800])
+
+
 def run_mutmut(root: Path, python: str, filters: list[str], timeout: int) -> MutationRun:
     """Run mutmut cold and collect survivors.
 
@@ -213,7 +225,7 @@ def run_mutmut(root: Path, python: str, filters: list[str], timeout: int) -> Mut
         return MutationRun(ok=False, error=proc.stderr)
     total = parse_total(proc.stdout + proc.stderr)
     if total == 0:
-        return MutationRun(ok=False, error=(proc.stderr or proc.stdout).strip()[:800])
+        return _no_mutants(proc, filters)
     results = run_cmd([python, "-m", "mutmut", "results"], cwd=root, timeout=timeout)
     return MutationRun(
         ok=True, total=total, survivors=parse_results(results.stdout).get(SURVIVED, [])
