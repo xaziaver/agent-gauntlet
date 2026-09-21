@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import json
-from pathlib import Path
 from typing import Any
 
 from gauntlet import artifacts
@@ -12,24 +10,6 @@ from gauntlet.gates.base import Diagnostic, GateContext, GateResult, timed
 name = "coverage"
 
 MISSING_LINES_SHOWN = 10
-
-
-class _ArtifactError(Exception):
-    """The coverage artifact is missing or unreadable."""
-
-
-def _load_artifact(root: Path) -> dict[str, Any]:
-    path = root / ".gauntlet" / "coverage.json"
-    if not path.exists():
-        raise _ArtifactError(
-            "No .gauntlet/coverage.json — the tests gate must run before the "
-            "coverage gate (check gate order / --gates selection)."
-        )
-    try:
-        parsed: dict[str, Any] = json.loads(path.read_text())
-    except (OSError, json.JSONDecodeError) as exc:
-        raise _ArtifactError(f"coverage.json unreadable: {exc}") from exc
-    return parsed
 
 
 def _branch_percent(totals: dict[str, Any]) -> float | None:

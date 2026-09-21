@@ -239,3 +239,66 @@ def test_coverage_distinguishes_a_missing_run_from_an_empty_one(project: Path) -
     (project / ".gauntlet" / "junit.xml").write_text("<testsuites/>")
     result = coverage.run(ctx_for(project), {"line": 90})
     assert "wrote no coverage data" in (result.error or "")
+
+
+STALE_COVERAGE = '{"totals": {"percent_covered": 100.0}, "files": {}}'
+UNCOLLECTABLE = "import nonexistent_module_xyz\n"
+
+
+def _plant_last_run(project: Path) -> None:
+    (project / ".gauntlet").mkdir()
+    (project / ".gauntlet" / "coverage.json").write_text(STALE_COVERAGE)
+    (project / ".gauntlet" / "junit.xml").write_text("<testsuites/>")
+
+
+def test_the_tests_gate_deletes_last_runs_coverage_and_junit_before_pytest_runs(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _plant_last_run(project)
+    present_when_invoked: list[tuple[bool, bool]] = []
+
+    def fake(args: list[str], cwd: Path, timeout: int = 600) -> subprocess.CompletedProcess[str]:
+        present_when_invoked.append(
+            (
+                (project / ".gauntlet" / "junit.xml").exists(),
+                (project / ".gauntlet" / "coverage.json").exists(),
+            )
+        )
+        return subprocess.CompletedProcess(args=args, returncode=2, stdout="", stderr="boom")
+
+    monkeypatch.setattr(tests_gate, "run_cmd", fake)
+    tests_gate.run(ctx_for(project, enabled=["tests", "coverage"]), {})
+    assert present_when_invoked == [(False, False)]
+
+
+def test_a_pytest_run_that_stops_at_collection_leaves_no_coverage_artifact(project: Path) -> None:
+    (project / "src" / "a.py").write_text(CLEAN)
+    (project / "tests" / "test_broken.py").write_text(UNCOLLECTABLE)
+    _plant_last_run(project)
+    result = tests_gate.run(ctx_for(project, enabled=["tests", "coverage"]), {})
+    assert result.passed is False
+    assert (result.error or "").startswith("pytest exited 2")
+    assert (project / ".gauntlet" / "junit.xml").exists()
+    assert not (project / ".gauntlet" / "coverage.json").exists()
+
+
+def test_coverage_after_a_run_that_measured_nothing_is_an_error_not_a_pass(project: Path) -> None:
+    (project / "src" / "a.py").write_text(CLEAN)
+    (project / "tests" / "test_broken.py").write_text(UNCOLLECTABLE)
+    _plant_last_run(project)
+    tests_gate.run(ctx_for(project, enabled=["tests", "coverage"]), {})
+    result = coverage.run(ctx_for(project), {"line": 80})
+    assert result.passed is False
+    assert result.actual is None
+    assert "wrote no coverage data" in (result.error or "")
+
+
+def test_crap_after_a_run_that_measured_nothing_is_an_error_not_a_pass(project: Path) -> None:
+    (project / "src" / "a.py").write_text(CLEAN)
+    (project / "tests" / "test_broken.py").write_text(UNCOLLECTABLE)
+    _plant_last_run(project)
+    tests_gate.run(ctx_for(project, enabled=["tests", "crap"]), {})
+    result = crap.run(ctx_for(project), {"max": 15})
+    assert result.passed is False
+    assert result.actual is None
+    assert "wrote no coverage data" in (result.error or "")

@@ -30,6 +30,20 @@ def test_load_coverage_missing_points_at_the_tests_gate(tmp_path: Path) -> None:
         artifacts.load_coverage(tmp_path)
 
 
+def test_the_missing_coverage_reason_names_a_collection_error_and_an_empty_source_tree(
+    tmp_path: Path,
+) -> None:
+    """The two causes of a junit.xml with no coverage.json beside it, the likelier first."""
+    (tmp_path / ".gauntlet").mkdir()
+    (tmp_path / ".gauntlet" / "junit.xml").write_text("<testsuites/>")
+    with pytest.raises(artifacts.ArtifactError) as raised:
+        artifacts.load_coverage(tmp_path)
+    reason = str(raised.value)
+    assert reason.index("collection error") < reason.index("no Python source under [project].src")
+    assert "tests gate" in reason
+    assert "tests gate must run" not in reason  # it ran; do not send anyone to run it again
+
+
 def test_load_coverage_unparsable_is_an_artifact_error(tmp_path: Path) -> None:
     (tmp_path / ".gauntlet").mkdir()
     (tmp_path / ".gauntlet" / "coverage.json").write_text("{not json")
