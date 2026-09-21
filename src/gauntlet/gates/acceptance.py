@@ -10,14 +10,12 @@ from __future__ import annotations
 
 import dataclasses
 import json
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from gauntlet import config as config_mod
 from gauntlet import locking, registry, specs
 from gauntlet import mutants as mutants_mod
-from gauntlet.acceptance import binding, gherkin, mutation, strands
+from gauntlet.acceptance import binding, gherkin, mutation, report, strands
 from gauntlet.acceptance.mutation import Mutant
 from gauntlet.adapters import python as python_adapter
 from gauntlet.gates import base
@@ -27,15 +25,7 @@ name = "acceptance"
 
 THRESHOLD = "approved, passing, and mutation-proof"
 SCOPE_RECORD = Path(".gauntlet") / "acceptance-scope.json"
-MAX_LISTED = 6
 NOT_RUN = "; mutation not run"
-
-
-@dataclass(frozen=True)
-class _MutationOutcome:
-    diagnostics: list[Diagnostic]
-    equivalent: int
-    stale: list[str]
 
 
 def survivors_for(
@@ -73,7 +63,7 @@ def _classify_feature(
 ) -> tuple[list[Diagnostic], int, list[str]]:
     key = specs.key_for(ctx.project_root, path)
     verdict = mutants_mod.classify(approved, key, survivors_for(ctx, config, path, steps))
-    return _by_scenario(key, verdict.failing), len(verdict.equivalent), verdict.stale
+    return report.by_scenario(key, verdict.failing), len(verdict.equivalent), verdict.stale
 
 
 def _mutation_outcome(
@@ -82,7 +72,7 @@ def _mutation_outcome(
     features: list[Path],
     steps: Path,
     approved: registry.Registry,
-) -> _MutationOutcome:
+) -> report.MutationOutcome:
     diagnostics: list[Diagnostic] = []
     equivalent = 0
     stale: list[str] = []
@@ -92,7 +82,7 @@ def _mutation_outcome(
         equivalent += reviewed
         stale.extend(gone)
     _record_scope(ctx, config, features, steps)
-    return _MutationOutcome(diagnostics, equivalent, stale)
+    return report.MutationOutcome(diagnostics, equivalent, stale)
 
 
 def _record_scope(
@@ -113,17 +103,6 @@ def _record_scope(
     destination = root / SCOPE_RECORD
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-
-
-def _approval_diagnostics(findings: list[registry.Finding]) -> list[Diagnostic]:
-    return [
-        Diagnostic(
-            file=registry.bare(f.key),
-            symbol=f.status.value,
-            message=registry.describe(f, noun="spec"),
-        )
-        for f in findings
-    ]
 
 
 def _survivors(
@@ -172,7 +151,9 @@ def _approval_stage(
     if not findings:
         return None
     return _result(
-        False, f"{len(findings)} unapproved or modified spec(s)", _approval_diagnostics(findings)
+        False,
+        f"{len(findings)} unapproved or modified spec(s)",
+        report.approval_diagnostics(findings),
     )
 
 
@@ -191,69 +172,12 @@ def _baseline_stage(
     )
 
 
-def _values(items: list[Mutant]) -> str:
-    listed = ", ".join(f"line {m.line}: {m.original}->{m.mutated}" for m in items[:MAX_LISTED])
-    extra = len(items) - MAX_LISTED
-    return listed + (f" (+{extra} more)" if extra > 0 else "")
-
-
-def _scenario_diagnostic(path: str, scenario: str, items: list[mutation.Mutant]) -> Diagnostic:
-    """One diagnostic per scenario, not per value: thirteen identical sentences
-    burn the diagnostic budget and the hook's character cap for no added signal."""
-    return Diagnostic(
-        file=path,
-        symbol=scenario,
-        line=min(m.line for m in items),
-        value=len(items),
-        message=(
-            f"{len(items)} surviving mutant(s) in {scenario!r}: {_values(items)}. "
-            f"The scenario still passes with these values changed, so it is not "
-            f"checking them. Assert on them, or — if the specification maps both "
-            f"values to the same outcome — have a human review them with "
-            f"`gauntlet mutant approve`."
-        ),
-    )
-
-
-def _by_scenario(path: str, items: list[mutation.Mutant]) -> list[Diagnostic]:
-    grouped: dict[str, list[mutation.Mutant]] = {}
-    for mutant in items:
-        grouped.setdefault(mutant.scenario, []).append(mutant)
-    return [_scenario_diagnostic(path, scenario, ms) for scenario, ms in grouped.items()]
-
-
-def _stale_diagnostic(stale: list[str]) -> Diagnostic:
-    return Diagnostic(
-        file=config_mod.LOCK_FILENAME,
-        message=(
-            f"{len(stale)} approved equivalent mutant(s) no longer survive — the "
-            f"assertions got sharper, so these judgments are stale. Remove them with "
-            f"`gauntlet mutant prune`: {', '.join(stale[:3])}" + (" ..." if len(stale) > 3 else "")
-        ),
-    )
-
-
-def _survivor_count(diagnostics: list[Diagnostic]) -> int:
-    return sum(int(d.value or 0) for d in diagnostics)
-
-
-def _summary(features: list[Path], outcome: _MutationOutcome) -> str:
-    parts = [f"{len(features)} spec(s)"]
-    if outcome.diagnostics:
-        parts.append(f"{_survivor_count(outcome.diagnostics)} surviving mutant(s)")
-    if outcome.equivalent:
-        parts.append(f"{outcome.equivalent} reviewed-equivalent")
-    if outcome.stale:
-        parts.append(f"{len(outcome.stale)} stale approval(s)")
-    return ", ".join(parts)
-
-
-def _mutation_result(features: list[Path], outcome: _MutationOutcome) -> GateResult:
+def _mutation_result(features: list[Path], outcome: report.MutationOutcome) -> GateResult:
     diagnostics = list(outcome.diagnostics)
     if outcome.stale:
         # Stale approvals are housekeeping, not a defect: report, do not fail.
-        diagnostics.append(_stale_diagnostic(outcome.stale))
-    return _result(not outcome.diagnostics, _summary(features, outcome), diagnostics)
+        diagnostics.append(report.stale_diagnostic(outcome.stale))
+    return _result(not outcome.diagnostics, report.summary(features, outcome), diagnostics)
 
 
 def _stages(
