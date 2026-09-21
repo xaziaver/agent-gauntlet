@@ -127,9 +127,8 @@ class _Counts:
     mutmut's total: killed plus every survivor, described or not."""
 
     killed: int
-    uninspected: (
-        int  # survivors past MAX_SURVIVORS_INSPECTED: never described, never found approved
-    )
+    # Survivors past MAX_SURVIVORS_INSPECTED: never described, so never found approved.
+    uninspected: int
 
     def unresolved(self, verdict: mutants_mod.Classification[CodeMutant]) -> int:
         return len(verdict.failing) + self.uninspected
