@@ -12,6 +12,8 @@ and reviewed-equivalent ones count as killed for scoring.
 
 from __future__ import annotations
 
+import dataclasses
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -119,10 +121,27 @@ def _stale_diagnostic(stale: list[str]) -> Diagnostic:
     )
 
 
-def _summary(actual: float, verdict: mutants_mod.Classification[CodeMutant], killed: int) -> str:
-    parts = [f"score {actual}%", f"{killed} killed"]
-    if verdict.failing:
-        parts.append(f"{len(verdict.failing)} unresolved")
+@dataclass(frozen=True)
+class _Counts:
+    """What mutmut counted beside what `collect` described. The denominator is
+    mutmut's total: killed plus every survivor, described or not."""
+
+    killed: int
+    # Survivors past MAX_SURVIVORS_INSPECTED: never described, so never found approved.
+    uninspected: int
+
+    def unresolved(self, verdict: mutants_mod.Classification[CodeMutant]) -> int:
+        return len(verdict.failing) + self.uninspected
+
+
+def _summary(
+    actual: float, verdict: mutants_mod.Classification[CodeMutant], counts: _Counts
+) -> str:
+    parts = [f"score {actual}%", f"{counts.killed} killed"]
+    if counts.unresolved(verdict):
+        parts.append(f"{counts.unresolved(verdict)} unresolved")
+    if counts.uninspected:
+        parts.append(f"{counts.uninspected} not inspected")
     if verdict.equivalent:
         parts.append(f"{len(verdict.equivalent)} reviewed-equivalent")
     if verdict.stale:
@@ -132,20 +151,21 @@ def _summary(actual: float, verdict: mutants_mod.Classification[CodeMutant], kil
 
 def _judge(
     verdict: mutants_mod.Classification[CodeMutant],
-    killed: int,
+    counts: _Counts,
     min_score: float,
     require_review: bool,
 ) -> GateResult:
-    actual = score(killed, len(verdict.equivalent), len(verdict.failing))
+    unresolved = counts.unresolved(verdict)
+    actual = score(counts.killed, len(verdict.equivalent), unresolved)
     diagnostics = [_diagnostic(m) for m in verdict.failing]
     if verdict.stale:
         diagnostics.append(_stale_diagnostic(verdict.stale))
-    passed = actual >= min_score and not (require_review and verdict.failing)
+    passed = actual >= min_score and not (require_review and unresolved)
     return GateResult(
         gate=name,
         passed=passed,
         threshold={"min_score": min_score, "require_review": require_review},
-        actual=_summary(actual, verdict, killed),
+        actual=_summary(actual, verdict, counts),
         diagnostics=diagnostics,
     )
 
@@ -156,12 +176,32 @@ def _classified_result(
     survivors = collect(ctx.project_root, ctx.python, outcome.survivors, SHOW_TIMEOUT)
     approved = registry.load(locking.lock_path(ctx.project_root))
     verdict = mutants_mod.classify(approved, SUBJECT, survivors)
-    return _judge(verdict, outcome.total - len(outcome.survivors), min_score, require_review)
+    counts = _Counts(
+        killed=outcome.total - len(outcome.survivors),
+        uninspected=len(outcome.survivors) - len(survivors),
+    )
+    if counts.uninspected:
+        # An approval whose mutant sits past the cap matches nothing described; with any
+        # survivor uninspected the gate cannot know, so it calls no approval stale.
+        verdict = dataclasses.replace(verdict, stale=[])
+    return _judge(verdict, counts, min_score, require_review)
 
 
 def _nothing_changed(threshold: dict[str, Any]) -> GateResult:
     return GateResult(
         gate=name, passed=True, threshold=threshold, actual="no changed modules", vacuous=True
+    )
+
+
+def _no_mutants(threshold: dict[str, Any], filters: list[str]) -> GateResult:
+    """`--changed` is edit-time feedback: a module mutmut was never pointed at is the same
+    answer as nothing changed, with the filters attached as the tell."""
+    return GateResult(
+        gate=name,
+        passed=True,
+        threshold=threshold,
+        actual=f"no mutants in changed modules: {', '.join(filters)}",
+        vacuous=True,
     )
 
 
@@ -185,4 +225,6 @@ def run(ctx: GateContext, config: dict[str, Any]) -> GateResult:
     outcome = python_adapter.run_mutmut(ctx.project_root, ctx.python, filters, timeout)
     if not outcome.ok:
         return _tool_failure(threshold, outcome.error)
+    if outcome.total == 0:
+        return _no_mutants(threshold, filters)
     return _classified_result(ctx, outcome, min_score, require_review)

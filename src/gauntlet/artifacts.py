@@ -24,11 +24,13 @@ class ArtifactError(Exception):
 def _missing_coverage_reason(root: Path) -> str:
     """ "The tests gate never ran" and "it ran and measured nothing" are different
     problems. Telling someone to run the tests gate when they just did sends them
-    looking in the wrong place — usually it means an empty source tree."""
+    looking in the wrong place — the tests gate deletes the artifact before pytest
+    runs, so the usual cause is a collection error, and the other an empty source tree."""
     if (root / JUNIT_ARTIFACT).exists():
         return (
-            "The tests gate ran but wrote no coverage data. That usually means there is "
-            "no Python source under [project].src for pytest-cov to measure."
+            "The tests gate ran but wrote no coverage data. Either pytest stopped at a "
+            "collection error before any test ran — the tests gate reports it — or there "
+            "is no Python source under [project].src for pytest-cov to measure."
         )
     return (
         f"No {COVERAGE_ARTIFACT} — the tests gate must run before this gate "

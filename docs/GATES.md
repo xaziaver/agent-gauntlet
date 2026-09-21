@@ -236,6 +236,12 @@ three gates read its artifacts. The gate parses the JUnit XML rather than pytest
 from every `<testsuite>` element, one diagnostic per failed `<testcase>` with the failure message
 as headline and the last 25 lines of the traceback.
 
+*Delete before produce:* the gate unlinks `.gauntlet/junit.xml` and `.gauntlet/coverage.json`
+before pytest starts. A collection error (pytest exit 2) rewrites `junit.xml` and leaves
+`coverage.json` untouched, so without the deletion the coverage and crap gates would read the
+last run's figures as this run's; with it, a gate reading a file this run did not write is
+impossible rather than detected (package P1, 2026-09-21).
+
 *The empty-suite rule:* pytest exits 5 when nothing was collected; the gate turns that into a
 failure with a remedy. Otherwise deleting the test directory would be a valid way to go green.
 
@@ -260,8 +266,14 @@ lines executed, not that anything was checked. The next two exist because of tha
 every file ≥ `per_file_min` if set.
 
 *How:* reads `.gauntlet/coverage.json` written by the tests gate. **Runs no subprocess.** If the
-artifact is missing the gate errors with a message pointing at gate order or `--gates` selection
-(the tests gate must have run in the same invocation). Branch percentage is computed from
+artifact is missing the gate errors. With no `junit.xml` beside it the message points at gate
+order or `--gates` selection (the tests gate must have run in the same invocation); with
+`junit.xml` present the tests gate ran and measured nothing, and the message names a collection
+error first and an empty source tree second, because the tests gate deletes both artifacts
+before pytest and a collection error writes only `junit.xml`. The crap gate reads the same file
+through `artifacts.load_coverage` and errors the same way. `gauntlet check --gates coverage`
+with the tests gate deselected still reads whatever artifact is on disk: that is a selection
+the caller made. Branch percentage is computed from
 `covered_branches / num_branches` in `totals` and omitted when the project has no branches.
 
 *The design rule in `judge()`:* every diagnostic corresponds to a rule that is actually enforced.
@@ -346,20 +358,33 @@ killed.
 *What it checks:* the unit tests notice when the code behaves differently. Coverage proves lines
 ran; a test that calls a function and asserts nothing has full coverage and kills no mutants.
 
-*How:* `mutmut run [module filters]` under the project interpreter, then `mutmut results`, both
-through `adapters/python.py`. mutmut copies `src/` into `mutants/`, rewrites each function into
+*How:* `mutants/` is removed, then `mutmut run [module filters]` under the project interpreter,
+then `mutmut results`, all through `adapters/python.py::run_mutmut`. Every run is cold because
+mutmut keys the reuse of its per-function test selection on source and test *names*, never test
+content, so a warm run can report the old score after a test's assertions were removed.
+`gauntlet mutant approve-code` and `prune-code` reach mutmut through
+`gates/mutation.py::survivors_for`, which calls the same function, so the CLI never sees a
+warmer tree than the gate. A `mutants/` that cannot be removed — a symbolic link, or a
+directory the OS refuses — is a tool failure naming the directory, and mutmut is not run.
+mutmut copies `src/` into `mutants/`, rewrites each function into
 one variant per mutation site, and runs the suite against each. `mutmut results` lists only
 unkilled mutants, so the killed count is derived: total − survivors. Buckets `skipped` and
 `suspicious` are not survivors.
 
 *Scope:* with `scope = "changed"` (the default) and a `--changed` run, only modules touching
 changed files are mutated (`python_adapter.module_filter`); with nothing changed the gate passes
-vacuously as "no changed modules". On a full run (`changed_files is None`) every module is
+vacuously as "no changed modules". Filters that match no mutant — every changed module lies
+outside mutmut's `[tool.mutmut] source_paths` — are the second vacuous case: the gate passes with
+`actual` reading `no mutants in changed modules: <filters>`, recognised by mutmut's own words
+(`nothing matches`) on its full output; if mutmut rewords them the run is a tool failure. A zero
+total with no filters is always a tool failure. On a full run (`changed_files is None`) every module is
 mutated regardless of `scope`.
 
 *Survivors are described, not just named.* For each survivor (up to 40) the gate runs
 `mutmut show <name>` and extracts the first removed and first added line of the diff, so the
 diagnostic reads "`x == y` → `x != y` in `function`". The ID alone tells an agent nothing.
+Survivors past the fortieth are not described but are counted: `actual` carries
+`<n> not inspected`.
 
 *Identity and the ledger:* mutmut names mutants positionally (`x_calc__mutmut_63`), so the number
 shifts whenever the function changes. Gauntlet keys a code mutant on
@@ -369,17 +394,19 @@ against `gauntlet.lock.json` under the single subject `code`: a survivor with an
 diagnostic; an approval whose mutant no longer survives is *stale* — reported as housekeeping,
 not a failure, with the remedy `gauntlet mutant prune-code`.
 
-*Score:* `(killed + equivalent) / (killed + equivalent + unresolved)`, 100 when there is nothing to
-mutate. `passed` is `score ≥ min_score`, and additionally *no* unresolved survivor when
-`require_review = true`.
+*Score:* `(killed + equivalent) / total`, where `total` is mutmut's own count — killed plus every
+survivor, described or not — and *unresolved* is every survivor not found approved, those past
+the inspection cap included. `passed` is `score ≥ min_score`, and additionally *no* unresolved
+survivor when `require_review = true`, uninspected ones included. While any survivor is
+uninspected no approval is reported stale: an approval whose mutant sits past the cap matches
+nothing described, and the gate cannot tell that from one whose mutant died. `score()`'s
+"100 when there is nothing to mutate" branch is unreachable from `run`.
 
 *Config:* `min_score` (default 90), `require_review` (default false), `scope`, `timeout` (default
 1800 s).
 
 *Technical notes:* mutmut's copy of the source tree fails on a dangling editor lock file; the gate
-recognizes that traceback and prefixes an actionable hint. The findings file records that mutmut's
-own coverage-guided test selection can go stale (a cached mapping reporting 100% after the
-protecting test was deleted); projects that care run the gate cold by clearing `mutants/` first.
+recognizes that traceback and prefixes an actionable hint.
 
 ## acceptance
 
@@ -406,6 +433,19 @@ into a contract.
 positions; `acceptance/mutation.py` enumerates mutants; the gate applies each **to the real
 feature file in place**, runs the acceptance suite, restores the original, and records survivors.
 
+*The fourth state, not measured.* Beside unapproved, scenarios failing and surviving mutants, a
+spec can be one whose mutants would measure nothing: a file that is not UTF-8, or one no step
+module binds. A literal `scenarios(...)` in a step module is proof of binding and costs nothing;
+a spec with no literal binding may still be bound through a computed path, so it is probed once —
+written empty through the same backup-write-run-restore loop the mutants use, against the whole
+steps directory. Every module that binds the file errors at collection, so a probe that dies
+means a computed binding and the mutants run against the whole directory; a probe the suite
+survives means nothing read the file. A not-measured spec fails the gate with one diagnostic
+(symbol `not measured`) and no survivor count — a count of survivors nothing could have killed
+carries no information — and `actual` gains `<k> spec(s) not measured`; the other specs are still
+mutated. `gauntlet mutant approve` and `gauntlet mutant prune` refuse such a spec with the same
+sentence, exit 1 and write nothing (package P1, 2026-09-21).
+
 *What gets mutated:*
 
 - Every cell of every `Examples:` row. The replacement is chosen to discriminate, not to be noise:
@@ -428,9 +468,11 @@ choice while the locator holds.
 
 *Cost:* each mutant runs the step module(s) that bind the mutated spec — discovered on every run
 from the `scenarios(...)` calls in the steps directory, never cached — so wall time is Σ (mutants
-of spec *i*) × (time of module *i*), with a ~0.4 s pytest start-up floor per mutant. A spec no
-module binds runs the whole directory, as every mutant did before 2026-09-13; `scope =
-"directory"` under `[gates.acceptance]` restores that for comparison. The baseline stage always
+of spec *i*) × (time of module *i*), with a ~0.4 s pytest start-up floor per mutant. Only a spec
+bound by a computed path now runs the whole directory, as every mutant did before 2026-09-13, at
+one extra whole-directory run per check for its probe; a spec bound by nothing is not measured.
+`scope = "directory"` under `[gates.acceptance]` restores the whole-directory run for every spec,
+for comparison. The baseline stage always
 runs the whole directory once. The paths each spec's mutants ran against are written to
 `.gauntlet/acceptance-scope.json` on every run. On the sixteen-spec regression subject the
 whole-directory run cost ~3,700 s; the scoped run is predicted at 700–1,000 s. `mutation_sample =
@@ -450,8 +492,8 @@ so in `actual` — the backup directory is empty after every completed run (item
 exactly as code mutants are (equivalent, unresolved, stale). Diagnostics are grouped **one per
 scenario**, listing up to six of its surviving values, because thirteen identical sentences burn
 the diagnostic budget and the hook's character cap for no signal. `actual` reads
-`"<n> spec(s), <m> surviving mutant(s), <k> reviewed-equivalent"`; a green summary omits the
-killed count. When stage 1 or 2 fails, `actual` ends `; mutation not run`, so the summary says
+`"<n> spec(s), <m> surviving mutant(s), <k> spec(s) not measured, <e> reviewed-equivalent"`, each
+part after the first present only when nonzero; a green summary omits the killed count. When stage 1 or 2 fails, `actual` ends `; mutation not run`, so the summary says
 which stage never ran rather than leaving it to inference (item 6, 2026-09-17).
 
 *Config:* `features` (default `features/`), `steps` (default `tests/steps`), `require_approved`

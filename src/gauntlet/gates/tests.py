@@ -6,6 +6,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
 
+from gauntlet import artifacts
 from gauntlet.gates.base import Diagnostic, GateContext, GateResult, run_cmd, timed
 
 name = "tests"
@@ -106,12 +107,23 @@ def _result(counts: dict[str, int], diagnostics: list[Diagnostic], returncode: i
     )
 
 
+def _delete_last_run(root: Path) -> None:
+    """The last run's junit.xml and coverage.json go before pytest starts.
+
+    A collection error leaves coverage.json untouched, and the coverage and crap
+    gates read whatever is on disk: deleting first makes a stale read impossible
+    rather than detected.
+    """
+    for artifact in (artifacts.JUNIT_ARTIFACT, artifacts.COVERAGE_ARTIFACT):
+        (root / artifact).unlink(missing_ok=True)
+
+
 @timed
 def run(ctx: GateContext, config: dict[str, Any]) -> GateResult:  # noqa: ARG001
     # `config` is unused but required by the Gate protocol's uniform signature.
-    artifacts = ctx.project_root / ".gauntlet"
-    artifacts.mkdir(exist_ok=True)
-    junit = artifacts / "junit.xml"
+    junit = ctx.project_root / artifacts.JUNIT_ARTIFACT
+    junit.parent.mkdir(exist_ok=True)
+    _delete_last_run(ctx.project_root)
 
     proc = run_cmd(_pytest_command(ctx, junit), cwd=ctx.project_root)
     if proc.returncode == NO_TESTS_COLLECTED:

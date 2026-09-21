@@ -168,12 +168,21 @@ def _approve(root: Path, *names: str) -> None:
 
 
 class _Recorder:
-    """Stands in for `run_acceptance`: notes which spec is mutated and what ran."""
+    """Stands in for `run_acceptance`: notes which spec is mutated and what ran.
 
-    def __init__(self, root: Path, names: tuple[str, ...]) -> None:
+    With `reads`, behaves as pytest-bdd does for the specs named: the run fails
+    whenever one of them is not its original text — a mutant is killed, an emptied
+    file errors at collection — and a spec nothing reads changes nothing.
+    """
+
+    def __init__(
+        self, root: Path, names: tuple[str, ...], reads: frozenset[str] = frozenset()
+    ) -> None:
         self.root = root
+        self.reads = reads
         self.originals = {n: (root / "features" / n).read_text() for n in names}
         self.calls: list[tuple[str | None, list[Path]]] = []
+        self.texts: list[str | None] = []  # the mutated spec's text at each call
 
     def __call__(self, root: Path, targets: Path | list[Path], *_: object) -> RunResult:
         mutated = [
@@ -181,11 +190,14 @@ class _Recorder:
         ]
         paths = list(targets) if isinstance(targets, list) else [targets]
         self.calls.append((mutated[0] if mutated else None, paths))
-        return RunResult(passed=True, output="")
+        self.texts.append((self.root / "features" / mutated[0]).read_text() if mutated else None)
+        return RunResult(passed=not set(mutated) & self.reads, output="")
 
 
-def _record_runs(root: Path, monkeypatch: pytest.MonkeyPatch, *names: str) -> _Recorder:
-    recorder = _Recorder(root, names or ("rating.feature", "semiannual.feature"))
+def _record_runs(
+    root: Path, monkeypatch: pytest.MonkeyPatch, *names: str, reads: frozenset[str] = frozenset()
+) -> _Recorder:
+    recorder = _Recorder(root, names or ("rating.feature", "semiannual.feature"), reads)
     monkeypatch.setattr(acceptance.python_adapter, "run_acceptance", recorder)
     return recorder
 
@@ -288,20 +300,144 @@ def test_a_kill_from_another_module_s_tests_no_longer_counts(two_module_project:
     assert whole.passed is True, whole.diagnostics
 
 
-def test_an_unbound_feature_falls_back_to_the_whole_directory(
+ORPHAN = FEATURE.replace("Premium", "Orphan")
+
+# Binds orphan.feature through a computed path: nothing `binding` can read statically.
+COMPUTED_BINDINGS = DECORATIVE.replace(
+    'scenarios("../../features/rating.feature")',
+    "from pathlib import Path\n\n"
+    'scenarios(str(Path(__file__).parents[2] / "features" / "orphan.feature"))',
+)
+
+NOT_UTF8 = b"Feature: caf\xe9\n\n  Scenario: x\n    Given a monthly premium of 100\n"
+
+READS_RATING = frozenset({"rating.feature"})
+
+
+@pytest.fixture
+def orphan_project(project: Path) -> Path:
+    """rating.feature bound by its module; orphan.feature approved and bound by nothing."""
+    (project / "features" / "orphan.feature").write_text(ORPHAN)
+    _approve(project, "rating", "orphan")
+    return project
+
+
+def _orphan_runs(recorder: _Recorder) -> list[tuple[str | None, list[Path]]]:
+    """(text written, targets) for every run made with orphan.feature mutated."""
+    return [
+        (text, targets)
+        for (mutated, targets), text in zip(recorder.calls, recorder.texts, strict=True)
+        if mutated == "orphan.feature"
+    ]
+
+
+def test_a_spec_no_module_binds_fails_as_not_measured_and_reports_no_survivor_count(
+    orphan_project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _record_runs(
+        orphan_project, monkeypatch, "rating.feature", "orphan.feature", reads=READS_RATING
+    )
+    result = acceptance.run(_ctx(orphan_project), CONFIG)
+    assert result.passed is False
+    assert result.actual == "2 spec(s), 1 spec(s) not measured"
+    assert [(d.file, d.symbol, d.value) for d in result.diagnostics] == [
+        ("features/orphan.feature", "not measured", None)
+    ]
+
+
+def test_the_unbound_diagnostic_names_the_binding_and_does_not_offer_mutant_approve(
+    orphan_project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _record_runs(
+        orphan_project, monkeypatch, "rating.feature", "orphan.feature", reads=READS_RATING
+    )
+    result = acceptance.run(_ctx(orphan_project), CONFIG)
+    message = result.diagnostics[0].message
+    assert "features/orphan.feature" in message
+    assert "under tests/steps" in message
+    assert "`scenarios(...)`" in message
+    assert "do not approve its mutants" in message
+    assert "gauntlet mutant approve" not in message
+
+
+def test_a_spec_bound_by_a_computed_path_is_probed_once_and_then_mutated_as_before(
+    orphan_project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    steps = orphan_project / "tests" / "steps"
+    (steps / "test_orphan.py").write_text(COMPUTED_BINDINGS)
+    recorder = _record_runs(
+        orphan_project,
+        monkeypatch,
+        "rating.feature",
+        "orphan.feature",
+        reads=frozenset({"rating.feature", "orphan.feature"}),
+    )
+    result = acceptance.run(_ctx(orphan_project), CONFIG)
+    assert result.passed is True, result.diagnostics
+    assert result.actual == "2 spec(s)"
+    runs = _orphan_runs(recorder)
+    assert runs[0] == ("", [steps])  # the probe: emptied, against the whole directory
+    assert len(runs) == 1 + CONFIG["mutation_sample"]  # then one run per mutant
+    assert all(text not in ("", ORPHAN) and targets == [steps] for text, targets in runs[1:])
+
+
+def test_a_literally_bound_spec_is_never_probed(
     project: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    (project / "features" / "orphan.feature").write_text(FEATURE.replace("Premium", "Orphan"))
+    """The acceptance runs are the baseline plus one per mutant and no more."""
+    _approve(project)
+    recorder = _record_runs(project, monkeypatch, "rating.feature", reads=READS_RATING)
+    result = acceptance.run(_ctx(project), CONFIG)
+    assert result.passed is True, result.diagnostics
+    assert len(recorder.calls) == 1 + CONFIG["mutation_sample"]
+    assert "" not in recorder.texts
+
+
+def test_the_probe_restores_the_spec_and_leaves_no_strand(
+    orphan_project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    recorder = _record_runs(
+        orphan_project, monkeypatch, "rating.feature", "orphan.feature", reads=READS_RATING
+    )
+    acceptance.run(_ctx(orphan_project), CONFIG)
+    assert _orphan_runs(recorder) == [("", [orphan_project / "tests" / "steps"])]
+    assert (orphan_project / "features" / "orphan.feature").read_text() == ORPHAN
+    assert not (orphan_project / BACKUP).exists()
+
+
+def test_an_unbound_spec_that_is_not_utf8_fails_closed_instead_of_crashing(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Real bytes. Approval hashes bytes, so the spec is approved and reaches mutation."""
+    spec = project / "features" / "orphan.feature"
+    spec.write_bytes(NOT_UTF8)
     _approve(project, "rating", "orphan")
-    recorder = _record_runs(project, monkeypatch, "rating.feature", "orphan.feature")
-    acceptance.run(_ctx(project), CONFIG)
-    steps = project / "tests" / "steps"
-    by_spec: dict[str | None, set[tuple[Path, ...]]] = {}
-    for mutated, targets in recorder.calls[1:]:
-        by_spec.setdefault(mutated, set()).add(tuple(targets))
-    assert by_spec == {
-        "rating.feature": {(steps / "test_rating.py",)},
-        "orphan.feature": {(steps,)},
+    recorder = _record_runs(project, monkeypatch, "rating.feature", reads=READS_RATING)
+    result = acceptance.run(_ctx(project), CONFIG)
+    assert result.passed is False
+    assert result.actual == "2 spec(s), 1 spec(s) not measured"
+    diagnostic = result.diagnostics[0]
+    assert (diagnostic.file, diagnostic.symbol, diagnostic.value) == (
+        "features/orphan.feature",
+        "not measured",
+        None,
+    )
+    assert "not UTF-8 at byte offset 12" in diagnostic.message
+    assert len(recorder.calls) == 1 + CONFIG["mutation_sample"]  # nothing was run for it
+    assert spec.read_bytes() == NOT_UTF8
+
+
+def test_other_specs_are_still_mutated_when_one_is_not_measured(
+    orphan_project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Nothing kills anything here — rating's bindings are decorative — so both states show."""
+    _record_runs(orphan_project, monkeypatch, "rating.feature", "orphan.feature")
+    result = acceptance.run(_ctx(orphan_project), CONFIG)
+    assert result.passed is False
+    assert result.actual == "2 spec(s), 2 surviving mutant(s), 1 spec(s) not measured"
+    assert {d.file for d in result.diagnostics} == {
+        "features/rating.feature",
+        "features/orphan.feature",
     }
 
 

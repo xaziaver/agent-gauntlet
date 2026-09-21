@@ -508,7 +508,12 @@ reported number — not by anything in the harness flagging it.
 
 **Routes to:** BACKLOG.md, v1. Correctness, not cost — belongs as its own item rather than under mutation cost management. Highest-priority entry in this document: a gate that certifies a suite whose assertions have been removed.
 
-**Status.** Open.
+**Status.** Applied, 2026-09-21, as G3 item 7 package P1 on `v1/item-7-p1-trustworthy-numbers`:
+`00bc0fc` (every mutmut run is cold) and `e01160f` (a symlinked `mutants/` refused in Gauntlet's
+words). The proposal's "pass whatever flag forces a cold run" is not what shipped — mutmut 3.7.0 has
+no such flag — and neither is keying the cache on the test scope's hash: the adapter removes
+`mutants/` before every run. The package's decisions, prediction, matrix and "Change, applied" text
+are below, after the annotations.
 
 **First in-the-wild occurrence, 2026-08-27 — a stale figure served, and passed, during real item
 work rather than a reproduction.** During ClaimGate item 5h's implementation a full `gauntlet
@@ -535,6 +540,319 @@ meaningful from a cold run — held on its second live test. Status unchanged, o
 *(Annotation, 2026-09-20, from the full read of every open entry against `c958ebb`: still true —
 `adapters/python.py::run_mutmut` runs `mutmut run` and nothing else, and `gates/mutation.py` has no
 freshness logic. Package P1, first in the order: the highest impact per effort in the file.)*
+
+**Package P1 — trustworthy numbers. Design decisions, advisor-recommended, human-ratified
+2026-09-21.** One block for the package, per the rule of 2026-09-20; it sits here because this is
+the package's first entry, and the other entries point at it. Branch
+`v1/item-7-p1-trustworthy-numbers` from `a65d36e`; six commits in this order, one subject run at the
+tip. The entries: this one (commit 2); "The coverage gate reports a stale artifact as a current
+result" (commit 3); "An approved spec no test module binds reports every mutant as surviving, and
+the diagnostic asserts the opposite cause" (commit 4); the `vacuous`-on-zero half of "The
+code-mutation gate's source scope is set outside Gauntlet, and narrowing it is invisible" (commit
+5); and "The code-mutation gate describes only its first forty survivors and drops the rest from the
+score", found while pricing the package and ruled into it (commit 6). Everything below that
+describes existing code was read at `a65d36e`; every figure labelled measured was taken by the
+advisor in two throwaways at the regression subject's pins — mutmut 3.7.0, pytest 9.1.1, pytest-bdd
+8.1.0, pytest-cov 7.1.0, coverage 7.15.4 — on Python 3.12.3, not the subject's 3.14, which is why
+the agent retakes the before-state on the owner's machine before any code moves.
+
+(1) *The extraction comes first, is its own commit, and moves the words, not the stages.*
+`gates/acceptance.py` is at 291 of 300 lines and P3, P4 and P6 land in it after P1. Its reporting
+half — `_MutationOutcome`, `_approval_diagnostics`, `_values`, `_scenario_diagnostic`,
+`_by_scenario`, `_stale_diagnostic`, `_survivor_count`, `_summary`, `MAX_LISTED` — moves to a new
+`acceptance/report.py`; the stages, `survivors_for`, `targets_for`, the scope record and the
+write-run-restore loop stay. The split is by who edits next: P3 and P6 change what the gate *says*
+and land in the new module, P1 and P4 change which *state* a run is in and land in the old one.
+`acceptance/` already imports `gates.base` (`strands.py`), and the property "The acceptance mutation
+engine is importable as a plain library" is about `gherkin` and `mutation`, which the new module
+does not touch. The commit changes no test file: every test reaches the gate through `run`,
+`survivors_for`, `SCOPE_RECORD` and `python_adapter.run_acceptance`, none of which moves. Prototype
+floors, to check against and not to hit: `gates/acceptance.py` 291 to 215, `acceptance/report.py`
+92; 622 passed and 1 skipped before and after in the advisor's sandbox. Cost: one more module, and
+the harness is over 54 files instead of 53.
+
+(2) *Every mutmut run is cold: the adapter removes `mutants/` before it starts mutmut.* Measured
+through the gate: assertions removed from a test with `mutants/` in place, the gate still reports
+`score 100.0%, 10 killed`; cold, `score 40.0%, 4 killed, 6 unresolved`; assertions restored with
+`mutants/` in place, still 40.0 %, twice — the mirror direction this entry declined to assert
+reproduces at 3.7.0. `mutmut run --help` offers `--max-children` and nothing else, and mutmut's own
+invalidation (read in its `collect_or_load_stats`) keys on source function hashes, its configuration
+and the *names* of tests, never their content. So there is no bypass to pass, and the removal is
+Gauntlet's. It goes in `adapters/python.py::run_mutmut`, not in the gate, because
+`gates/mutation.py::survivors_for` — the `approve-code` and `prune-code` path — calls the same
+function and the CLI must not see a warmer tree than the gate. A directory that is already absent is
+the normal case and not an error. One that cannot be removed — measured: a symlink, which
+`shutil.rmtree` refuses — is a tool failure naming the directory, and mutmut is not run: a number
+from a cache Gauntlet could not clear is the number this change exists to stop reporting. Ruled
+against: a cache keyed on item 2's tree hash, kept when the tree is unchanged. The unchanged-tree
+case is the one `stop-check` already skips, so it would save a hand re-run of `check` and nothing
+else, for a gate that would then write into mutmut's directory. Cost, measured from the subject's
+archived log: the tag's own baseline mutation line was a *warm* one — 2.444 s for 757 killed, where
+the same 757 took 16.588 s and 16.698 s in runs of 2026-09-10 and 2026-09-11 — so a check on the
+subject pays about fifteen seconds it used to skip, against an acceptance gate of about 850 s. The
+regime is inferred from the bimodal durations, not from a recorded `rm`. Every regression run since
+item 1 has been cold by protocol and reproduced 757, so the baseline figure stands.
+
+(3) *The tests gate deletes `junit.xml` and `coverage.json` before it runs pytest; nothing is added
+to the coverage gate.* Measured: a collection error (pytest exit 2) rewrites `junit.xml` and leaves
+`coverage.json` untouched, and the coverage gate then passes on the last run's figures; an ordinary
+failing test (exit 1) rewrites both and was never stale. The entry names the coverage gate;
+`gates/crap.py:158` reads the same artifact through `artifacts.load_coverage` and has the same
+exposure, so the fix belongs at the producer, where it covers both consumers, and
+delete-before-produce makes a stale read impossible rather than detected. A run id or an mtime
+comparison was the entry's suggestion and is ruled against: a gate has no run id to write,
+pytest-cov writes the file, and the comparison would need a sidecar for something an `unlink`
+settles. `junit.xml` goes too, because `gates/tests.py::run` treats its existence as proof pytest
+produced it. One message changes: `artifacts._missing_coverage_reason`, when `junit.xml` exists and
+`coverage.json` does not, says this "usually means there is no Python source under [project].src" —
+after this change the usual cause is a collection error, so the text names both, the collection
+error first, and points at the tests gate. And `gates/coverage.py:17-32` (`_ArtifactError`,
+`_load_artifact`) is dead — no caller under `src/` or `tests/`, searched case-sensitively for both
+names — and restates the old message, so it is deleted in this commit before someone corrects the
+wrong copy.
+
+(4) *A spec whose mutants would measure nothing is its own state: not measured, failing, with no
+survivor count.* Two causes, one mechanism. `survivors_for` raises a typed error, the gate turns it
+into one diagnostic for that spec and goes on to the next spec, and `mutant approve` and `mutant
+prune` — which share `survivors_for` by design — refuse with the same sentence and write nothing. It
+fails rather than passing vacuously: the question the gate asks is whether the code does what the
+specification says, the honest answer is that nothing checked, and the remedy is the agent's. *Bound
+by no module.* `binding.bound_modules` is proof when it finds a literal target and costs nothing,
+but it cannot be the whole test: measured, a spec bound through a computed path
+(`scenarios(str(FEATURES / "c.feature"))`) binds nothing statically, runs the whole directory today
+and has its mutants killed, so "statically unbound means unbound" would turn every such project red.
+So a statically unbound spec is probed once before it is mutated: the feature is written empty
+through the same backup-write-run-restore loop the mutants use, against the whole steps directory.
+Measured at pytest-bdd 8.1.0: with the file emptied — or holding text that is not Gherkin, or a bare
+`Feature:` line, which the advisor predicted would pass and does not — every module that binds it,
+by literal or by computed path, errors at collection and pytest exits 2; when nothing binds it the
+suite passes. A probe that survives is the unbound state; a probe that dies means a computed
+binding, and the mutants run against the whole directory as they do today. The diagnostic names the
+missing `scenarios(...)` binding and says in words not to approve mutants for it: the before-state,
+measured, is `mutant approve` banking four judgments about a suite that never ran. *Not UTF-8.*
+`survivors_for` reads with strict UTF-8 and nothing catches the raise. Measured: a non-UTF-8 spec
+that a module binds fails closed at the baseline stage, but one that nothing binds crashes the gate
+— `check` exits 1 on a traceback and so does `stop-check`, which Claude Code ignores, so the hook
+fails open and the log holds a `run.started` with no `run.finished`. Approval hashes bytes, so such
+a spec can be approved. It is item 7 change 2's family, met on the unbound path, and takes the same
+typed error. The summary gains one part, `N spec(s) not measured`, and a not-measured spec
+contributes no `surviving mutant(s)` figure. Cost: one whole-directory run per statically unbound
+spec per check, on projects that bind by computed path; and `acceptance-scope.json` still lists the
+steps directory against a spec that was not measured.
+
+(5) *Filters that match no mutant are a vacuous pass that names them — and today they are a failure,
+not the pass the scope entry describes.* That entry's second bullet says a `--changed` run touching
+only an out-of-scope file scores `100.0` through `score()`'s `total == 0` branch and passes
+unflagged. It does not reach that branch: `run_mutmut` has returned `ok=False` on a zero total since
+`8b3b841` (2026-08-02), and measured, mutmut 3.7.0 raises `AssertionError: Filtered for specific
+mutants, but nothing matches`, so the gate fails with `actual` null and the first 800 characters of
+a traceback whose one useful line is past the cut. So the ratified change is from a red nobody can
+act on to a pass flagged vacuous, `actual` reading `no mutants in changed modules: <filters>`:
+`--changed` is edit-time feedback, the runner's own docstring says nothing changed passes vacuously
+there, and a module mutmut was never pointed at is the same answer with a name attached. It is
+recognised by mutmut's words `nothing matches` under non-empty filters; if mutmut rewords it the
+gate falls back to today's tool failure, which is the closed direction. A zero total with no filters
+stays a tool failure: a whole project with no mutants is a broken configuration. `score()`'s `total
+== 0` branch stays unreachable from `run` and is left alone. Cost: the pass hides the scope gap this
+entry is about until P9's scope report names it; the filters in `actual` are the tell until then.
+
+(6) *Survivors the gate never described are unresolved, and while there are any, no approval is
+called stale.* The new entry below has the measurement: 150 of 160 mutants survive and the gate
+prints `score 20.0%, 10 killed, 40 unresolved`. The cap stays — one `mutmut show` is a subprocess,
+measured at about 0.6 s, so describing a thousand survivors is ten minutes inside a Stop hook whose
+timeout fails open — and the arithmetic changes: unresolved is every survivor that was not found
+approved, the denominator is mutmut's total, `actual` gains `N not inspected`, and `require_review`
+fails on uninspected survivors as it does on described ones. Staleness is the second half, read from
+`mutants.classify` and not measured: an approval whose mutant sits past the fortieth survivor
+matches nothing that was described, so it is reported stale and `prune-code` would delete a live
+judgment; with any survivor uninspected the gate cannot know, so it reports no stale approvals at
+all. Cost, stated: a project carrying more than forty survivors counts approved-equivalent mutants
+past the cap as unresolved until the list is shorter — conservative, visible in `actual`, and far
+from any figure this effort has seen (the Phase 0 spike had two equivalents, the subject has none).
+
+**Predicted effect on the regression subject.** One run at the branch tip, protocol as for every
+item since 3, and then the `stop-check` skip. The eleven `gate.finished` lines carry the tag's
+`gate`, `passed`, `error`, `diagnostics` and `actual`, so the record's `verdict_sha256` is
+`9c7aececf56dc4f5…`; `gauntlet.lock.json` is byte-identical (`61c2ac4d30025e8c`); the working tree
+is clean after the run; `.gauntlet/` lists exactly `acceptance-scope.json coverage.json events.jsonl
+jscpd junit.xml last-green.json run.lock` after the check and those seven plus `stop-attempts.json`
+after the skip; `mutants/` exists after the check, as it does today; no `*.tmp` exists anywhere in
+the clone; the log holds the same event kinds in the same order as change 2's run, the second
+invocation being one `run.reused`; and nothing else. No duration is predicted. The harness digest is
+recomputed at the tip over 54 files, not quoted. What each commit could have reached, and why it
+does not: (1) produces the acceptance line's `actual` and diagnostics from moved code — the text is
+moved, not retyped, and the line reads `16 spec(s), 73 reviewed-equivalent` with 0 diagnostics as at
+the tag. (2) removes a directory the protocol has already removed. (3) deletes two files under a
+`.gauntlet/` the protocol has already removed, and the tests gate then writes both as it does today.
+(4) measured at `a65d36e` over `git archive prototype-1`, steps `tests/acceptance`: all sixteen
+specs are statically bound by literal targets, so the probe never runs — no extra acceptance run and
+no extra write to a locked spec — all sixteen decode as UTF-8, and `acceptance-scope.json` is the
+same bytes. The mutants are now applied to the text before the first write rather than one at a time
+between writes; the texts written are the same. (5) the run is not `--changed`, the filters are
+empty and the total is 757. (6) no mutant survives, so nothing is uninspected and the summary is
+`score 100.0%, 757 killed`. If the run departs, it is bisected by commit, the extraction first.
+
+**What the subject cannot reach, and the matrix that proves it.** Every behaviour this package
+changes is one a green tree never enters, and commits 2, 5 and 6 are executed by nothing in this
+repository's own `gauntlet check` either, which enables no mutation gate. So the second proof
+carries the package: `g3-item7-p1-matrix.py` (sha256 `e532179b6357bef7…`, in the owner's review
+directory) builds both throwaways and prints one line per row. Before-state below is
+advisor-measured at `a65d36e`; the agent retakes it on Python 3.14 before any code moves, and a
+before-row that differs from these is a stop. After-state is the prediction, taken from an
+uncommitted advisor prototype and re-run by the agent at the branch tip and by the advisor from a
+clone.
+
+- M1a, cold, suite intact. Before and after: `score 100.0%, 10 killed`, passed.
+- M1b, assertions removed, `mutants/` left in place. Before: `score 100.0%, 10 killed`, passed.
+  After: `score 40.0%, 4 killed, 6 unresolved`, failed, 6 diagnostics.
+- M1c, the same with `mutants/` removed by hand first. Before and after: `score 40.0%, 4 killed, 6
+  unresolved`.
+- M1d, assertions restored, `mutants/` left in place. Before: still `score 40.0%, 4 killed, 6
+  unresolved`, failed. After: `score 100.0%, 10 killed`, passed.
+- M1e, `mutants/` is a symlink. Before: mutmut runs through it, `score 100.0%, 10 killed`. After:
+  failed, `actual` null, error beginning `could not remove mutants/ before the run`.
+- M2a, `--changed` with only a module outside `source_paths` changed. Before: failed, `actual` null,
+  error a traceback. After: passed, vacuous, `no mutants in changed modules: pkg.shell.io*`.
+- M2b, `--changed` with nothing changed. Before and after: `no changed modules`, vacuous.
+- M3, 150 of 160 mutants survive, true score 6.25. Before: `score 20.0%, 10 killed, 40 unresolved`.
+  After: `score 6.25%, 10 killed, 150 unresolved, 110 not inspected`. Both failed, 10 diagnostics
+  shown.
+- M4a, suite green. Before and after: tests `2/2 passing`, coverage line 80.0 branch 100.0, crap
+  2.0, all passed.
+- M4b, a collection error with the last run's `coverage.json` on disk. Before: tests failed on
+  `pytest exited 2`, coverage and crap *passed* on the old figures. After: tests the same; coverage
+  and crap failed, `actual` null, error naming a run that measured nothing; `.gauntlet/` holds
+  `junit.xml` and no `coverage.json`.
+- M4c, one ordinary failing test. Before and after: tests `1/2 passing`, coverage and crap passed on
+  fresh figures.
+- M5a, three specs: one bound by literal, one by nothing, one by a computed path. Before: `3
+  spec(s), 4 surviving mutant(s)`, one diagnostic on the unbound spec saying the scenario still
+  passes. After: `3 spec(s), 1 spec(s) not measured`, one diagnostic on the unbound spec with no
+  `value`, none on the computed-path spec; failed both times; the tree is clean after and no strand
+  is left.
+- M5b and M5c, the unbound spec made non-UTF-8, `check` and `stop-check`. Before: both exit 1 on a
+  `UnicodeDecodeError` traceback. After: both exit 2, `3 spec(s), 1 spec(s) not measured`.
+- M5d, the literal-bound spec made non-UTF-8. Before and after: exit 2, `3 spec(s), scenarios
+  failing; mutation not run`.
+- M5e, `gauntlet mutant approve` on the unbound spec. Before: exit 0, four mutants approved, a lock
+  file written. After: exit 1, one `config error:` line naming the missing binding, no lock file.
+
+**Tests that pin it, by commit; 623 to at least 649.** *Commit 1:* none new, and that is the pin —
+`git diff --stat` for the commit shows nothing under `tests/`. *Commit 2:*
+`test_a_mutmut_run_removes_the_cache_directory_before_mutmut_starts` — at the moment mutmut is
+invoked, `mutants/` does not exist. `test_a_run_with_no_cache_directory_proceeds`.
+`test_a_cache_that_cannot_be_removed_is_a_tool_failure_and_mutmut_is_not_run` — against a real
+symlink, not a mocked raise. `test_code_survivors_for_the_cli_run_cold_too` — the `approve-code`
+path clears the same directory. *Commit 3:*
+`test_the_tests_gate_deletes_last_runs_coverage_and_junit_before_pytest_runs`.
+`test_a_pytest_run_that_stops_at_collection_leaves_no_coverage_artifact`.
+`test_coverage_after_a_run_that_measured_nothing_is_an_error_not_a_pass` and
+`test_crap_after_a_run_that_measured_nothing_is_an_error_not_a_pass` — each with a stale artifact
+planted first. `test_the_missing_coverage_reason_names_a_collection_error_and_an_empty_source_tree`
+— by the two causes, not the phrasing. *Commit 4:*
+`test_a_spec_no_module_binds_fails_as_not_measured_and_reports_no_survivor_count`.
+`test_the_unbound_diagnostic_names_the_binding_and_does_not_offer_mutant_approve`.
+`test_a_spec_bound_by_a_computed_path_is_probed_once_and_then_mutated_as_before`.
+`test_a_literally_bound_spec_is_never_probed` — the acceptance runs are the baseline plus one per
+mutant and no more; this is the subject's guarantee.
+`test_the_probe_restores_the_spec_and_leaves_no_strand`.
+`test_an_unbound_spec_that_is_not_utf8_fails_closed_instead_of_crashing` — real bytes.
+`test_other_specs_are_still_mutated_when_one_is_not_measured`.
+`test_mutant_approve_refuses_a_spec_that_was_not_measured_and_writes_no_lock`.
+`test_mutant_prune_refuses_a_spec_that_was_not_measured_and_prunes_nothing`. *Commit 5:*
+`test_filters_that_match_no_mutant_are_a_vacuous_pass_that_names_them`.
+`test_a_mutmut_failure_under_filters_is_still_a_tool_failure`.
+`test_no_mutants_on_a_full_run_is_still_a_tool_failure`. *Commit 6:*
+`test_survivors_past_the_inspection_cap_count_as_unresolved_in_the_score`.
+`test_the_summary_says_how_many_survivors_were_not_inspected`.
+`test_no_approval_is_called_stale_while_any_survivor_is_uninspected`.
+`test_require_review_fails_on_uninspected_survivors_alone`.
+`test_at_or_under_the_cap_the_result_is_what_it_was`. Prototype floors for the code these pin:
+`gates/acceptance.py` 247 of 300 after commit 4 and `acceptance/report.py` 120; `adapters/python.py`
+202 to 231; `gates/mutation.py` 188 to 208 with `_summary` and `_judge` each at complexity 6 of 6,
+so either may need a helper; static, size, complexity and duplication green on the prototype, tests
+and coverage not claimed for it since it carried no new test.
+
+**What this package does not claim.** `gauntlet check --gates coverage` with the tests gate
+deselected still reads whatever artifact is on disk; that is a selection the caller made, and the
+message for a missing artifact already points at it. A `scenario("x.feature", "One name")` binding
+proves the file is bound, not every scenario in it; an unbound scenario inside a bound file still
+reports vacuous survivors. The scope entry's other half — reporting that mutmut's `source_paths` is
+narrower than `[project] src` — is P9's and untouched. mutmut's staleness is mutmut's to fix
+upstream; this package stops Gauntlet from reporting it.
+
+**Package P1 — change, applied 2026-09-21 (advisor-recommended, human-ratified).** On
+`v1/item-7-p1-trustworthy-numbers` from `a65d36e`: `6b80f2d` (this block, one new entry, one
+correction, three annotations; script-applied, 323/0), then the six commits in the block's order —
+`3f8759e` (the extraction: `gates/acceptance.py` 291 → 215, `acceptance/report.py` 93, nothing under
+`tests/`), `00bc0fc` (cold mutmut; 623 → 627 tests), `f8d2253` (the tests gate deletes its
+artifacts, the missing-coverage message, `gates/coverage.py`'s dead loader out; 632), `ca37391` (not
+measured; 640, one existing test deleted), `c313d51` (filters that match no mutant; 643), `7ca069d`
+(uninspected survivors; 648) — then two tidies the advisor asked for after reading the code,
+`e01160f` (a symlinked `mutants/` is refused without calling `rmtree`, because Python 3.14 renders
+that refusal as `[Errno None] None: PosixPath(…)`, which is no remedy; 650) and `c273487` (a comment
+the formatter had wrapped an annotation around), and `fd172ab` (README, `ARCHITECTURE.md`,
+`docs/GATES.md`: 2, 4 and 10 anchors, script-applied, read by the advisor as diffs at the ref). At
+the tip, measured by the advisor from a clone: `gates/acceptance.py` 247 of 300,
+`acceptance/report.py` 124, `adapters/python.py` 240, `gates/mutation.py` 230 with `_summary` and
+`_judge` at complexity 5, `gates/coverage.py` 97; harness `8b71d1b28c22d080…` over 54. Thirty-six
+agent judgments across the four turns, each ratified; the ones a later reader needs: the typed error
+is `NotMeasuredError` (ruff's N818); the probe's criterion is an empty `binding.bound_modules`,
+whatever `scope` says; `test_an_unbound_feature_falls_back_to_the_whole_directory` was deleted
+because the end state it pinned no longer exists, and the computed-path test pins the fallback;
+recognition of `nothing matches` reads mutmut's full output before the 800-character cut; commit
+`ca37391`'s message says `report.py` "93 to 121" and the committed file was 124 — measured before
+`ruff format` ran, pushed, rightly not amended.
+
+Two errors in this block, both the advisor's. "623 to at least 649" is a floor on a suite total, and
+a total is moved by a deletion: 26 tests were added as named, one was deleted, and the figure was
+648. New tests are to be stated as a count of named tests. And decision (6) gained its second half —
+no approval called stale while any survivor is uninspected — after the owner had ratified the first;
+it was flagged as an amendment and ratified by the running of the findings script. A third was
+caught before it was written down: the agent's report, and the advisor after it, took "Acceptance
+failures are diagnosed as three distinct states" under Properties to preserve to be about the gate's
+failing states and so to need a fourth. Read in full, it is about the three *approval* diagnoses —
+missing, not approved, changed since approval — which `3f8759e` moved to `acceptance/report.py`
+without retyping. That property stands as written and P1 preserves it.
+
+Proof, first shape. Regression run `20260921T162850-136397`: `gauntlet check --record
+~/gauntlet-review/item7-p1-verdict.json` in the item-1 clone at `be87d38`, `.gauntlet/` and
+`mutants/` removed first, Gauntlet at `fd172ab` installed into the clone's venv with
+`verdict.harness()` printing `8b71d1b28c22d080…` over 54 before the run, equal to the shell pipeline
+here and to the record's `harness.source` after it; started detached, once. Every clause of the
+prediction held: `verdict_sha256`
+`9c7aececf56dc4f5214bfc4a07cd729f347086039dc7ba9193c6edfa3d01ca42`; eleven `gate.finished` lines
+with the tag's `gate`, `passed`, `error`, `diagnostics` and `actual`; `run.finished` `a8a00163…`
+over 127; lock `61c2ac4d30025e8c` before and after; the clone's tree clean; `.gauntlet/` listing the
+seven after the check and the eight after the skip; `mutants/` present; no `*.tmp`; the skip
+`20260921T164800-155039`, one `run.reused` naming the check; and the last check-and-skip of change
+2's log against this one's, with `at`, `run`, `duration`, `reused_at` and `reused_run` dropped,
+differing in nothing over 14 lines — all agent-measured and quoted. The advisor's share: the eleven
+quoted tuples compared against the archived baseline run's and equal, and the tag's record exported
+from the archive *by the tool at `fd172ab`*, which prints the same 64 characters. Durations are
+outside the proof: acceptance 1092.143 s, and mutation 18.971 s — the first recorded figure for a
+run that is cold by the tool's own act and not by the protocol's `rm`, beside the tag's warm 2.444
+s. The agent's launch form lost the process's exit status; `run.finished` reads `passed: true` and
+the output ends `GAUNTLET PASSED`.
+
+Proof, second shape — the one that carries this package, since the subject reaches none of what
+changed and this repository's own check runs no mutation gate. `g3-item7-p1-matrix.py`
+(`e532179b6357bef7…`), sixteen rows: before-state at `6b80f2d` by the agent on Python 3.14.4 and at
+`a65d36e` by the advisor on 3.12.3, every row as the block records; after-state at `7ca069d` by both
+and at `fd172ab` by the agent, every row as the block predicts, the ten that change included, with
+M1e's error text alone moving at `e01160f`, as asked. Own gates nine green at every commit; the tip
+run `20260921T124732-112995` at `fd172ab`: 650/650, coverage 97.72 line and 94.33 branch, worst
+function 25, complexity 6, crap 8.21, duplication 0, gated tree `d03ce000…` over 99, agent-quoted.
+The turn that ended at `7ca069d` closed on one `run.reused` naming `20260921T120517-103354`, read
+from the log by the following turn.
+
+Found on the way and not in this package: a code mutant's ledger key is
+`module|function|removed|added`, so two survivors in one function that make the identical line
+change share a key, collapse to one in `mutants.classify`, and the collapsed one leaves `unresolved`
+— the forty-survivor entry's error in miniature, and one approval covering two positions. Read from
+source, met by the agent while writing commit 6's tests, not measured. It is P2's subject, locator
+uniqueness, and is priced there; until then `docs/GATES.md`'s `(killed + equivalent) / total` is
+exact only when no two survivors share a key.
 
 #### The acceptance gate re-runs every mutant on every check, and the green path now costs eight minutes
 
@@ -1278,13 +1596,28 @@ failure" — that entry is the same staging problem mirrored: there an approval 
 mutation state; here approval present with binding absent runs mutation vacuously and reports it as
 real.
 
-**Status.** Open. Not patched: Gauntlet is frozen for the duration of the ClaimGate project.
+**Status.** Applied, 2026-09-21, as G3 item 7 package P1: `ca37391`. A spec no module binds, or one
+that is not UTF-8, is its own failing state — not measured — with no survivor count, and `mutant
+approve` and `mutant prune` refuse it. "Or mark it vacuous" in the proposal was ruled against: it
+fails. Decision (4) and the "Change, applied" text are in the package block under "Mutation's own
+coverage-guided test selection goes stale on a test-only change".
 
 *(Annotation, 2026-09-20, from the full read of every open entry against `c958ebb`: cheaper than
 when written. Since G3 item 1, `acceptance/binding.py` computes which module binds which feature,
 and `gates/acceptance.py` says of the unbound case "a feature no module binds runs the whole
 directory — more enforcement, not less", which is exactly this entry's vacuous run. What is missing
 is a state and a diagnostic, not a collector. Package P1.)*
+
+*(Annotation, 2026-09-21, from pricing package P1 against `a65d36e`: the decisions, the prediction
+and the tests are in the package block under "Mutation's own coverage-guided test selection goes
+stale on a test-only change", decision (4). Two things the pricing measured that this entry did not
+have. A binding check cannot be static alone: a spec bound through a computed path binds nothing
+`acceptance/binding.py` can read, and is mutated correctly today through the whole-directory
+fallback, so the state is decided by a probe — the file emptied, the suite demanded to fail — and
+only for a spec with no literal binding. And the unbound path hides a crash: an unbound spec that is
+not UTF-8 raises out of `survivors_for`, `stop-check` exits 1 and the hook fails open. Measured
+also: in the unbound state `gauntlet mutant approve` exits 0 and writes the approvals this entry
+calls the worst available action.)*
 
 #### The coverage gate reports a stale artifact as a current result
 
@@ -1320,7 +1653,10 @@ G2d.)*
 
 **Routes to:** BACKLOG.md, v1 item 2 (root-cause diagnostics). This is exactly that item's "nothing to measure" case reported as "measured, found nothing" — the clearest real instance of it found so far.
 
-**Status.** Open.
+**Status.** Applied, 2026-09-21, as G3 item 7 package P1: `f8d2253`. Not the freshness comparison
+proposed above: the tests gate deletes `junit.xml` and `coverage.json` before pytest runs, which
+covers the crap gate as well. Decision (3) and the "Change, applied" text are in the package block
+under "Mutation's own coverage-guided test selection goes stale on a test-only change".
 
 **Correction (2026-08-09).** "`gates/mutation.py` genuinely re-executes `mutmut run` as a fresh
 subprocess every invocation... not because it was cached" above is true of the subprocess, false of
@@ -1338,6 +1674,15 @@ from reasoning about how a tool must work, rather than from running it, has been
 has been right yet. That is not a reason to stop writing claims — it is a reason every one of them
 stays provisional until it has actually been run, which is the discipline this document tries to
 enforce on itself as much as on the harness it describes.
+
+*(Annotation, 2026-09-21, from pricing package P1 against `a65d36e`: decisions in the package block
+under "Mutation's own coverage-guided test selection goes stale on a test-only change", decision
+(3). Reproduced at the subject's pins: a collection error rewrites `junit.xml` and leaves
+`coverage.json` alone, and the coverage gate passes on the old figures. The crap gate reads the same
+file through `artifacts.load_coverage` (`gates/crap.py:158`) and passes on it too, which this entry
+does not say; the fix is therefore at the producer — the tests gate deletes both artifacts before
+pytest runs — and not the freshness comparison proposed above. `gates/coverage.py:17-32` is a dead
+second copy of the artifact loader and goes in the same commit.)*
 
 #### The code-mutation gate's source scope is set outside Gauntlet, and narrowing it is invisible
 
@@ -1375,7 +1720,12 @@ assumed.
 
 **Routes to.** `BACKLOG.md`.
 
-**Status.** Open. Not patched: Gauntlet is frozen for the duration of the ClaimGate project.
+**Status.** Open — half applied, 2026-09-21, as G3 item 7 package P1: `c313d51` makes filters that
+match no mutant a vacuous pass naming them, where they were a tool failure (the correction of
+2026-09-21 below; decision (5) in the package block under "Mutation's own coverage-guided test
+selection goes stale on a test-only change"). What stays open is the first bullet, the full-run
+shape: reporting that mutmut's `source_paths` is narrower than `[project] src`. That is package
+P9's.
 
 **Realized, 2026-08-24, with a second facet.** Item 5c placed `src/claimgate/shell/` — two modules,
 ~340 lines of intake orchestration and persistence — outside `source_paths`, correctly, since the
@@ -1397,6 +1747,60 @@ two changes. Setting `vacuous` when `total == 0` for any reason is small and unr
 predicts a finding on the frozen subject for a *deliberate* design — ClaimGate's shell sits outside
 `source_paths` on purpose — so it must report the scope and never fail on it, or the subject cannot
 be green again. That half stays last among the verdict-path work, package P9, as ruled 2026-09-19.)*
+
+*(Correction, 2026-09-21, from pricing package P1 against `a65d36e`: the second bullet under "Why it
+matters" is false, and was false when written. A `--changed` run in which only an out-of-scope file
+changed never reaches `score(0, 0, 0)`: `adapters/python.py::run_mutmut` has returned `ok=False` on
+a zero total since `8b3b841` (2026-08-02), and the gate turns that into a tool failure. Measured at
+mutmut 3.7.0: the gate *fails*, `actual` null, its error the first 800 characters of a traceback
+that ends, past the cut, in `AssertionError: Filtered for specific mutants, but nothing matches`. So
+the narrowing is not invisible in that shape — it is a red that names nothing — and "set `vacuous`
+when `total == 0`" is not a flag on a pass but a change from fail to pass. It was ratified as that
+on 2026-09-21: package block under "Mutation's own coverage-guided test selection goes stale on a
+test-only change", decision (5). The first bullet, the full-run shape, stands and is P9's. The
+bullet was reasoned from `score()` without reading its caller: a fourth instance of the pattern the
+coverage entry names.)*
+
+#### The code-mutation gate describes only its first forty survivors and drops the rest from the score
+
+**What happened.** Found on 2026-09-21 while pricing package P1, by reading `gates/mutation.py` and
+then measuring. `collect` runs one `mutmut show` per survivor and stops at `MAX_SURVIVORS_INSPECTED
+= 40`. `_classified_result` then computes killed as mutmut's total minus *every* survivor, and
+unresolved as the survivors that were described and not approved. A survivor past the fortieth is in
+neither figure, so it falls out of the numerator and the denominator together. Measured in a
+throwaway at the regression subject's pins: 160 mutants, 150 survive, 10 are killed, the true score
+is 6.25 %, and the gate reports `score 20.0%, 10 killed, 40 unresolved`. The cap has been there
+since `f4484b5` (2026-08-02).
+
+**Why it matters.** The error is always in the passing direction and grows with the project. By the
+same arithmetic, not measured: 1,000 mutants with 110 survivors is a true 89.0 %, under a
+`min_score` of 90, and the gate computes 890 / 930 = 95.7 % and passes. The unresolved count is
+capped at 40 whatever the truth, so "40 unresolved" reads as a number and is a ceiling. And
+`mutants.classify` calls an approval stale when no described survivor matches it, so an
+approved-equivalent mutant that sits past the fortieth survivor is reported as no longer produced,
+and `gauntlet mutant prune-code` would delete a live judgment. That half is read from source, not
+measured.
+
+**What would address it.** Keep the cap — a `mutmut show` is a subprocess, measured at about 0.6 s,
+and a thousand of them inside a Stop hook is a timeout that fails open — and make the numbers true
+without it: every survivor not found approved is unresolved, the denominator is mutmut's total, the
+summary says how many survivors were not inspected, and no approval is called stale while any
+survivor is uninspected.
+
+**Proposed change.** As above, in `gates/mutation.py`'s `_classified_result`, `_judge` and
+`_summary`. Decisions, prediction and tests are in the package block under "Mutation's own
+coverage-guided test selection goes stale on a test-only change", decision (6).
+
+**What it cost us.** Nothing realized: the regression subject has no surviving code mutant and the
+build never carried more than a handful. It is the same sentence as the rest of P1 — a gate
+reporting a measurement that did not happen — and was ruled into that package on the day it was
+found.
+
+**Routes to:** BACKLOG.md, G3 item 7, package P1.
+
+**Status.** Applied, 2026-09-21, as G3 item 7 package P1: `7ca069d`, with `c273487` (a comment
+moved). Decision (6) and the "Change, applied" text are in the package block under "Mutation's own
+coverage-guided test selection goes stale on a test-only change".
 
 #### Four analysis gates scope to `src` alone, so step definitions are outside static, size, complexity and duplication
 
@@ -5267,6 +5671,17 @@ and the v3 entry. Every close from here sets its Status lines, so that number is
 and needs no inventory to read. The ground report's classification of CLI-only entries as outside
 the verdict path stands, and its *reason* does not: see "A command's declaration runs on every
 invocation; only its body is outside a check" under *Designed boundaries*.)*
+
+*(Annotation, 2026-09-21: P1 priced and ratified, and it grew by one entry. Reading its source found
+"The code-mutation gate describes only its first forty survivors and drops the rest from the score",
+which the owner ruled into P1 the same day, so the tail is 36 live entries in ten packages and `grep
+-c '^\*\*Status\.\*\* Open' gauntlet-findings.md` prints 37 until P1 closes. The pricing also
+corrected the scope entry — its `--changed` case fails today rather than passing — and closed a
+loose end by measurement: an unbound spec that is not UTF-8 crashes the acceptance gate and fails
+the Stop hook open, fixed inside P1's unbound-spec commit. P1's block, with its six commits, one
+prediction and sixteen-row matrix, is under "Mutation's own coverage-guided test selection goes
+stale on a test-only change". The extraction it pays is a new `acceptance/report.py`; P3 and P6 land
+there, P4 in `gates/acceptance.py`.)*
 
 **The v1 backlog's root-cause-diagnostics item needs a fourth category.** It
 currently distinguishes "tool failed," "tool found nothing," and "nothing to

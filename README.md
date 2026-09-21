@@ -563,14 +563,6 @@ __pycache__` and rebuild.
 a "what changed" diff needs another source. Without a committed version it says so plainly rather
 than guessing — but the diff is unavailable for uncommitted or untracked files.
 
-**A mutation score can be served from mutmut's cache.** mutmut keeps its test-selection mapping
-under `mutants/`, and Gauntlet runs `mutmut run` against whatever is there. Weaken or delete a test
-without touching source and the gate can report the old score: reproduced three times on the project
-Gauntlet was proven on, in the passing direction, and met twice more unprompted, once in each
-direction. *Workaround:* `rm -rf mutants/` before any run whose number you will record, and trust a
-score on a commit that adds a function only from a cold run. *Fix:* first in `BACKLOG.md`'s v1 tail
-(package P1).
-
 **Most quoted-literal acceptance mutants are killed without calling your code.** A quoted string in
 a step line is mutated by appending a marker *after* the closing quote, so under pytest-bdd's
 `parsers.re` the mutated line binds to no step and the test fails at step resolution — 109 of 129
@@ -626,10 +618,9 @@ only describes where each version line is going and where the product's boundary
 Eleven gates, the approval ledger, hooks, status and review, the event log. Proven on two
 projects: this repository, and an FNOL intake service built end to end under the gates and frozen
 at its `prototype-1` tag as the regression subject for every change made here. What remains for the
-v1 line is sequenced in `BACKLOG.md` as ten packages. Most of it is polish; three things are not,
-and an adopter should read them under Known issues first: a mutation score that can be served from
-cache, acceptance mutants that die before they reach the code, and one change to the ledger's key
-format. The v1 line is done when every gate can run on a project it fits without being weakened to
+v1 line is sequenced in `BACKLOG.md` as ten packages. Most of it is polish; two things are not,
+and an adopter should read them under Known issues first: acceptance mutants that die before they
+reach the code, and one change to the ledger's key format. The v1 line is done when every gate can run on a project it fits without being weakened to
 pass, and when a number a gate prints is a measurement that happened.
 
 ### v2 — the workspace

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
+import subprocess
 import sys
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -19,6 +21,8 @@ MUTMUT_RESULT_LINE = re.compile(r"^\s*(?P<name>[\w.]+):\s*(?P<status>\w+)\s*$")
 SURVIVED = "survived"
 MUTANT_SUFFIX = re.compile(r"__mutmut_\d+$")
 MUTMUT_PROGRESS = re.compile(r"(?:^|\s)(\d+)/(\d+)(?:\s|$)")
+MUTANTS_DIR = "mutants"  # mutmut's copy of the tree and its results, which it reuses
+NOTHING_MATCHES = "nothing matches"  # mutmut's words when the filters name no mutant
 
 
 def interpreter(root: Path, configured: str | None = None) -> str:
@@ -179,18 +183,52 @@ def parse_total(payload: str) -> int:
     return max((int(m.group(2)) for m in MUTMUT_PROGRESS.finditer(payload)), default=0)
 
 
+def _clear_cache(root: Path) -> str | None:
+    """Remove `mutants/` so the run is cold, or say why it could not be.
+
+    mutmut reuses its per-function test selection across runs, keyed on test
+    names and never their content, so a warm run can certify a suite whose
+    assertions were removed. One that is already absent is the normal case.
+    """
+    cache = root / MUTANTS_DIR
+    if cache.is_symlink():
+        # Live or dangling, rmtree refuses it, and the OS's wording for that is not a remedy.
+        return f"could not remove {MUTANTS_DIR}/ before the run: it is a symbolic link"
+    if not cache.exists():
+        return None
+    try:
+        shutil.rmtree(cache)
+    except OSError as exc:
+        return f"could not remove {MUTANTS_DIR}/ before the run: {exc}"
+    return None
+
+
+def _no_mutants(proc: subprocess.CompletedProcess[str], filters: list[str]) -> MutationRun:
+    """A zero total is a broken configuration - unless filters were given and mutmut said
+    they matched nothing, which is a run with nothing to do and is reported as one.
+    Recognised by mutmut's words, read before the error is cut to 800 characters; if
+    mutmut rewords them the result is today's tool failure, the closed direction."""
+    if filters and NOTHING_MATCHES in proc.stdout + proc.stderr:
+        return MutationRun(ok=True, total=0)
+    return MutationRun(ok=False, error=(proc.stderr or proc.stdout).strip()[:800])
+
+
 def run_mutmut(root: Path, python: str, filters: list[str], timeout: int) -> MutationRun:
-    """Run mutmut and collect survivors.
+    """Run mutmut cold and collect survivors.
 
     `mutmut results` lists only unkilled mutants, so the killed count is derived
-    from the run total rather than by counting status lines.
+    from the run total rather than by counting status lines. A cache Gauntlet
+    could not clear is a tool failure, not a number: mutmut is not run.
     """
+    not_cleared = _clear_cache(root)
+    if not_cleared is not None:
+        return MutationRun(ok=False, error=not_cleared)
     proc = run_cmd([python, "-m", "mutmut", "run", *filters], cwd=root, timeout=timeout)
     if proc.returncode == MISSING_TOOL_RETURNCODE:
         return MutationRun(ok=False, error=proc.stderr)
     total = parse_total(proc.stdout + proc.stderr)
     if total == 0:
-        return MutationRun(ok=False, error=(proc.stderr or proc.stdout).strip()[:800])
+        return _no_mutants(proc, filters)
     results = run_cmd([python, "-m", "mutmut", "results"], cwd=root, timeout=timeout)
     return MutationRun(
         ok=True, total=total, survivors=parse_results(results.stdout).get(SURVIVED, [])

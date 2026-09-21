@@ -10,14 +10,12 @@ from __future__ import annotations
 
 import dataclasses
 import json
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from gauntlet import config as config_mod
 from gauntlet import locking, registry, specs
 from gauntlet import mutants as mutants_mod
-from gauntlet.acceptance import binding, gherkin, mutation, strands
+from gauntlet.acceptance import binding, gherkin, mutation, report, strands
 from gauntlet.acceptance.mutation import Mutant
 from gauntlet.adapters import python as python_adapter
 from gauntlet.gates import base
@@ -27,15 +25,11 @@ name = "acceptance"
 
 THRESHOLD = "approved, passing, and mutation-proof"
 SCOPE_RECORD = Path(".gauntlet") / "acceptance-scope.json"
-MAX_LISTED = 6
 NOT_RUN = "; mutation not run"
 
 
-@dataclass(frozen=True)
-class _MutationOutcome:
-    diagnostics: list[Diagnostic]
-    equivalent: int
-    stale: list[str]
+class NotMeasuredError(Exception):
+    """This spec's mutants would measure nothing; the message says why, in one line."""
 
 
 def survivors_for(
@@ -44,15 +38,42 @@ def survivors_for(
     """Mutants of one feature that the bound scenarios fail to kill.
 
     Public so the `gauntlet mutant` commands share the gate's code path: the CLI
-    must never disagree with the gate about what survived.
+    must never disagree with the gate about what survived. Raises NotMeasuredError for
+    a spec that is not UTF-8 or that no step module binds: every mutant of such a
+    spec survives, and the count would carry no information.
     """
-    text = path.read_text(encoding="utf-8")
+    root = ctx.project_root
+    text = _decoded(root, path)
     candidates = mutation.mutants(gherkin.parse(text, str(path)))
     chosen = mutation.sample(candidates, int(config.get("mutation_sample", 0)))
+    timeout = int(config.get("timeout", 600))
+    if not binding.bound_modules(steps, path):
+        _probe(root, path, text, steps, ctx.python, timeout)
     targets = targets_for(config, steps, path)
-    return _survivors(
-        ctx.project_root, targets, path, chosen, ctx.python, int(config.get("timeout", 600))
-    )
+    texts = [mutation.apply(text, mutant) for mutant in chosen]
+    alive = _surviving(root, targets, path, text, texts, ctx.python, timeout)
+    return [chosen[index] for index in alive]
+
+
+def _decoded(root: Path, path: Path) -> str:
+    """The spec's text. Approval hashes bytes, so an approved spec can still fail here."""
+    try:
+        return path.read_text(encoding="utf-8")
+    except UnicodeDecodeError as exc:
+        key = specs.key_for(root, path)
+        raise NotMeasuredError(f"{key} is not UTF-8 at byte offset {exc.start}") from exc
+
+
+def _probe(root: Path, path: Path, text: str, steps: Path, python: str, timeout: int) -> None:
+    """A spec with no literal binding is bound by a computed path or by nothing.
+
+    Emptying it tells which: every module that binds it errors at collection, and
+    a suite that still passes never read it (measured at pytest-bdd 8.1.0). One
+    whole-directory run, through the loop the mutants use, so a kill restores it.
+    """
+    if _surviving(root, [steps], path, text, [""], python, timeout):
+        shown = steps.relative_to(root) if steps.is_relative_to(root) else steps
+        raise NotMeasuredError(report.unbound(specs.key_for(root, path), shown))
 
 
 def targets_for(config: dict[str, Any], steps: Path, feature: Path) -> list[Path]:
@@ -70,10 +91,17 @@ def targets_for(config: dict[str, Any], steps: Path, feature: Path) -> list[Path
 
 def _classify_feature(
     ctx: GateContext, config: dict[str, Any], path: Path, steps: Path, approved: registry.Registry
-) -> tuple[list[Diagnostic], int, list[str]]:
+) -> report.MutationOutcome:
     key = specs.key_for(ctx.project_root, path)
-    verdict = mutants_mod.classify(approved, key, survivors_for(ctx, config, path, steps))
-    return _by_scenario(key, verdict.failing), len(verdict.equivalent), verdict.stale
+    try:
+        survivors = survivors_for(ctx, config, path, steps)
+    except NotMeasuredError as exc:
+        # Its own failing state, with no survivor count: the honest answer is that nothing checked.
+        return report.MutationOutcome([report.not_measured_diagnostic(key, str(exc))], 0, [], 1)
+    verdict = mutants_mod.classify(approved, key, survivors)
+    return report.MutationOutcome(
+        report.by_scenario(key, verdict.failing), len(verdict.equivalent), verdict.stale
+    )
 
 
 def _mutation_outcome(
@@ -82,17 +110,10 @@ def _mutation_outcome(
     features: list[Path],
     steps: Path,
     approved: registry.Registry,
-) -> _MutationOutcome:
-    diagnostics: list[Diagnostic] = []
-    equivalent = 0
-    stale: list[str] = []
-    for path in features:
-        found, reviewed, gone = _classify_feature(ctx, config, path, steps, approved)
-        diagnostics.extend(found)
-        equivalent += reviewed
-        stale.extend(gone)
+) -> report.MutationOutcome:
+    outcomes = [_classify_feature(ctx, config, path, steps, approved) for path in features]
     _record_scope(ctx, config, features, steps)
-    return _MutationOutcome(diagnostics, equivalent, stale)
+    return report.merged(outcomes)
 
 
 def _record_scope(
@@ -115,35 +136,25 @@ def _record_scope(
     destination.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
-def _approval_diagnostics(findings: list[registry.Finding]) -> list[Diagnostic]:
-    return [
-        Diagnostic(
-            file=registry.bare(f.key),
-            symbol=f.status.value,
-            message=registry.describe(f, noun="spec"),
-        )
-        for f in findings
-    ]
-
-
-def _survivors(
+def _surviving(
     root: Path,
     targets: list[Path],
     path: Path,
-    mutants: list[mutation.Mutant],
+    original: str,
+    texts: list[str],
     python: str,
     timeout: int,
-) -> list[mutation.Mutant]:
-    """Apply each mutant in place and demand the targets fail. Always restores."""
-    original = path.read_text(encoding="utf-8")
+) -> list[int]:
+    """Write each text in place and demand the targets fail; the indexes of the texts
+    that pass. Always restores."""
     strands.backup(root, path, original)
-    survived: list[mutation.Mutant] = []
+    survived: list[int] = []
     with base.signals_raise():
         try:
-            for mutant in mutants:
-                base.write_text_atomic(path, mutation.apply(original, mutant))
+            for index, text in enumerate(texts):
+                base.write_text_atomic(path, text)
                 if python_adapter.run_acceptance(root, targets, python, timeout).passed:
-                    survived.append(mutant)
+                    survived.append(index)
         finally:
             base.write_text_atomic(path, original)
             strands.discard(root, path)
@@ -172,7 +183,9 @@ def _approval_stage(
     if not findings:
         return None
     return _result(
-        False, f"{len(findings)} unapproved or modified spec(s)", _approval_diagnostics(findings)
+        False,
+        f"{len(findings)} unapproved or modified spec(s)",
+        report.approval_diagnostics(findings),
     )
 
 
@@ -191,69 +204,12 @@ def _baseline_stage(
     )
 
 
-def _values(items: list[Mutant]) -> str:
-    listed = ", ".join(f"line {m.line}: {m.original}->{m.mutated}" for m in items[:MAX_LISTED])
-    extra = len(items) - MAX_LISTED
-    return listed + (f" (+{extra} more)" if extra > 0 else "")
-
-
-def _scenario_diagnostic(path: str, scenario: str, items: list[mutation.Mutant]) -> Diagnostic:
-    """One diagnostic per scenario, not per value: thirteen identical sentences
-    burn the diagnostic budget and the hook's character cap for no added signal."""
-    return Diagnostic(
-        file=path,
-        symbol=scenario,
-        line=min(m.line for m in items),
-        value=len(items),
-        message=(
-            f"{len(items)} surviving mutant(s) in {scenario!r}: {_values(items)}. "
-            f"The scenario still passes with these values changed, so it is not "
-            f"checking them. Assert on them, or — if the specification maps both "
-            f"values to the same outcome — have a human review them with "
-            f"`gauntlet mutant approve`."
-        ),
-    )
-
-
-def _by_scenario(path: str, items: list[mutation.Mutant]) -> list[Diagnostic]:
-    grouped: dict[str, list[mutation.Mutant]] = {}
-    for mutant in items:
-        grouped.setdefault(mutant.scenario, []).append(mutant)
-    return [_scenario_diagnostic(path, scenario, ms) for scenario, ms in grouped.items()]
-
-
-def _stale_diagnostic(stale: list[str]) -> Diagnostic:
-    return Diagnostic(
-        file=config_mod.LOCK_FILENAME,
-        message=(
-            f"{len(stale)} approved equivalent mutant(s) no longer survive — the "
-            f"assertions got sharper, so these judgments are stale. Remove them with "
-            f"`gauntlet mutant prune`: {', '.join(stale[:3])}" + (" ..." if len(stale) > 3 else "")
-        ),
-    )
-
-
-def _survivor_count(diagnostics: list[Diagnostic]) -> int:
-    return sum(int(d.value or 0) for d in diagnostics)
-
-
-def _summary(features: list[Path], outcome: _MutationOutcome) -> str:
-    parts = [f"{len(features)} spec(s)"]
-    if outcome.diagnostics:
-        parts.append(f"{_survivor_count(outcome.diagnostics)} surviving mutant(s)")
-    if outcome.equivalent:
-        parts.append(f"{outcome.equivalent} reviewed-equivalent")
-    if outcome.stale:
-        parts.append(f"{len(outcome.stale)} stale approval(s)")
-    return ", ".join(parts)
-
-
-def _mutation_result(features: list[Path], outcome: _MutationOutcome) -> GateResult:
+def _mutation_result(features: list[Path], outcome: report.MutationOutcome) -> GateResult:
     diagnostics = list(outcome.diagnostics)
     if outcome.stale:
         # Stale approvals are housekeeping, not a defect: report, do not fail.
-        diagnostics.append(_stale_diagnostic(outcome.stale))
-    return _result(not outcome.diagnostics, _summary(features, outcome), diagnostics)
+        diagnostics.append(report.stale_diagnostic(outcome.stale))
+    return _result(not outcome.diagnostics, report.summary(features, outcome), diagnostics)
 
 
 def _stages(
