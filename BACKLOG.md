@@ -133,6 +133,36 @@ Every session reads `CLAUDE.md` and this file. Then, per item:
 
 ## Status as of this handoff
 
+**2026-09-21, G3 item 7 package P1 applied (trustworthy numbers).** On
+`v1/item-7-p1-trustworthy-numbers` from `a65d36e`, the first branch under the package rule: the
+human findings commit `6b80f2d` (one block for the package — six decisions, one prediction, a
+sixteen-row matrix, 26 test names — one new entry, the scope entry corrected, three annotations),
+`3f8759e` (extraction: the acceptance gate's reporting half to `acceptance/report.py`,
+`gates/acceptance.py` 291 → 215), `00bc0fc` (every mutmut run is cold: the adapter removes
+`mutants/`), `f8d2253` (the tests gate deletes `junit.xml` and `coverage.json` before pytest, which
+covers the crap gate too), `ca37391` (a spec that is not UTF-8, or that no module binds — decided by
+a probe, since a computed path binds nothing statically — is *not measured*: it fails with no
+survivor count and `mutant approve` and `prune` refuse it; this also closes a crash that failed the
+Stop hook open), `c313d51` (filters matching no mutant: a vacuous pass naming them, where the scope
+entry had wrongly said they already passed — they failed on a traceback), `7ca069d` (survivors past
+the forty-survivor cap are unresolved, and no approval is called stale while any is uninspected; the
+entry was found while pricing and ruled in), tidies `e01160f` and `c273487`, documents `fd172ab`.
+Verified against `origin` by the advisor at every step. Two proofs: the matrix, before and after, by
+the agent on Python 3.14 and the advisor on 3.12, every row as recorded and as predicted; and
+regression run `20260921T162850-136397` in the item-1 clone at `be87d38` with Gauntlet at `fd172ab`,
+harness `8b71d1b28c22d080…` over 54 equal to the tip's, eleven tuples identical to the tag's,
+`run.finished` `a8a00163…` over 127, lock `61c2ac4d30025e8c`, record digest `9c7aececf56dc4f5…`,
+skip `20260921T164800-155039`, log identical to change 2's with ids, times and durations dropped,
+acceptance 1092.143 s, mutation 18.971 s cold. Four entries read Applied; "The code-mutation gate's
+source scope…" stays Open for its P9 half, so `grep -c '^\*\*Status\.\*\* Open'
+gauntlet-findings.md` prints 33: 32 live entries in nine packages and eight regression runs, and the
+v3 entry. Own tip run `20260921T124732-112995`: 650/650, 97.72 / 94.33, crap 8.21, tree `d03ce000…`
+over 99 — the own-baseline paragraph below, the re-planning paragraph's "291 of 300", the debts line
+and CLAUDE.md's "about three points of headroom" (now 4.33) are superseded by these figures and
+corrected at the next save point. Carried to P2's pricing: code mutants that make the identical line
+change in one function share a ledger key. Merge to `main` is the human's next act; P2 opens with
+the advisor's pricing.
+
 **2026-09-20, item 7 re-planned into ten packages.** After change 3 merged at `c958ebb` the advisor
 read all 38 entries then open, in full, against the source at `c958ebb`; the owner ruled the same
 day and the findings save point records it. Two entries closed as already paid — the acceptance

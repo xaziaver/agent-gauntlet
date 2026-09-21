@@ -508,7 +508,12 @@ reported number — not by anything in the harness flagging it.
 
 **Routes to:** BACKLOG.md, v1. Correctness, not cost — belongs as its own item rather than under mutation cost management. Highest-priority entry in this document: a gate that certifies a suite whose assertions have been removed.
 
-**Status.** Open.
+**Status.** Applied, 2026-09-21, as G3 item 7 package P1 on `v1/item-7-p1-trustworthy-numbers`:
+`00bc0fc` (every mutmut run is cold) and `e01160f` (a symlinked `mutants/` refused in Gauntlet's
+words). The proposal's "pass whatever flag forces a cold run" is not what shipped — mutmut 3.7.0 has
+no such flag — and neither is keying the cache on the test scope's hash: the adapter removes
+`mutants/` before every run. The package's decisions, prediction, matrix and "Change, applied" text
+are below, after the annotations.
 
 **First in-the-wild occurrence, 2026-08-27 — a stale figure served, and passed, during real item
 work rather than a reproduction.** During ClaimGate item 5h's implementation a full `gauntlet
@@ -775,6 +780,79 @@ proves the file is bound, not every scenario in it; an unbound scenario inside a
 reports vacuous survivors. The scope entry's other half — reporting that mutmut's `source_paths` is
 narrower than `[project] src` — is P9's and untouched. mutmut's staleness is mutmut's to fix
 upstream; this package stops Gauntlet from reporting it.
+
+**Package P1 — change, applied 2026-09-21 (advisor-recommended, human-ratified).** On
+`v1/item-7-p1-trustworthy-numbers` from `a65d36e`: `6b80f2d` (this block, one new entry, one
+correction, three annotations; script-applied, 323/0), then the six commits in the block's order —
+`3f8759e` (the extraction: `gates/acceptance.py` 291 → 215, `acceptance/report.py` 93, nothing under
+`tests/`), `00bc0fc` (cold mutmut; 623 → 627 tests), `f8d2253` (the tests gate deletes its
+artifacts, the missing-coverage message, `gates/coverage.py`'s dead loader out; 632), `ca37391` (not
+measured; 640, one existing test deleted), `c313d51` (filters that match no mutant; 643), `7ca069d`
+(uninspected survivors; 648) — then two tidies the advisor asked for after reading the code,
+`e01160f` (a symlinked `mutants/` is refused without calling `rmtree`, because Python 3.14 renders
+that refusal as `[Errno None] None: PosixPath(…)`, which is no remedy; 650) and `c273487` (a comment
+the formatter had wrapped an annotation around), and `fd172ab` (README, `ARCHITECTURE.md`,
+`docs/GATES.md`: 2, 4 and 10 anchors, script-applied, read by the advisor as diffs at the ref). At
+the tip, measured by the advisor from a clone: `gates/acceptance.py` 247 of 300,
+`acceptance/report.py` 124, `adapters/python.py` 240, `gates/mutation.py` 230 with `_summary` and
+`_judge` at complexity 5, `gates/coverage.py` 97; harness `8b71d1b28c22d080…` over 54. Thirty-six
+agent judgments across the four turns, each ratified; the ones a later reader needs: the typed error
+is `NotMeasuredError` (ruff's N818); the probe's criterion is an empty `binding.bound_modules`,
+whatever `scope` says; `test_an_unbound_feature_falls_back_to_the_whole_directory` was deleted
+because the end state it pinned no longer exists, and the computed-path test pins the fallback;
+recognition of `nothing matches` reads mutmut's full output before the 800-character cut; commit
+`ca37391`'s message says `report.py` "93 to 121" and the committed file was 124 — measured before
+`ruff format` ran, pushed, rightly not amended.
+
+Two errors in this block, both the advisor's. "623 to at least 649" is a floor on a suite total, and
+a total is moved by a deletion: 26 tests were added as named, one was deleted, and the figure was
+648. New tests are to be stated as a count of named tests. And decision (6) gained its second half —
+no approval called stale while any survivor is uninspected — after the owner had ratified the first;
+it was flagged as an amendment and ratified by the running of the findings script. A third was
+caught before it was written down: the agent's report, and the advisor after it, took "Acceptance
+failures are diagnosed as three distinct states" under Properties to preserve to be about the gate's
+failing states and so to need a fourth. Read in full, it is about the three *approval* diagnoses —
+missing, not approved, changed since approval — which `3f8759e` moved to `acceptance/report.py`
+without retyping. That property stands as written and P1 preserves it.
+
+Proof, first shape. Regression run `20260921T162850-136397`: `gauntlet check --record
+~/gauntlet-review/item7-p1-verdict.json` in the item-1 clone at `be87d38`, `.gauntlet/` and
+`mutants/` removed first, Gauntlet at `fd172ab` installed into the clone's venv with
+`verdict.harness()` printing `8b71d1b28c22d080…` over 54 before the run, equal to the shell pipeline
+here and to the record's `harness.source` after it; started detached, once. Every clause of the
+prediction held: `verdict_sha256`
+`9c7aececf56dc4f5214bfc4a07cd729f347086039dc7ba9193c6edfa3d01ca42`; eleven `gate.finished` lines
+with the tag's `gate`, `passed`, `error`, `diagnostics` and `actual`; `run.finished` `a8a00163…`
+over 127; lock `61c2ac4d30025e8c` before and after; the clone's tree clean; `.gauntlet/` listing the
+seven after the check and the eight after the skip; `mutants/` present; no `*.tmp`; the skip
+`20260921T164800-155039`, one `run.reused` naming the check; and the last check-and-skip of change
+2's log against this one's, with `at`, `run`, `duration`, `reused_at` and `reused_run` dropped,
+differing in nothing over 14 lines — all agent-measured and quoted. The advisor's share: the eleven
+quoted tuples compared against the archived baseline run's and equal, and the tag's record exported
+from the archive *by the tool at `fd172ab`*, which prints the same 64 characters. Durations are
+outside the proof: acceptance 1092.143 s, and mutation 18.971 s — the first recorded figure for a
+run that is cold by the tool's own act and not by the protocol's `rm`, beside the tag's warm 2.444
+s. The agent's launch form lost the process's exit status; `run.finished` reads `passed: true` and
+the output ends `GAUNTLET PASSED`.
+
+Proof, second shape — the one that carries this package, since the subject reaches none of what
+changed and this repository's own check runs no mutation gate. `g3-item7-p1-matrix.py`
+(`e532179b6357bef7…`), sixteen rows: before-state at `6b80f2d` by the agent on Python 3.14.4 and at
+`a65d36e` by the advisor on 3.12.3, every row as the block records; after-state at `7ca069d` by both
+and at `fd172ab` by the agent, every row as the block predicts, the ten that change included, with
+M1e's error text alone moving at `e01160f`, as asked. Own gates nine green at every commit; the tip
+run `20260921T124732-112995` at `fd172ab`: 650/650, coverage 97.72 line and 94.33 branch, worst
+function 25, complexity 6, crap 8.21, duplication 0, gated tree `d03ce000…` over 99, agent-quoted.
+The turn that ended at `7ca069d` closed on one `run.reused` naming `20260921T120517-103354`, read
+from the log by the following turn.
+
+Found on the way and not in this package: a code mutant's ledger key is
+`module|function|removed|added`, so two survivors in one function that make the identical line
+change share a key, collapse to one in `mutants.classify`, and the collapsed one leaves `unresolved`
+— the forty-survivor entry's error in miniature, and one approval covering two positions. Read from
+source, met by the agent while writing commit 6's tests, not measured. It is P2's subject, locator
+uniqueness, and is priced there; until then `docs/GATES.md`'s `(killed + equivalent) / total` is
+exact only when no two survivors share a key.
 
 #### The acceptance gate re-runs every mutant on every check, and the green path now costs eight minutes
 
@@ -1518,7 +1596,11 @@ failure" — that entry is the same staging problem mirrored: there an approval 
 mutation state; here approval present with binding absent runs mutation vacuously and reports it as
 real.
 
-**Status.** Open. Not patched: Gauntlet is frozen for the duration of the ClaimGate project.
+**Status.** Applied, 2026-09-21, as G3 item 7 package P1: `ca37391`. A spec no module binds, or one
+that is not UTF-8, is its own failing state — not measured — with no survivor count, and `mutant
+approve` and `mutant prune` refuse it. "Or mark it vacuous" in the proposal was ruled against: it
+fails. Decision (4) and the "Change, applied" text are in the package block under "Mutation's own
+coverage-guided test selection goes stale on a test-only change".
 
 *(Annotation, 2026-09-20, from the full read of every open entry against `c958ebb`: cheaper than
 when written. Since G3 item 1, `acceptance/binding.py` computes which module binds which feature,
@@ -1571,7 +1653,10 @@ G2d.)*
 
 **Routes to:** BACKLOG.md, v1 item 2 (root-cause diagnostics). This is exactly that item's "nothing to measure" case reported as "measured, found nothing" — the clearest real instance of it found so far.
 
-**Status.** Open.
+**Status.** Applied, 2026-09-21, as G3 item 7 package P1: `f8d2253`. Not the freshness comparison
+proposed above: the tests gate deletes `junit.xml` and `coverage.json` before pytest runs, which
+covers the crap gate as well. Decision (3) and the "Change, applied" text are in the package block
+under "Mutation's own coverage-guided test selection goes stale on a test-only change".
 
 **Correction (2026-08-09).** "`gates/mutation.py` genuinely re-executes `mutmut run` as a fresh
 subprocess every invocation... not because it was cached" above is true of the subprocess, false of
@@ -1635,7 +1720,12 @@ assumed.
 
 **Routes to.** `BACKLOG.md`.
 
-**Status.** Open. Not patched: Gauntlet is frozen for the duration of the ClaimGate project.
+**Status.** Open — half applied, 2026-09-21, as G3 item 7 package P1: `c313d51` makes filters that
+match no mutant a vacuous pass naming them, where they were a tool failure (the correction of
+2026-09-21 below; decision (5) in the package block under "Mutation's own coverage-guided test
+selection goes stale on a test-only change"). What stays open is the first bullet, the full-run
+shape: reporting that mutmut's `source_paths` is narrower than `[project] src`. That is package
+P9's.
 
 **Realized, 2026-08-24, with a second facet.** Item 5c placed `src/claimgate/shell/` — two modules,
 ~340 lines of intake orchestration and persistence — outside `source_paths`, correctly, since the
@@ -1708,7 +1798,9 @@ found.
 
 **Routes to:** BACKLOG.md, G3 item 7, package P1.
 
-**Status.** Open.
+**Status.** Applied, 2026-09-21, as G3 item 7 package P1: `7ca069d`, with `c273487` (a comment
+moved). Decision (6) and the "Change, applied" text are in the package block under "Mutation's own
+coverage-guided test selection goes stale on a test-only change".
 
 #### Four analysis gates scope to `src` alone, so step definitions are outside static, size, complexity and duplication
 
