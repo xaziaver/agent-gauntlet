@@ -5,8 +5,11 @@ from pathlib import Path
 
 import pytest
 
+from gauntlet import config as config_mod
+from gauntlet import locking, registry
+from gauntlet import mutants as mutants_mod
 from gauntlet.adapters import python as python_adapter
-from gauntlet.adapters.python import MutationRun
+from gauntlet.adapters.python import CodeMutant, MutationRun
 from gauntlet.gates import mutation
 from gauntlet.gates.base import GateContext
 
@@ -194,3 +197,96 @@ def test_no_mutants_on_a_full_run_is_still_a_tool_failure(
     assert result.vacuous is False
     assert result.actual is None
     assert "nothing matches" in (result.error or "")
+
+
+def _survivor(index: int) -> CodeMutant:
+    """What `collect` describes for the fake's survivor `index`: each one a distinct mutation."""
+    name = f"m.x_f__mutmut_{index}"
+    return CodeMutant(name, "m", "f", "a > b", f"a >= b + {index}")
+
+
+def _mutmut_with(monkeypatch: pytest.MonkeyPatch, total: int, surviving: int) -> None:
+    """mutmut reports `total` mutants of which `surviving` survive, each with its own diff."""
+    names = [_survivor(i).name for i in range(surviving)]
+    monkeypatch.setattr(
+        python_adapter,
+        "run_mutmut",
+        lambda *a, **k: MutationRun(ok=True, total=total, survivors=names),
+    )
+    monkeypatch.setattr(
+        python_adapter,
+        "show_mutant",
+        lambda root, python, name, *a: ("a > b", _survivor(int(name.rpartition("_")[2])).added),
+    )
+
+
+def _approve_code(project: Path, mutants: list[CodeMutant]) -> None:
+    registry.save(
+        mutants_mod.approve(project, mutation.SUBJECT, mutants, reason="x"),
+        locking.lock_path(project),
+    )
+
+
+ELSEWHERE = CodeMutant("m.x_g__mutmut_0", "m", "g", "return 1", "return 2")
+
+
+def test_survivors_past_the_inspection_cap_count_as_unresolved_in_the_score(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """160 mutants, 150 survive: the true score is 6.25, not 10 / (10 + 40)."""
+    _mutmut_with(monkeypatch, total=160, surviving=150)
+    result = mutation.run(_ctx(project), {"min_score": 90, "scope": "full"})
+    assert result.passed is False
+    assert str(result.actual).startswith("score 6.25%, 10 killed, 150 unresolved")
+    assert len(result.diagnostics) == mutation.MAX_SURVIVORS_INSPECTED
+
+
+def test_the_summary_says_how_many_survivors_were_not_inspected(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _mutmut_with(monkeypatch, total=160, surviving=150)
+    result = mutation.run(_ctx(project), {"min_score": 90, "scope": "full"})
+    assert result.actual == "score 6.25%, 10 killed, 150 unresolved, 110 not inspected"
+
+
+def test_no_approval_is_called_stale_while_any_survivor_is_uninspected(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An approval past the fortieth survivor matches nothing described; the gate
+    cannot tell that from an approval whose mutant died, so it says nothing."""
+    _approve_code(project, [ELSEWHERE])
+    _mutmut_with(monkeypatch, total=160, surviving=150)
+    result = mutation.run(_ctx(project), {"min_score": 0, "scope": "full"})
+    assert "stale" not in str(result.actual)
+    assert not [d for d in result.diagnostics if d.file == config_mod.LOCK_FILENAME]
+
+
+def test_require_review_fails_on_uninspected_survivors_alone(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Every described survivor is approved; the one past the cap is not, and cannot be."""
+    cap = mutation.MAX_SURVIVORS_INSPECTED
+    _approve_code(project, [_survivor(i) for i in range(cap)])
+    _mutmut_with(monkeypatch, total=50, surviving=cap + 1)
+    config = {"min_score": 0, "scope": "full"}
+    without = mutation.run(_ctx(project), config)
+    assert without.passed is True
+    assert without.diagnostics == []
+    assert without.actual == (
+        f"score 98.0%, 9 killed, 1 unresolved, 1 not inspected, {cap} reviewed-equivalent"
+    )
+    with_review = mutation.run(_ctx(project), {**config, "require_review": True})
+    assert with_review.passed is False
+    assert with_review.diagnostics == []
+
+
+def test_at_or_under_the_cap_the_result_is_what_it_was(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _approve_code(project, [ELSEWHERE])
+    _mutmut_with(monkeypatch, total=50, surviving=mutation.MAX_SURVIVORS_INSPECTED)
+    result = mutation.run(_ctx(project), {"min_score": 90, "scope": "full"})
+    assert result.passed is False
+    assert result.actual == "score 20.0%, 10 killed, 40 unresolved, 1 stale approval(s)"
+    assert len(result.diagnostics) == mutation.MAX_SURVIVORS_INSPECTED + 1
+    assert result.diagnostics[-1].file == config_mod.LOCK_FILENAME
