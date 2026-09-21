@@ -191,7 +191,10 @@ def _clear_cache(root: Path) -> str | None:
     assertions were removed. One that is already absent is the normal case.
     """
     cache = root / MUTANTS_DIR
-    if not cache.is_symlink() and not cache.exists():
+    if cache.is_symlink():
+        # Live or dangling, rmtree refuses it, and the OS's wording for that is not a remedy.
+        return f"could not remove {MUTANTS_DIR}/ before the run: it is a symbolic link"
+    if not cache.exists():
         return None
     try:
         shutil.rmtree(cache)

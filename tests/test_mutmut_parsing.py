@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 
@@ -222,7 +223,40 @@ def test_a_cache_that_cannot_be_removed_is_a_tool_failure_and_mutmut_is_not_run(
     monkeypatch.setattr(adapter, "run_cmd", _recording_run_cmd(seen, tmp_path))
     outcome = adapter.run_mutmut(tmp_path, "python", [], 60)
     assert outcome.ok is False
-    assert outcome.error.startswith("could not remove mutants/ before the run: ")
+    assert outcome.error == "could not remove mutants/ before the run: it is a symbolic link"
     assert seen == []
     assert (tmp_path / "mutants").is_symlink()
     assert (tmp_path / "elsewhere").is_dir()
+
+
+def test_a_dangling_symlink_is_refused_the_same_way(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "mutants").symlink_to(tmp_path / "gone")
+    seen: list[tuple[list[str], bool]] = []
+    monkeypatch.setattr(adapter, "run_cmd", _recording_run_cmd(seen, tmp_path))
+    outcome = adapter.run_mutmut(tmp_path, "python", [], 60)
+    assert outcome.ok is False
+    assert "symbolic link" in outcome.error
+    assert seen == []
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores directory permissions")
+def test_a_cache_rmtree_cannot_remove_is_a_tool_failure_with_the_os_reason(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A real directory the OS refuses to empty: the OS's reason is the only one there is."""
+    locked = tmp_path / "mutants" / "locked"
+    locked.mkdir(parents=True)
+    (locked / "stats.json").write_text("{}")
+    locked.chmod(0o500)  # no write permission: its entry cannot be unlinked
+    seen: list[tuple[list[str], bool]] = []
+    monkeypatch.setattr(adapter, "run_cmd", _recording_run_cmd(seen, tmp_path))
+    try:
+        outcome = adapter.run_mutmut(tmp_path, "python", [], 60)
+    finally:
+        locked.chmod(0o700)
+    assert outcome.ok is False
+    assert outcome.error.startswith("could not remove mutants/ before the run: ")
+    assert "Permission denied" in outcome.error
+    assert seen == []
