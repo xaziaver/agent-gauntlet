@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -111,3 +112,28 @@ def test_a_copy_failure_is_explained(project: Path, monkeypatch: pytest.MonkeyPa
 
 def test_an_unrelated_error_is_passed_through_unchanged() -> None:
     assert mutation.explain("mutmut: no [tool.mutmut]") == "mutmut: no [tool.mutmut]"
+
+
+def test_code_survivors_for_the_cli_run_cold_too(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`approve-code` and `prune-code` reach mutmut through `survivors_for`, which
+    calls the adapter the gate calls: the CLI never sees a warmer tree than the gate."""
+    (project / "mutants").mkdir()
+    (project / "mutants" / "mutmut-stats.json").write_text("{}")
+    present_when_invoked: list[bool] = []
+
+    def fake(args: list[str], cwd: Path, timeout: int = 600) -> subprocess.CompletedProcess[str]:
+        present_when_invoked.append((project / "mutants").exists())
+        stdout = (
+            "⠏ 4/4  🎉 3 🫥 0  ⏰ 0  🙁 1  🔇 0\n"
+            if "run" in args
+            else "    m.x_f__mutmut_2: survived\n"
+        )
+        return subprocess.CompletedProcess(args=args, returncode=0, stdout=stdout, stderr="")
+
+    monkeypatch.setattr(python_adapter, "run_cmd", fake)
+    monkeypatch.setattr(python_adapter, "show_mutant", lambda *a, **k: ("a > b", "a >= b"))
+    survivors = mutation.survivors_for(project, "python", [], 60)
+    assert [m.name for m in survivors] == ["m.x_f__mutmut_2"]
+    assert present_when_invoked == [False, False]

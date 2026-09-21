@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 import sys
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -19,6 +20,7 @@ MUTMUT_RESULT_LINE = re.compile(r"^\s*(?P<name>[\w.]+):\s*(?P<status>\w+)\s*$")
 SURVIVED = "survived"
 MUTANT_SUFFIX = re.compile(r"__mutmut_\d+$")
 MUTMUT_PROGRESS = re.compile(r"(?:^|\s)(\d+)/(\d+)(?:\s|$)")
+MUTANTS_DIR = "mutants"  # mutmut's copy of the tree and its results, which it reuses
 
 
 def interpreter(root: Path, configured: str | None = None) -> str:
@@ -179,12 +181,33 @@ def parse_total(payload: str) -> int:
     return max((int(m.group(2)) for m in MUTMUT_PROGRESS.finditer(payload)), default=0)
 
 
+def _clear_cache(root: Path) -> str | None:
+    """Remove `mutants/` so the run is cold, or say why it could not be.
+
+    mutmut reuses its per-function test selection across runs, keyed on test
+    names and never their content, so a warm run can certify a suite whose
+    assertions were removed. One that is already absent is the normal case.
+    """
+    cache = root / MUTANTS_DIR
+    if not cache.is_symlink() and not cache.exists():
+        return None
+    try:
+        shutil.rmtree(cache)
+    except OSError as exc:
+        return f"could not remove {MUTANTS_DIR}/ before the run: {exc}"
+    return None
+
+
 def run_mutmut(root: Path, python: str, filters: list[str], timeout: int) -> MutationRun:
-    """Run mutmut and collect survivors.
+    """Run mutmut cold and collect survivors.
 
     `mutmut results` lists only unkilled mutants, so the killed count is derived
-    from the run total rather than by counting status lines.
+    from the run total rather than by counting status lines. A cache Gauntlet
+    could not clear is a tool failure, not a number: mutmut is not run.
     """
+    not_cleared = _clear_cache(root)
+    if not_cleared is not None:
+        return MutationRun(ok=False, error=not_cleared)
     proc = run_cmd([python, "-m", "mutmut", "run", *filters], cwd=root, timeout=timeout)
     if proc.returncode == MISSING_TOOL_RETURNCODE:
         return MutationRun(ok=False, error=proc.stderr)

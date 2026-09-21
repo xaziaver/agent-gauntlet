@@ -174,3 +174,55 @@ def test_filters_are_passed_through(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     monkeypatch.setattr(adapter, "run_cmd", fake)
     adapter.run_mutmut(tmp_path, "python", ["pkg.rating*"], 60)
     assert "pkg.rating*" in seen[0]
+
+
+def _recording_run_cmd(seen: list[tuple[list[str], bool]], root: Path):
+    """Records each command and whether `mutants/` existed when it was invoked."""
+
+    def fake(args: list[str], cwd: Path, timeout: int = 600) -> subprocess.CompletedProcess[str]:
+        seen.append((args, (root / "mutants").is_symlink() or (root / "mutants").exists()))
+        return _proc(RUN_OUTPUT) if "run" in args else _proc(RESULTS_OUTPUT)
+
+    return fake
+
+
+def test_a_mutmut_run_removes_the_cache_directory_before_mutmut_starts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "mutants").mkdir()
+    (tmp_path / "mutants" / "mutmut-stats.json").write_text("{}")
+    seen: list[tuple[list[str], bool]] = []
+    monkeypatch.setattr(adapter, "run_cmd", _recording_run_cmd(seen, tmp_path))
+    outcome = adapter.run_mutmut(tmp_path, "python", [], 60)
+    assert outcome.ok is True
+    assert seen[0][0][2:4] == ["mutmut", "run"]
+    assert seen[0][1] is False  # gone at the moment mutmut is invoked
+
+
+def test_a_run_with_no_cache_directory_proceeds(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert not (tmp_path / "mutants").exists()
+    seen: list[tuple[list[str], bool]] = []
+    monkeypatch.setattr(adapter, "run_cmd", _recording_run_cmd(seen, tmp_path))
+    outcome = adapter.run_mutmut(tmp_path, "python", [], 60)
+    assert outcome.ok is True
+    assert outcome.total == 62
+    assert [args[3] for args, _ in seen] == ["run", "results"]
+
+
+def test_a_cache_that_cannot_be_removed_is_a_tool_failure_and_mutmut_is_not_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A real symlink: `shutil.rmtree` refuses it, and a number from a cache Gauntlet
+    could not clear is the number this change exists to stop reporting."""
+    (tmp_path / "elsewhere").mkdir()
+    (tmp_path / "mutants").symlink_to(tmp_path / "elsewhere")
+    seen: list[tuple[list[str], bool]] = []
+    monkeypatch.setattr(adapter, "run_cmd", _recording_run_cmd(seen, tmp_path))
+    outcome = adapter.run_mutmut(tmp_path, "python", [], 60)
+    assert outcome.ok is False
+    assert outcome.error.startswith("could not remove mutants/ before the run: ")
+    assert seen == []
+    assert (tmp_path / "mutants").is_symlink()
+    assert (tmp_path / "elsewhere").is_dir()
