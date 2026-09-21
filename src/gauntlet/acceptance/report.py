@@ -23,6 +23,34 @@ class MutationOutcome:
     diagnostics: list[Diagnostic]
     equivalent: int
     stale: list[str]
+    not_measured: int = 0  # specs whose mutants would have measured nothing
+
+
+def merged(outcomes: list[MutationOutcome]) -> MutationOutcome:
+    """One feature's outcome at a time, summed for the summary line."""
+    total = MutationOutcome([], 0, [])
+    for outcome in outcomes:
+        total = MutationOutcome(
+            total.diagnostics + outcome.diagnostics,
+            total.equivalent + outcome.equivalent,
+            total.stale + outcome.stale,
+            total.not_measured + outcome.not_measured,
+        )
+    return total
+
+
+def unbound(key: str, steps: Path) -> str:
+    """Why a spec no module binds was not measured: one line, so a CLI can print it as is."""
+    return (
+        f"no step module under {steps} binds {key}: no `scenarios(...)` names it, and the "
+        f"scenarios pass with the file emptied, so its mutants would all survive without "
+        f"measuring anything. Add the `scenarios(...)` binding; do not approve its mutants."
+    )
+
+
+def not_measured_diagnostic(key: str, reason: str) -> Diagnostic:
+    """No `value`: a spec that was not measured contributes no survivor count."""
+    return Diagnostic(file=key, symbol="not measured", message=reason)
 
 
 def approval_diagnostics(findings: list[registry.Finding]) -> list[Diagnostic]:
@@ -84,8 +112,11 @@ def _survivor_count(diagnostics: list[Diagnostic]) -> int:
 
 def summary(features: list[Path], outcome: MutationOutcome) -> str:
     parts = [f"{len(features)} spec(s)"]
-    if outcome.diagnostics:
-        parts.append(f"{_survivor_count(outcome.diagnostics)} surviving mutant(s)")
+    survivors = _survivor_count(outcome.diagnostics)
+    if survivors:
+        parts.append(f"{survivors} surviving mutant(s)")
+    if outcome.not_measured:
+        parts.append(f"{outcome.not_measured} spec(s) not measured")
     if outcome.equivalent:
         parts.append(f"{outcome.equivalent} reviewed-equivalent")
     if outcome.stale:

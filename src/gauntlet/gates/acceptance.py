@@ -28,21 +28,52 @@ SCOPE_RECORD = Path(".gauntlet") / "acceptance-scope.json"
 NOT_RUN = "; mutation not run"
 
 
+class NotMeasuredError(Exception):
+    """This spec's mutants would measure nothing; the message says why, in one line."""
+
+
 def survivors_for(
     ctx: GateContext, config: dict[str, Any], path: Path, steps: Path
 ) -> list[Mutant]:
     """Mutants of one feature that the bound scenarios fail to kill.
 
     Public so the `gauntlet mutant` commands share the gate's code path: the CLI
-    must never disagree with the gate about what survived.
+    must never disagree with the gate about what survived. Raises NotMeasuredError for
+    a spec that is not UTF-8 or that no step module binds: every mutant of such a
+    spec survives, and the count would carry no information.
     """
-    text = path.read_text(encoding="utf-8")
+    root = ctx.project_root
+    text = _decoded(root, path)
     candidates = mutation.mutants(gherkin.parse(text, str(path)))
     chosen = mutation.sample(candidates, int(config.get("mutation_sample", 0)))
+    timeout = int(config.get("timeout", 600))
+    if not binding.bound_modules(steps, path):
+        _probe(root, path, text, steps, ctx.python, timeout)
     targets = targets_for(config, steps, path)
-    return _survivors(
-        ctx.project_root, targets, path, chosen, ctx.python, int(config.get("timeout", 600))
-    )
+    texts = [mutation.apply(text, mutant) for mutant in chosen]
+    alive = _surviving(root, targets, path, text, texts, ctx.python, timeout)
+    return [chosen[index] for index in alive]
+
+
+def _decoded(root: Path, path: Path) -> str:
+    """The spec's text. Approval hashes bytes, so an approved spec can still fail here."""
+    try:
+        return path.read_text(encoding="utf-8")
+    except UnicodeDecodeError as exc:
+        key = specs.key_for(root, path)
+        raise NotMeasuredError(f"{key} is not UTF-8 at byte offset {exc.start}") from exc
+
+
+def _probe(root: Path, path: Path, text: str, steps: Path, python: str, timeout: int) -> None:
+    """A spec with no literal binding is bound by a computed path or by nothing.
+
+    Emptying it tells which: every module that binds it errors at collection, and
+    a suite that still passes never read it (measured at pytest-bdd 8.1.0). One
+    whole-directory run, through the loop the mutants use, so a kill restores it.
+    """
+    if _surviving(root, [steps], path, text, [""], python, timeout):
+        shown = steps.relative_to(root) if steps.is_relative_to(root) else steps
+        raise NotMeasuredError(report.unbound(specs.key_for(root, path), shown))
 
 
 def targets_for(config: dict[str, Any], steps: Path, feature: Path) -> list[Path]:
@@ -60,10 +91,17 @@ def targets_for(config: dict[str, Any], steps: Path, feature: Path) -> list[Path
 
 def _classify_feature(
     ctx: GateContext, config: dict[str, Any], path: Path, steps: Path, approved: registry.Registry
-) -> tuple[list[Diagnostic], int, list[str]]:
+) -> report.MutationOutcome:
     key = specs.key_for(ctx.project_root, path)
-    verdict = mutants_mod.classify(approved, key, survivors_for(ctx, config, path, steps))
-    return report.by_scenario(key, verdict.failing), len(verdict.equivalent), verdict.stale
+    try:
+        survivors = survivors_for(ctx, config, path, steps)
+    except NotMeasuredError as exc:
+        # Its own failing state, with no survivor count: the honest answer is that nothing checked.
+        return report.MutationOutcome([report.not_measured_diagnostic(key, str(exc))], 0, [], 1)
+    verdict = mutants_mod.classify(approved, key, survivors)
+    return report.MutationOutcome(
+        report.by_scenario(key, verdict.failing), len(verdict.equivalent), verdict.stale
+    )
 
 
 def _mutation_outcome(
@@ -73,16 +111,9 @@ def _mutation_outcome(
     steps: Path,
     approved: registry.Registry,
 ) -> report.MutationOutcome:
-    diagnostics: list[Diagnostic] = []
-    equivalent = 0
-    stale: list[str] = []
-    for path in features:
-        found, reviewed, gone = _classify_feature(ctx, config, path, steps, approved)
-        diagnostics.extend(found)
-        equivalent += reviewed
-        stale.extend(gone)
+    outcomes = [_classify_feature(ctx, config, path, steps, approved) for path in features]
     _record_scope(ctx, config, features, steps)
-    return report.MutationOutcome(diagnostics, equivalent, stale)
+    return report.merged(outcomes)
 
 
 def _record_scope(
@@ -105,24 +136,25 @@ def _record_scope(
     destination.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
-def _survivors(
+def _surviving(
     root: Path,
     targets: list[Path],
     path: Path,
-    mutants: list[mutation.Mutant],
+    original: str,
+    texts: list[str],
     python: str,
     timeout: int,
-) -> list[mutation.Mutant]:
-    """Apply each mutant in place and demand the targets fail. Always restores."""
-    original = path.read_text(encoding="utf-8")
+) -> list[int]:
+    """Write each text in place and demand the targets fail; the indexes of the texts
+    that pass. Always restores."""
     strands.backup(root, path, original)
-    survived: list[mutation.Mutant] = []
+    survived: list[int] = []
     with base.signals_raise():
         try:
-            for mutant in mutants:
-                base.write_text_atomic(path, mutation.apply(original, mutant))
+            for index, text in enumerate(texts):
+                base.write_text_atomic(path, text)
                 if python_adapter.run_acceptance(root, targets, python, timeout).passed:
-                    survived.append(mutant)
+                    survived.append(index)
         finally:
             base.write_text_atomic(path, original)
             strands.discard(root, path)

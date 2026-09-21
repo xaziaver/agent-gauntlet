@@ -76,6 +76,8 @@ def _current_survivors(
         survivors = acceptance.survivors_for(ctx, config, feature, steps)
     except base.Interrupted as exc:
         exc.die()  # the gate's finally has already restored the spec
+    except acceptance.NotMeasuredError as exc:
+        fail(str(exc))  # the gate's sentence, and nothing written
     if scenario:
         return [m for m in survivors if m.scenario == scenario]
     return survivors

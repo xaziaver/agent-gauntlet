@@ -314,6 +314,53 @@ def test_mutant_approve_dies_with_the_signal_after_restoring(
     assert not (project / ".gauntlet" / "events.jsonl").exists()
 
 
+ORPHAN = FEATURE.replace("Tiering", "Orphan")
+
+
+def _add_orphan(project: Path) -> Path:
+    """A second approved spec that no step module binds; the lock is rewritten with it."""
+    spec = project / "features" / "orphan.feature"
+    spec.write_text(ORPHAN)
+    registry.save(specs.approve(project, [spec]), locking.lock_path(project))
+    return locking.lock_path(project)
+
+
+def _one_config_error_line(result: Any) -> str:
+    assert result.stderr.startswith("config error: ")
+    assert result.stderr.count("\n") == 1
+    return result.stderr
+
+
+def test_mutant_approve_refuses_a_spec_that_was_not_measured_and_writes_no_lock(
+    project: Path,
+) -> None:
+    lock = _add_orphan(project)
+    before = lock.read_bytes()
+    result = runner.invoke(app, ["mutant", "approve", "features/orphan.feature", "--reason", "x"])
+    assert result.exit_code == EXIT_CONFIG_ERROR
+    said = _one_config_error_line(result)
+    assert "features/orphan.feature" in said
+    assert "`scenarios(...)`" in said
+    assert result.stdout == ""
+    assert lock.read_bytes() == before
+    assert not _mutant_keys(project)
+    assert (project / "features" / "orphan.feature").read_text() == ORPHAN
+
+
+def test_mutant_prune_refuses_a_spec_that_was_not_measured_and_prunes_nothing(
+    project: Path,
+) -> None:
+    runner.invoke(app, ["mutant", "approve", "features/tiering.feature", "--reason", "x"])
+    lock = _add_orphan(project)
+    before = lock.read_bytes()
+    assert len(_mutant_keys(project)) == 2
+    result = runner.invoke(app, ["mutant", "prune", "features/orphan.feature"])
+    assert result.exit_code == EXIT_CONFIG_ERROR
+    assert "features/orphan.feature" in _one_config_error_line(result)
+    assert lock.read_bytes() == before
+    assert len(_mutant_keys(project)) == 2
+
+
 # A plain scenario beside the outline, so the preview sees both kinds of mutant.
 MIXED = (
     FEATURE
