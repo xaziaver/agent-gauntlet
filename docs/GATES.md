@@ -377,7 +377,8 @@ vacuously as "no changed modules". Filters that match no mutant — every change
 outside mutmut's `[tool.mutmut] source_paths` — are the second vacuous case: the gate passes with
 `actual` reading `no mutants in changed modules: <filters>`, recognised by mutmut's own words
 (`nothing matches`) on its full output; if mutmut rewords them the run is a tool failure. A zero
-total with no filters is always a tool failure. On a full run (`changed_files is None`) every module is
+total with no filters is always a tool failure. On a full run (`changed_files is None`) every module
+is
 mutated regardless of `scope`.
 
 *Survivors are described, not just named.* For each survivor (up to 40) the gate runs
@@ -493,7 +494,8 @@ exactly as code mutants are (equivalent, unresolved, stale). Diagnostics are gro
 scenario**, listing up to six of its surviving values, because thirteen identical sentences burn
 the diagnostic budget and the hook's character cap for no signal. `actual` reads
 `"<n> spec(s), <m> surviving mutant(s), <k> spec(s) not measured, <e> reviewed-equivalent"`, each
-part after the first present only when nonzero; a green summary omits the killed count. When stage 1 or 2 fails, `actual` ends `; mutation not run`, so the summary says
+part after the first present only when nonzero; a green summary omits the killed count. When stage 1
+or 2 fails, `actual` ends `; mutation not run`, so the summary says
 which stage never ran rather than leaving it to inference (item 6, 2026-09-17).
 
 *Config:* `features` (default `features/`), `steps` (default `tests/steps`), `require_approved`

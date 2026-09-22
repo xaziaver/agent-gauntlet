@@ -382,14 +382,17 @@ xargs -0 sha256sum | sha256sum` at that commit: `gauntlet` is installed with `uv
 
 **This repository's own baseline.** Nine gates configured: protect, static, size, complexity, tests,
 coverage, crap, duplication, acceptance; no `[gates.boundary]` or `[gates.mutation]`.
-The hand `gauntlet check` at the tip of item 7 change 3, run `20260920T143457-139464` at `99ba679`,
-stamped 2026-09-20T14:34:57Z to 14:36:19Z, agent-quoted and read by the advisor from the paste:
-protect 3/3 paths unchanged; static 0 findings; size worst function 25; complexity 6; tests 623/623
-passing in 80.951 s on a loaded machine (48.152 s in run `20260920T131929-135627` an hour earlier,
-same source); coverage line 97.07, branch 93.11 against floors of 95, 90 and per-file 80; crap 9.32;
-duplication 0; acceptance "no feature files" (vacuous). Diagnostics 0 and error null on all nine;
-`run.finished` tree `21144da3b678ad49…` over 98 files; the harness `5fa4fb351e88f318…` over 53,
-recomputed by the advisor by the shell pipeline from a clean clone at `c958ebb`. Before item 7
+The hand `gauntlet check` at the tip of item 7 package P1, run `20260921T124732-112995` at
+`fd172ab`, stamped 2026-09-21T12:47:32Z to 12:48:29Z, agent-quoted and read by the advisor from the
+paste: protect 3/3 paths unchanged; static 0 findings; size worst function 25; complexity 6; tests
+650/650 passing in 56.267 s; coverage line 97.72, branch 94.33 against floors of 95, 90 and per-file
+80; crap 8.21; duplication 0; acceptance "no feature files" (vacuous). Diagnostics 0 and error null
+on all nine; `run.finished` tree `d03ce00092f6dbe4…` over 99 files; the harness `8b71d1b28c22d080…`
+over 54, recomputed by the advisor from a clean clone at `0517451`, whose tree is `fd172ab`'s plus
+the close. Before item 7 package P1 (run `20260920T143457-139464` at `99ba679`) the suite was 623
+tests in 80.951 s on a loaded machine (48.152 s an hour earlier, same source) at 97.07 / 93.11 over
+98 files, harness `5fa4fb351e88f318…` over 53.
+Before item 7
 change 3 (run `20260920T105337-110010`) the suite was 614 tests in 50.306 s at 97.05 / 93.07 over 98
 files, harness `43407aa4e7458e98…`.
 Before item 7
@@ -404,14 +407,16 @@ s at 96.87 / 92.41 over 95 files. Before item 3 (run
 item 2 (run `20260913T222626-2654730`) the suite was 511 tests in 50.161 s at 96.6 / 91.89. Before item 1 (run
 `20260913T093143-2601684`, after G2d) the suite was 498 tests in 36.328 s at 96.54 / 91.75; the two
 item-1 tests that run a real pytest-bdd project account for about 9 s of the difference. Stop hook
-budget 600 s; a full own-run is about 51 s by the timestamps. The suite is `.venv/bin/pytest tests
+budget 600 s; a full own-run is about 57 s by the timestamps. The suite is `.venv/bin/pytest tests
 -q -p no:cacheprovider`; the `pytest` on PATH is not the venv's and collects nothing. Branch
-coverage has 3.11 points of headroom over its floor: a G3 change that adds an untested branch goes
+coverage has 4.33 points of headroom over its floor: a G3 change that adds an untested branch goes
 red here before it reaches the subject. Since item 2 the Stop hook skips whenever the hand `gauntlet check` was green on the same
 tree: a turn end that ran no gate is a `run.reused` line in the log naming that run, and only
 the log tells it from a crash.
 `cli.py` is at 248 of 300 lines since item 6 moved `init` and `guard` to `cli_setup.py`, with
-`check` and `stop_check` at 24 of 25; `gates/acceptance.py` is 291 with `_survivors` at 22;
+`check` and `stop_check` at 24 of 25; `gates/acceptance.py` is 247 since P1 moved its
+reporting half to `acceptance/report.py` (124), with `_surviving` at 23;
+`adapters/python.py` 240 with `interpreter` at 23; `gates/mutation.py` 230;
 `loop.py` 151 with `drive` at 24; `gates/base.py` 214 with `run_cmd` at 25 of 25 since item 7
 change 2; `acceptance/mutation.py` 247 with `_column_mutants` at 25 of 25; `registry.py` 241 since
 change 1 and `tree.py` 249 since change 2; `stop.py` 95, `acceptance/strands.py` 71, `runner.py`

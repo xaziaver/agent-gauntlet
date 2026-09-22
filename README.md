@@ -620,7 +620,8 @@ projects: this repository, and an FNOL intake service built end to end under the
 at its `prototype-1` tag as the regression subject for every change made here. What remains for the
 v1 line is sequenced in `BACKLOG.md` as ten packages. Most of it is polish; two things are not,
 and an adopter should read them under Known issues first: acceptance mutants that die before they
-reach the code, and one change to the ledger's key format. The v1 line is done when every gate can run on a project it fits without being weakened to
+reach the code, and one change to the ledger's key format. The v1 line is done when every gate can
+run on a project it fits without being weakened to
 pass, and when a number a gate prints is a measurement that happened.
 
 ### v2 — the workspace

@@ -78,7 +78,10 @@ install, plus `verdict.harness()` printed from the clone's interpreter immediate
 after the install and equal to `cd src/gauntlet && git ls-files -z | LC_ALL=C sort -z
 | xargs -0 sha256sum | sha256sum` at the branch tip (since item 3; before it, the
 sha256 of the installed `tree.py` alone), or the run does not count. The run is started detached, exactly once; an aborted
-launch leaves `mutants/` behind and the next run is warm. The proof is an identical verdict: the eleven `gate.finished` lines
+launch leaves `mutants/` behind — harmless since P1 (2026-09-21), which removes it before
+every mutmut run, but a second launch is still a second run, and the protocol's own `rm`
+stays because predictions are written against it. Launch so the exit status is
+kept. The proof is an identical verdict: the eleven `gate.finished` lines
 carry the same `gate`, `passed`, `error`, `diagnostics` and `actual` as the
 baseline run (durations excepted) — since item 3, one figure: the record's
 `verdict_sha256` is `9c7aececf56dc4f5…`, the tag's, and the eleven lines are read
@@ -355,6 +358,24 @@ which. Reporting a document's line width in bytes and calling it characters:
 `—`, `…` and `→` are multi-byte, so a 100-character line can be 103 bytes, and
 these files are wrapped by characters.
 
+Stating new tests as a suite total — "623 to at least 649" was moved by one justified deletion to
+648; state the count of named tests added. Letting a before-state matrix carry state between rows
+when staleness is the thing under test — P1's forty-survivor row read 9.09 % instead of 20.0 %
+behind a row that had left a stale cache; isolate each row, or say the order is the measurement.
+Probing with `printf '\xe9'` under `/bin/sh`, which writes four characters and not the byte — a
+crash was "not found" that way; write bytes from Python and read them back. Adopting the agent's
+statement that a Properties section needs changing without reading the section — "three distinct
+states" is about the approval diagnoses, not the gate's failing states, and was one step from being
+annotated as the latter. Leaning on the operating system's error text in a remedy — for `rmtree` on
+a symlink Python 3.12 says "Cannot call rmtree on a symbolic link" and 3.14 says "[Errno None]
+None", and the advisor's sandbox is not the owner's interpreter: every before-state the advisor
+takes is retaken by the agent on the owner's machine before code moves. Launching a detached run as
+`cmd & echo $!`, which loses the exit status: write `$?` to a file inside the wrapper. Extending a
+ratified decision after the ratification — P1's decision (6) gained its staleness half that way; say
+so at the top of the next message, as an amendment, before anything is run. A package's close sets
+every Status line, and an entry applied in part stays `Open` with the part named, so the open count
+stays a count.
+
 ## Where things stand
 
 Read `BACKLOG.md`. It has the ordered work, a memoryless status section, and a
@@ -474,6 +495,11 @@ the hand `gauntlet check` was green on the same tree, so its line is a
 When the agent stops on a failed check and hands the judgment back rather than
 reconciling it, that is the behaviour I want and it should not be discouraged —
 including, and especially, when the thing that failed is a check you wrote.
+
+A commit subject quoting a line count taken before `ruff format` ran — P1's said `report.py` 93 to
+121 and the committed file was 124; a pushed commit is not amended, and the close records the
+figure. A report that says a findings section "is now false" — read the section; the agent has been
+wrong about what one was about.
 
 ## Areas where I will need you most
 
