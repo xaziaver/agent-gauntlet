@@ -168,6 +168,45 @@ def test_signature_describes_the_mutation() -> None:
     assert mutant.signature == "596.72->597.72"
 
 
+CLAIMS = """\
+Feature: Claims
+
+  Scenario: A claim with a policy
+    Given a claim "C-1" under policy "P-9" with 2 items
+    Then the claim is accepted
+"""
+
+
+def _literals(text: str) -> list[mutation.Mutant]:
+    return [m for m in mutation.mutants(gherkin.parse(text)) if m.kind == mutation.KIND_LITERAL]
+
+
+def test_literal_mutants_on_one_line_have_distinct_locators() -> None:
+    """Two quoted literals and a number on one step are three keys, not one."""
+    step = 'A claim with a policy|literal|Given a claim "C-1" under policy "P-9" with 2 items'
+    assert [m.locator for m in _literals(CLAIMS)] == [
+        f"{step}|@8",
+        f"{step}|@27",
+        f"{step}|@38",
+    ]
+
+
+def test_literal_locator_is_unchanged_by_reindenting_the_step() -> None:
+    """The offset is within the step text: indentation moves the column, not the key."""
+    original = _literals(CLAIMS)
+    reindented = _literals(CLAIMS.replace('    Given a claim "C-1"', '      Given a claim "C-1"'))
+    assert [m.locator for m in reindented] == [m.locator for m in original]
+    assert [m.column for m in reindented] == [m.column + 2 for m in original]
+
+
+def test_example_locator_carries_no_offset() -> None:
+    mutant = next(
+        m for m in _mutants() if m.kind == mutation.KIND_EXAMPLE and m.original == "596.72"
+    )
+    assert mutant.locator == "Methods|example|earned|1200|pro_rata|596.72|true"
+    assert "|@" not in mutant.locator
+
+
 PREFIXES = """\
 Feature: Policy numbers
 

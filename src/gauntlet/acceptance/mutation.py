@@ -47,6 +47,9 @@ class Mutant:
     mutated: str
     kind: str
     context: str = ""
+    # A literal's offset within `step.text`, not a column in the line; 0 for an
+    # example mutant. Part of the key, where `column` is part of the edit.
+    offset: int = 0
 
     @property
     def description(self) -> str:
@@ -59,8 +62,19 @@ class Mutant:
         Deliberately not line-based: inserting a scenario above would shift every
         line and silently lapse every approval. Structural identity survives
         unrelated edits and changes only when the surrounding case really changes.
+
+        An example context is the column header plus the whole row, unique in its
+        table. A literal context is the step line, shared by every literal on it,
+        so a literal key also carries the literal's offset within the step text.
+        That offset is not `column`: `column` is measured from the start of the
+        raw line and includes the indentation, which a re-indent moves while the
+        step text holds. The in-text offset moves only when the text moves, and
+        then the context has already moved with it.
         """
-        return f"{self.scenario}|{self.kind}|{self.context}"
+        base = f"{self.scenario}|{self.kind}|{self.context}"
+        if self.kind == KIND_LITERAL:
+            return f"{base}|@{self.offset}"
+        return base
 
     @property
     def signature(self) -> str:
@@ -203,6 +217,7 @@ def _step_mutants(scenario: str, step: Step) -> list[Mutant]:
                 mutated=mutated,
                 kind=KIND_LITERAL,
                 context=f"{step.keyword} {step.text}",
+                offset=match.start(),
             )
         )
     return mutants
