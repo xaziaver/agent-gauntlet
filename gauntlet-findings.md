@@ -2887,6 +2887,16 @@ does not weaken the self-verifying property. The reporting half lands separately
 stale-approval remedy: a stale or modified approval diagnosed by cause — relocated, superseded,
 re-aimed.)*
 
+*(Annotation, 2026-09-22, from pricing package P2 against `ca1bb33`: the decisions are in the
+package block under "Acceptance mutant locators are not unique, so the ledger cannot address every
+mutant". The three halves of this entry go three ways. The key half closes by ruling — decision (2):
+the `example` key stays whole-row, because a cell-only key is not unique and any unique narrower key
+is positional, and what v1 needed for a persisted contract is the migration path P2 builds. The
+re-aim half — the value-ordered tie-break in `_discriminating_alternatives` — is left and routed to
+P7 by decision (3), measured at the tag as 107 of 808 `example` signatures and three approvals if
+changed, a baseline reset. The reporting half is P3's, as the 2026-09-20 annotation says. Status
+stays Open with the two routed halves named.)*
+
 #### A same-outcome enumeration guarantees one surviving mutant per row
 
 **What happened.** Drafting ClaimGate item 4e, a closed set of fourteen loss types had to be
@@ -3682,6 +3692,157 @@ digests do not change, so a ledger's keys can be rewritten mechanically, in a do
 in the regression clone alike. The predicted effect on the subject is exact — the tag's 8 `literal`
 approvals move key, the other 65 do not. Also unblocks `--locator` and the per-mutant reason, which
 address a mutant by its locator.)*
+
+**Package P2 — ledger keys, once. Design decisions, advisor-recommended, human-ratified
+2026-09-22.** One block for the package, per the rule of 2026-09-20; it sits here because this is
+the package's first entry, and "Mutant approval keys are content-addressed on the whole row" points
+at it. Branch `v1/item-7-p2-ledger-keys` from `ca1bb33`; four commits in this order, then the
+documents commit, one subject run at the tip, one close. Commit 1 is this block. Commit 2 is this
+entry's key. Commit 3 is the migration: schema version 2, `gauntlet mutant migrate`, and the refusal
+every other command gives a version-1 lock. Commit 4 makes an unreadable lock a red gate in the two
+gates that crash on one today. The whole-row entry contributes no commit: its key half is closed by
+decision (2) below, and its other halves are routed. Everything below that describes existing code
+was read at `ca1bb33`; every figure labelled measured was taken by the advisor from a clone, with
+the engine at `ca1bb33` over `git archive prototype-1 features` and the tag's lock, on Python 3.12,
+not the subject's 3.14 — the engine is pure stdlib, so the interpreter does not enter the figures,
+but the agent retakes every throwaway before-state on the owner's machine before code moves.
+Measured first, because the entry's figures are from ten specs at `96a5e9e`: at the tag, 1263
+mutants (808 `example`, 455 `literal`) over sixteen specs yield 1152 unique locators; 111 mutants
+are unaddressable, every one of kind `literal`; eight specs collide, `continuous_coverage.feature`
+alone hiding 46 of 156, and the worst locator carries five mutants (`duplicate_evaluation.feature`,
+`policy_match.feature`); exactly one of the 73 approvals sits on a colliding locator —
+`carrier_configuration.feature`, the `60 days` step — and its digest pairs to `60->61`, as this
+entry says. All 73 approved keys are still produced by the engine at the tag.
+
+(1) *The `literal` key carries the literal's offset within the step text, not its column in the
+line.* `Mutant` gains a field `offset: int = 0`, set to `match.start()` in `_step_mutants`, and
+`locator` returns `{scenario}|literal|{context}|@{offset}` for a literal mutant and the unchanged
+`{scenario}|example|{context}` for an example mutant. This departs from the code proposed above,
+which appends `self.column`: `gherkin.Step.column` is the absolute offset of the step text within
+its raw line, so `Mutant.column` includes the indentation and that key would move on a re-indent
+while `context` held. The in-text offset moves only when the step text moves, and then `context` has
+already moved. Measured: 111 unaddressable mutants at the tag under today's key, 0 under this one;
+`example` rows collide nowhere at the tag. Cost: one dataclass field; `mutant preview` prints the
+new locator for literals, so the 2026-09-20 preview tests that pin a literal locator move, and the
+eleven locator assertions this entry counts move where they pin a literal — the agent reports the
+count of each.
+
+(2) *The `example` key stays whole-row; the whole-row entry's key half closes by this ruling, not by
+code.* The owner's 2026-09-20 ruling put re-keying into v1 because a key format is a persisted
+contract; this decision keeps the contract and reverses the direction, ratified 2026-09-22 as such.
+"Key on the mutated cell" is not unique — two rows sharing a value in the mutated column share the
+key — so it re-opens what decision (1) closes; and every narrower key that is unique needs an
+ordinal among same-valued rows, which is positional and breaks "Mutant locators are structural, not
+positional". The whole row is the only identity the engine has that is both structural and unique,
+because it does not know which column carries the outcome. What v1 needed for a persisted contract
+is a migration path, which decision (4) builds: after P2 a later key change is a versioned migration
+rather than a breaking change. The entry's over-invalidation is met by P3's cause-diagnosed
+reporting, where pairing by digest already separates a relocated judgment from a changed one. Cost:
+the whole-row entry stays `Open` at P2's close with its three halves named, and the open count falls
+by one at P2, not two.
+
+(3) *The re-aim channel is left, named, and routed to P7.* Replacing the value tie-break in
+`_discriminating_alternatives` with table-row order moves 107 of the tag's 808 `example` signatures,
+three of them approved (measured). Three `MODIFIED` approvals are a baseline reset, and P7 is the
+one package allowed one; P2's prediction is that the verdict does not move, so P2 does not touch the
+digest side of an approval.
+
+(4) *The migration: schema version 2, written once by a human command, refused everywhere else.*
+`registry.SCHEMA_VERSION` becomes 2. `registry.load` rejects a version-1 file with a message that
+names the remedy — the path, `has schema version 1, expected 2`, and that a human runs `gauntlet
+mutant migrate` — and rejects every other version as today. A new `gauntlet mutant migrate`, in
+`cli_mutants.py`, reads the version-1 file through a loader that accepts it (the agent names it),
+re-keys each `mutant:` entry of kind `literal` by pairing its old key and its digest against the
+mutants the engine enumerates from the current feature files, and writes version 2 through
+`registry.save`, with every other entry — `config:`, `spec:`, `example` and code mutants — under its
+old key and every payload (`digest`, `approved_at`, `reason`, `reviewer`) byte-identical. It prints
+one line per moved key and one per entry it could not pair, which is carried under its old key: that
+entry reads `MISSING` at the next check and `mutant prune` removes it. On a version-2 file it says
+so and exits 0 without writing. It emits no event line. Who runs it: the human, once per project,
+after installing the tool — the lock is a protected path, so the agent cannot; in the regression
+clone, the owner, after the install and before `check --record`. Measured on the tag: all eight
+`literal` approvals pair to exactly one mutant, and none of the 455 `literal` mutants shares both
+locator and signature with another, so the pairing is unambiguous there. Cost: a project carrying a
+`literal` approval whose step has changed since approval keeps a dead entry until pruned, as it
+would today.
+
+(5) *An unreadable lock is a red gate, never a crash.* `gates/acceptance.py` (`_stages`) and
+`gates/mutation.py` call `registry.load` with no `except`, and `runner.run_gates` catches only
+`Interrupted`, so a malformed or wrong-version lock crashes a `check` at the acceptance gate with no
+`run.finished`; only `protect` reports it as a gate. The schema bump makes that path reachable in
+every project that upgrades, so both gates catch `RegistryError` as `protect` does — `passed` false,
+`actual` null, `error` the message — and the direct `registry.load` calls in `cli_specs.py`,
+`status.py` and `cli_mutants.py` go through `cli_support.load_registry`, so every command answers a
+version-1 lock with the one-line refusal and exit 1.
+
+(6) *No extraction is owed by P2.* The 2026-09-20 ruling names `_column_mutants` at 25 of 25 as its
+reason; P2 edits `Mutant`, `locator` and `_step_mutants`, and the size gate's ceiling is per
+function. The first package that edits `_column_mutants` pays it.
+
+(7) *Code-mutant keys are a separate entry, outside P2.* `CodeMutant.locator` is
+`module|function|removed|added` (`adapters/python.py`), so two survivors in one function making the
+identical line change share a key and `classify` collapses them; the tag carries no code approval
+and no run here measures it. Written as its own entry at this session's save point, unmeasured, for
+a later package.
+
+**Predicted effect on the regression subject.** Before the run, `gauntlet mutant migrate` in the
+clone, from the branch install, rewrites `gauntlet.lock.json` from `61c2ac4d30025e8c…` to sha256
+`3749d099bb77c55df140d98e88759e65c15e0b51edfb56bf8c5be83eee1eb5a3`, 519 lines as before: `"version":
+2`, and exactly eight keys change — the tag's eight `literal` approvals gain `|@46`, `|@41`, `|@32`,
+`|@41`, `|@41`, `|@41`, `|@32`, `|@41` in sorted-key order — with all 92 payloads byte-identical,
+and nothing else (measured by the advisor from the tag's lock and features under decision (1),
+through an emulation of `registry.save` that reproduces the tag lock's own digest; byte-exact if the
+design lands as written). Then one run at the branch tip, protocol as for every item since 3, and
+the `stop-check` skip. The eleven `gate.finished` lines carry the tag's `gate`, `passed`, `error`,
+`diagnostics` and `actual` — the acceptance line still `16 spec(s), 73 reviewed-equivalent` with 0
+diagnostics — so the record's `verdict_sha256` is `9c7aececf56dc4f5…`; `protect` reads `3/3 paths
+unchanged`, because it verifies the `config:` namespace against the tree and never the lock against
+git; the lock after the run is byte-identical to the migrated one above; `git status --porcelain` in
+the clone prints exactly one line, ` M gauntlet.lock.json`, the migration's, and nothing else;
+`.gauntlet/` lists exactly `acceptance-scope.json coverage.json events.jsonl jscpd junit.xml
+last-green.json run.lock` after the check and those seven plus `stop-attempts.json` after the skip;
+`mutants/` exists after the check; no `*.tmp` exists anywhere in the clone; the log holds the same
+event kinds in the same order as change 2's run, `migrate` having written no line; and nothing else.
+No duration is predicted. The harness digest is recomputed at the tip over 54 files, not quoted. The
+checkpoint reads from two figures: green if the lock after the run is `3749d099…` and the verdict
+digest is the tag's; red if the acceptance line's `actual` drops below 73 reviewed-equivalent or a
+stale diagnostic appears, which means the pairing failed, and then the order of the packages is
+re-ruled before anything else moves. What each commit could have reached, and why it does not:
+commit 2 changes every `literal` locator and the migration follows it exactly, so the 73 approvals
+resolve as they do today and the 65 `example` keys are the same bytes; commit 3 is a command the run
+never calls and a version check the migrated lock passes; commit 4 adds `except` clauses the run
+never enters. ClaimGate's committed lock stays version 1 — the clone carries the migrated one
+uncommitted, and ClaimGate's own migration is a phase-4 act — recorded here so the working-tree line
+is read as predicted, not as drift.
+
+**Second proof, a throwaway matrix**, before-state taken by the agent on the owner's machine and
+re-run at the branch tip; the before-states below are predicted from the source at `ca1bb33`, not
+measured. (a) A version-99 lock, `gauntlet check`: before, `protect` red with the schema message in
+`error` and a traceback out of the acceptance gate with no `run.finished`; after, both gates red
+with the message in `error` and `run.finished` present. (b) A version-1 lock carrying two `literal`
+approvals and one `example`, `gauntlet mutant migrate`: after, version 2, two keys moved, the
+`example` entry and every `approved_at` byte-identical, two `moved` lines printed. (c) `migrate` on
+a version-2 lock: one line, exit 0, the file's bytes unchanged. (d) A `literal` approval whose step
+has since changed: carried under its old key, reported as unpaired, and `MISSING` at the next check.
+(e) Two literals on one step line, both surviving: before, one of them absent from every diagnostic;
+after, two keys, both approvable, both classified. (f) `mutant list`, `mutant prune`, `spec status`
+and `status` on a version-1 lock: before, a traceback; after, one line naming the migration and exit
+1. (g) A step re-indented by two spaces: the `literal` key byte-identical before and after.
+
+**Tests that pin it, by commit; nine named, plus the ones that move.** *Commit 1:* none, and that is
+the pin — `git diff --stat` for the commit shows nothing under `tests/`. *Commit 2:*
+`test_literal_mutants_on_one_line_have_distinct_locators` — two quoted literals and a number on one
+step yield three locators. `test_literal_locator_is_unchanged_by_reindenting_the_step`.
+`test_example_locator_is_unchanged_by_this_change` — the same table at two refs of the engine is the
+same key set. *Commit 3:* `test_load_rejects_version_one_naming_the_migration`.
+`test_migrate_rekeys_literal_approvals_and_preserves_payloads`.
+`test_migrate_carries_an_unpairable_approval_unchanged`.
+`test_migrate_is_a_no_op_on_a_current_lock`. *Commit 4:*
+`test_acceptance_gate_reports_a_bad_lock_as_a_red_gate`.
+`test_mutation_gate_reports_a_bad_lock_as_a_red_gate`. Moving, not new: the locator assertions that
+pin a literal (`tests/test_acceptance_mutation.py`, `tests/test_mutmut_parsing.py`), the preview
+tests of 2026-09-20 that print one, and every version-1 fixture in `tests/test_registry.py` and the
+CLI tests — the agent reports each count with the commit it lands in.
 
 #### `LITERAL_PATTERN`'s single-quote alternative matches English possessives
 
@@ -5335,6 +5496,12 @@ byte-identical; inserting one row into the middle of a three-column Examples tab
 locators and moved none of the existing ones. Both verified by set comparison of locators at the two
 refs, by advisor before drafting and by agent after landing.
 
+**Addition, 2026-09-22, package P2.** The `literal` key now carries the literal's offset within the
+step text (`|@<offset>`), so two literals on one step line are two keys. That offset is not a
+column: `Step.column` is the text's offset within the raw line and includes the indentation, which a
+re-indent moves; the in-text offset moves only when the step text moves, and then the key's
+`context` has already moved. Pinned by `test_literal_locator_is_unchanged_by_reindenting_the_step`.
+
 ### An approval's digest is independent of its key
 
 **What happened.** A mutant approval key encodes *where*:
@@ -5682,6 +5849,16 @@ the Stop hook open, fixed inside P1's unbound-spec commit. P1's block, with its 
 prediction and sixteen-row matrix, is under "Mutation's own coverage-guided test selection goes
 stale on a test-only change". The extraction it pays is a new `acceptance/report.py`; P3 and P6 land
 there, P4 in `gates/acceptance.py`.)*
+
+*(Annotation, 2026-09-22: P2 priced and ratified. Its block is under "Acceptance mutant locators are
+not unique, so the ledger cannot address every mutant": the `literal` key gains an in-text offset,
+the `example` key stays whole-row by ruling, the ledger moves to schema version 2 through `gauntlet
+mutant migrate`, and an unreadable lock becomes a red gate in the two gates that crash on one today.
+The whole-row entry stays Open at P2's close with its re-aim half routed to P7 and its reporting
+half to P3, so the open count falls by one at P2. Its prediction is the first that is not "nothing
+changes": the lock's eight `literal` keys and its version move, to a digest named in the block; the
+verdict does not. The pricing found a further entry — code-mutant keys collide the same way,
+`adapters/python.py` `CodeMutant.locator` — written at this session's save point, unmeasured.)*
 
 **The v1 backlog's root-cause-diagnostics item needs a fourth category.** It
 currently distinguishes "tool failed," "tool found nothing," and "nothing to
