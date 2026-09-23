@@ -97,8 +97,11 @@ against approved hashes is route-independent and catches all of them.
 `require_lock = true` once approvals exist and a missing lock becomes a failure with a remedy.
 
 *Technical notes:* the gate reads the lock through `registry.load`, so a corrupt lock is a gate
-*error*, not a pass. It runs first, and under `--fail-fast` a red here stops the run before any
-tool is invoked.
+*error*, not a pass. It runs first, and under `--fail-fast` a red here stops the run before any tool
+is invoked. The lock's schema version is 2, and `registry.load` refuses one at any other version
+with a message naming the remedy, which for a schema-1 lock is `gauntlet mutant migrate`, once, by a
+human. `acceptance` and `mutation` read the lock the same way and report an unreadable one as
+`protect` does: a red gate with the message in `error`, never a crash.
 
 ## static
 
@@ -463,9 +466,12 @@ sentence, exit 1 and write nothing (package P1, 2026-09-21).
   well-designed spec puts anything it wants protected into an Examples cell.
 
 *Identity:* a spec mutant's locator is structural — feature key, scenario name, column, and the
-row's values — deliberately not line-based, so inserting a scenario above does not lapse every
-approval. Its *signature* (`old->new`) can change when a neighbouring row changes the sibling
-choice while the locator holds.
+row's values for an example mutant; feature key, scenario name, the step line and the literal's
+offset within the step text for a literal mutant — deliberately not line-based, so inserting a
+scenario above does not lapse every approval. The offset is within the text, not a column in the raw
+line, so re-indenting the step does not move it; two literals on one step line are therefore two
+keys. Its *signature* (`old->new`) can change when a neighbouring row changes the sibling choice
+while the locator holds.
 
 *Cost:* each mutant runs the step module(s) that bind the mutated spec — discovered on every run
 from the `scenarios(...)` calls in the steps directory, never cached — so wall time is Σ (mutants

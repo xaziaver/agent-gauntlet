@@ -148,6 +148,7 @@ Each gate is opt-in: no `[gates.x]` table, no gate.
 | `gauntlet lock` / `verify` | Approve configuration / check it hasn't drifted |
 | `gauntlet spec approve` / `list` | Approve acceptance specifications |
 | `gauntlet mutant approve[-code]` / `list` / `prune[-code]` | Classify surviving mutants |
+| `gauntlet mutant migrate` | Rewrite a schema-1 ledger to schema 2. Run once, by a human, after upgrading; every other command refuses a schema-1 ledger in one line until it has run |
 | `gauntlet mutant preview <feature>` | Price a spec edit before making it: every mutant the file would generate, one `locator<TAB>signature` line each on stdout, the count by kind on stderr. Reads the file and nothing else — no project, no approval, no ledger — so it works on a candidate copy anywhere; `diff` two listings to see which approvals an edit strands. Background steps yield no mutants, so a radius read from it is a floor. Exits 1 on a file it cannot read |
 | `gauntlet events` | Recent activity: runs, gate results, approvals, escalations |
 | `gauntlet loop --cmd "..." --task "..."` | Drive an agent that can't be hooked |
@@ -572,12 +573,12 @@ needs protecting in an `Examples` column, and use `gauntlet mutant preview <feat
 mutant's kind before a spec is locked. *Fix:* scheduled (package P7), after the ledger-key change it
 depends on.
 
-**The ledger's mutant keys change format once before v1 ships.** Two literals on one step line share
-a locator today, so the ledger cannot address both; and a key carries its whole `Examples` row, so a
-cosmetic edit to a neighbouring cell stales an approval. Both are scheduled as one change (package
-P2) so a ledger restales once, with a migration for every key whose judgment is unchanged. The
-design is not written yet, so what the migration cannot carry is not yet known. Approvals made
-before it will need that migration.
+**A cosmetic edit to an `Examples` row still stales its approvals.** The key deliberately carries
+the whole row: a cell-only key is not unique, and any unique narrower key is positional; the review
+reports the result as stale. A literal mutant's key carries the literal's offset within its step
+text, so two literals on one step line are two keys. The ledger is schema version 2; `gauntlet
+mutant migrate` carries every unchanged judgment, reports each it cannot pair, and leaves it under
+its old key for `mutant prune`.
 
 ## Planned work
 
@@ -618,10 +619,9 @@ only describes where each version line is going and where the product's boundary
 Eleven gates, the approval ledger, hooks, status and review, the event log. Proven on two
 projects: this repository, and an FNOL intake service built end to end under the gates and frozen
 at its `prototype-1` tag as the regression subject for every change made here. What remains for the
-v1 line is sequenced in `BACKLOG.md` as ten packages. Most of it is polish; two things are not,
-and an adopter should read them under Known issues first: acceptance mutants that die before they
-reach the code, and one change to the ledger's key format. The v1 line is done when every gate can
-run on a project it fits without being weakened to
+v1 line is sequenced in `BACKLOG.md` as ten packages. Most of it is polish; one thing is not, and an
+adopter should read it under Known issues first: acceptance mutants that die before they reach the
+code. The v1 line is done when every gate can run on a project it fits without being weakened to
 pass, and when a number a gate prints is a measurement that happened.
 
 ### v2 — the workspace

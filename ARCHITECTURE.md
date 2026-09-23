@@ -187,8 +187,20 @@ Two rules every consumer inherits, both learned the hard way:
   approval into a rubber stamp, or makes a path a project simply does not have look like a
   violation.
 
-Approvals are keyed on a **structural locator** (scenario + kind + surrounding row), never on line
-numbers. Insert a scenario above and every line-keyed approval would silently lapse.
+Approvals are keyed on a **structural locator** (scenario + kind + surrounding context), never on
+line numbers. Insert a scenario above and every line-keyed approval would silently lapse. The two
+mutant kinds key as:
+
+```
+mutant:<path>#<scenario>|literal|<step line>|@<offset>
+mutant:<path>#<scenario>|example|<header>|<row values>
+```
+
+The offset is the literal's position within the step text, not its column in the raw line, so
+re-indenting the step does not move it. The file carries `"version": 2` (`registry.SCHEMA_VERSION`).
+`registry.load`, which every command and gate uses, refuses any version but the current one with a
+message naming the remedy; `registry.load_for_migration` accepts the current version and the
+previous one, and only `mutant migrate` may call it.
 
 ### Gates are never interactive; review is
 
@@ -360,6 +372,22 @@ deliberate and worth the cost — those tests have caught things no unit test co
   unresolved, in the denominator, `N not inspected` in `actual`, and no approval is called stale
   while any survivor is uninspected. A project carrying more than forty survivors counts its
   approved mutants past the cap as unresolved until the list is shorter (package P1, 2026-09-21).
+- **An `Examples` key carries the whole row, not the mutated cell.** A cell-only key is not unique:
+  two rows sharing a value in the mutated column would share it. Every narrower key that is unique
+  needs an ordinal among same-valued rows, which is positional, and the engine does not know which
+  column carries the outcome. The whole row is the only identity it has that is both structural and
+  unique. The price is that a cosmetic edit to a neighbouring cell stales the row's approvals, which
+  the review reports as stale.
+- **`mutants.migrate` imports the acceptance engine although the module's ledger helpers are
+  generic.** The migration pairs each old literal key, with its digest, against the mutants the
+  engine enumerates from the current spec, and that pairing is acceptance-specific by nature: no
+  other subject's keys moved, and no other subject can say what a key's mutant is today.
+- **An unreadable or out-of-date lock is a red gate carrying the message in `error`, not a crash,
+  and a one-line refusal from every command that reads it, while the library modules keep raising.**
+  The gate's contract is a `GateResult` and the CLI's is one line and an exit code; a library that
+  swallowed the error would hide it from both. `registry.load` raises `RegistryError`; `protect`,
+  `acceptance` and `mutation` catch it into `error`, and every command that reads the lock catches
+  it into its one line and exit 1.
 
 ---
 
