@@ -15,9 +15,11 @@ import time
 from pathlib import Path
 
 import pytest
+from typer.testing import CliRunner
 
 from gauntlet import locking, registry, specs
 from gauntlet.adapters.base import RunResult
+from gauntlet.cli import app
 from gauntlet.gates import acceptance
 from gauntlet.gates.base import GateContext
 
@@ -660,3 +662,32 @@ def test_a_green_gate_s_actual_is_unchanged(project: Path, monkeypatch: pytest.M
     result = acceptance.run(_ctx(project), CONFIG)
     assert result.passed is True
     assert result.actual == "1 spec(s)"
+
+
+def test_acceptance_gate_reports_a_bad_lock_as_a_red_gate(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A ledger the tool cannot read is red with the message in `error`, as protect reports it,
+    and a `check` over it completes with `run.finished` naming both gates, not a traceback."""
+    lock = locking.lock_path(project)
+    lock.write_text(json.dumps({"version": 99, "entries": {}}))
+
+    result = acceptance.run(_ctx(project), CONFIG)
+
+    assert result.passed is False
+    assert result.actual is None
+    assert "schema version 99" in (result.error or "")
+    assert result.diagnostics == []
+
+    (project / "gauntlet.toml").write_text(GATED_CONFIG + "\n[gates.protect]\n")
+    monkeypatch.chdir(project)
+    run = CliRunner().invoke(app, ["check", "--json"])
+
+    assert run.exit_code == 2
+    payload = json.loads(run.stdout or run.stderr)
+    assert [g["error"] is not None for g in payload["gates"]] == [True, True]
+    lines = (project / ".gauntlet" / "events.jsonl").read_text().splitlines()
+    log = [json.loads(line) for line in lines]
+    finished = [line for line in log if line["kind"] == "run.finished"]
+    assert len(finished) == 1
+    assert finished[0]["failed"] == ["protect", "acceptance"]

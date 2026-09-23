@@ -174,7 +174,12 @@ def _classified_result(
     ctx: GateContext, outcome: python_adapter.MutationRun, min_score: float, require_review: bool
 ) -> GateResult:
     survivors = collect(ctx.project_root, ctx.python, outcome.survivors, SHOW_TIMEOUT)
-    approved = registry.load(locking.lock_path(ctx.project_root))
+    try:
+        approved = registry.load(locking.lock_path(ctx.project_root))
+    except registry.RegistryError as exc:
+        # As protect reports it: a ledger the tool cannot read is red, never a crash.
+        threshold = {"min_score": min_score, "require_review": require_review}
+        return GateResult(gate=name, passed=False, threshold=threshold, actual=None, error=str(exc))
     verdict = mutants_mod.classify(approved, SUBJECT, survivors)
     counts = _Counts(
         killed=outcome.total - len(outcome.survivors),

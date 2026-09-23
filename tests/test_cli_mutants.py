@@ -702,3 +702,23 @@ def test_migrate_is_a_no_op_on_a_current_lock(migration_project: Path) -> None:
     assert result.exit_code == EXIT_OK
     assert result.stdout.splitlines() == [f"no {lock.name} to migrate"]
     assert not lock.exists()
+
+
+def test_migrate_refuses_an_unreadable_lock_in_one_line(migration_project: Path) -> None:
+    """A version `migrate` cannot rewrite, or a file that is not an object, is one line and
+    exit 1, the file's bytes untouched."""
+    lock = locking.lock_path(migration_project)
+    for text, message in (
+        (json.dumps({"version": 99, "entries": {}}), "schema version 99"),
+        (json.dumps([]), "is not a JSON object"),
+    ):
+        lock.write_text(text, encoding="utf-8")
+
+        result = runner.invoke(app, ["mutant", "migrate"])
+
+        assert result.exit_code == EXIT_CONFIG_ERROR
+        assert result.stdout == ""
+        assert result.stderr.count("\n") == 1
+        assert message in result.stderr
+        assert "Traceback" not in result.stderr
+        assert lock.read_text(encoding="utf-8") == text

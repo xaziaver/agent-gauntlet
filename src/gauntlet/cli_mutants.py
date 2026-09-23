@@ -13,7 +13,7 @@ from gauntlet import mutants as mutants_mod
 from gauntlet.acceptance import gherkin, mutation
 from gauntlet.acceptance.mutation import Mutant
 from gauntlet.adapters.python import CodeMutant
-from gauntlet.cli_support import EXIT_OK, fail, resolve_config
+from gauntlet.cli_support import EXIT_OK, fail, load_registry, resolve_config
 from gauntlet.gates import acceptance, base
 from gauntlet.gates.mutation import SUBJECT, MutmutError, survivors_for
 
@@ -22,8 +22,10 @@ mutant_app = typer.Typer(no_args_is_help=True, help="Review surviving mutants.")
 M = TypeVar("M", bound=mutants_mod.MutantLike)
 
 
-def _classify(root: Path, subject_key: str, survivors: list[M]) -> mutants_mod.Classification[M]:
-    return mutants_mod.classify(registry.load(locking.lock_path(root)), subject_key, survivors)
+def _classify(
+    approved: registry.Registry, subject_key: str, survivors: list[M]
+) -> mutants_mod.Classification[M]:
+    return mutants_mod.classify(approved, subject_key, survivors)
 
 
 def _record(
@@ -40,12 +42,11 @@ def _record(
     raise typer.Exit(code=EXIT_OK)
 
 
-def _prune_stale(root: Path, stale: list[str]) -> NoReturn:
+def _prune_stale(root: Path, approved: registry.Registry, stale: list[str]) -> NoReturn:
     """Drop approvals whose mutants no longer survive."""
     if not stale:
         typer.echo("no stale approvals")
         raise typer.Exit(code=EXIT_OK)
-    approved = registry.load(locking.lock_path(root))
     for stale_key in stale:
         approved = registry.revoke(
             approved, registry.namespaced(mutants_mod.MUTANT_NAMESPACE, stale_key)
@@ -108,6 +109,8 @@ def mutant_approve(
     """
     root, cfg = resolve_config()
     key = _feature_key(root, feature)
+    # A ledger the tool cannot read is refused here, before the mutation run, not after it.
+    load_registry(locking.lock_path(root))
     _record(root, key, _current_survivors(root, cfg, feature, scenario), reason, reviewer)
 
 
@@ -118,6 +121,7 @@ def mutant_approve_code(
 ) -> None:
     """Record that the current surviving code mutants are equivalent."""
     root, cfg = resolve_config()
+    load_registry(locking.lock_path(root))  # refused before the mutmut run, not after it
     _record(root, SUBJECT, _current_code_survivors(root, cfg), reason, reviewer)
 
 
@@ -132,21 +136,25 @@ def mutant_prune(
     """
     root, cfg = resolve_config()
     key = _feature_key(root, feature)
-    _prune_stale(root, _classify(root, key, _current_survivors(root, cfg, feature, "")).stale)
+    approved = load_registry(locking.lock_path(root))  # read once, before the mutation run
+    survivors = _current_survivors(root, cfg, feature, "")
+    _prune_stale(root, approved, _classify(approved, key, survivors).stale)
 
 
 @mutant_app.command("prune-code")
 def mutant_prune_code() -> None:
     """Drop approvals for code mutants that are no longer produced."""
     root, cfg = resolve_config()
-    _prune_stale(root, _classify(root, SUBJECT, _current_code_survivors(root, cfg)).stale)
+    approved = load_registry(locking.lock_path(root))  # read once, before the mutmut run
+    survivors = _current_code_survivors(root, cfg)
+    _prune_stale(root, approved, _classify(approved, SUBJECT, survivors).stale)
 
 
 @mutant_app.command("list")
 def mutant_list() -> None:
     """Show every reviewed-equivalent mutant and the reason it was accepted."""
     root, _ = resolve_config()
-    approved = registry.load(locking.lock_path(root))
+    approved = load_registry(locking.lock_path(root))
     scoped = registry.in_namespace(approved, mutants_mod.MUTANT_NAMESPACE)
     for key, entry in sorted(scoped.entries.items()):
         reason = entry.reason or "(no reason recorded)"

@@ -151,9 +151,11 @@ def approve(
 
 
 def _is_literal_key(key: str) -> bool:
-    """A `mutant:` entry whose locator names the literal kind."""
-    if not key.startswith(MUTANT_NAMESPACE + registry.NAMESPACE_SEPARATOR):
-        return False
+    """An entry whose locator names the literal kind.
+
+    Only a `mutant:` key carries a `#`-separated locator; a `spec:` or `config:`
+    key is a path, so its locator is empty and it is never a literal.
+    """
     return f"|{mutation.KIND_LITERAL}|" in _split_key(key)[1]
 
 

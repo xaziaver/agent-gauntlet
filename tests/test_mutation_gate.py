@@ -1,15 +1,18 @@
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 
 import pytest
+from typer.testing import CliRunner
 
 from gauntlet import config as config_mod
 from gauntlet import locking, registry
 from gauntlet import mutants as mutants_mod
 from gauntlet.adapters import python as python_adapter
 from gauntlet.adapters.python import CodeMutant, MutationRun
+from gauntlet.cli import app
 from gauntlet.gates import mutation
 from gauntlet.gates.base import GateContext
 
@@ -290,3 +293,50 @@ def test_at_or_under_the_cap_the_result_is_what_it_was(
     assert result.actual == "score 20.0%, 10 killed, 40 unresolved, 1 stale approval(s)"
     assert len(result.diagnostics) == mutation.MAX_SURVIVORS_INSPECTED + 1
     assert result.diagnostics[-1].file == config_mod.LOCK_FILENAME
+
+
+GATED_CONFIG = """\
+[project]
+language = "python"
+src = "src"
+tests = "tests"
+
+[gates.protect]
+
+[gates.mutation]
+
+[gates.acceptance]
+features = "features/"
+"""
+
+
+def test_mutation_gate_reports_a_bad_lock_as_a_red_gate(
+    project: Path, fake_mutmut: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A ledger the tool cannot read is red with the message in `error`, as protect reports it;
+    a `check` that enables this gate completes with `run.finished` naming it beside the others."""
+    lock = locking.lock_path(project)
+    lock.write_text(json.dumps({"version": 99, "entries": {}}))
+
+    result = mutation.run(_ctx(project), {})
+
+    assert result.passed is False
+    assert result.actual is None
+    assert "schema version 99" in (result.error or "")
+    assert result.threshold == {"min_score": mutation.DEFAULT_MIN_SCORE, "require_review": False}
+    assert result.diagnostics == []
+
+    (project / "features").mkdir()
+    (project / "features" / "rating.feature").write_text(
+        "Feature: Rating\n\n  Scenario: x\n    Given y\n"
+    )
+    (project / "gauntlet.toml").write_text(GATED_CONFIG)
+    monkeypatch.chdir(project)
+    run = CliRunner().invoke(app, ["check", "--json"])
+
+    assert run.exit_code == 2
+    lines = (project / ".gauntlet" / "events.jsonl").read_text().splitlines()
+    log = [json.loads(line) for line in lines]
+    finished = [line for line in log if line["kind"] == "run.finished"]
+    assert len(finished) == 1
+    assert finished[0]["failed"] == ["protect", "mutation", "acceptance"]
