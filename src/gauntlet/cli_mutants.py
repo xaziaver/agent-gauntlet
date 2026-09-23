@@ -191,3 +191,42 @@ def mutant_preview(
         typer.echo(f"{mutant.locator}\t{mutant.signature}")
     typer.echo(_preview_summary(feature, found), err=True)
     raise typer.Exit(code=EXIT_OK)
+
+
+def _report_migration(moved: list[tuple[str, str]], unpaired: list[str]) -> NoReturn:
+    for old_key, new_key in sorted(moved):
+        typer.echo(f"moved  {old_key} -> {new_key}")
+    for key in unpaired:
+        typer.echo(f"unpaired  {key}")
+    typer.echo(
+        f"migrated to schema version {registry.SCHEMA_VERSION}: "
+        f"{len(moved)} key(s) moved, {len(unpaired)} unpaired"
+    )
+    raise typer.Exit(code=EXIT_OK)
+
+
+@mutant_app.command("migrate")
+def mutant_migrate() -> None:
+    """Rewrite a schema-version-1 ledger to the current version, keeping every judgment.
+
+    A human's command, once per project: the ledger is a protected path. Each
+    literal approval moves to the key the engine gives it today, paired by its
+    old key and its digest; an approval that pairs to nothing stays under its
+    old key, is named here, reads MISSING at the next check, and `mutant prune`
+    removes it. No payload changes. A current ledger is left as it is.
+    """
+    root, _ = resolve_config()
+    path = locking.lock_path(root)
+    if not path.exists():
+        typer.echo(f"no {path.name} to migrate")
+        raise typer.Exit(code=EXIT_OK)
+    try:
+        loaded = registry.load_for_migration(path)
+    except registry.RegistryError as exc:
+        fail(str(exc))
+    if loaded.version == registry.SCHEMA_VERSION:
+        typer.echo(f"{path.name} is already at schema version {registry.SCHEMA_VERSION}")
+        raise typer.Exit(code=EXIT_OK)
+    updated, moved, unpaired = mutants_mod.migrate(root, loaded.registry)
+    registry.save(updated, path)
+    _report_migration(moved, unpaired)

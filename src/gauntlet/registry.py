@@ -25,7 +25,10 @@ from typing import Any
 
 from gauntlet.gates.base import write_text_atomic
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+# The one version `gauntlet mutant migrate` can still read: version 1 keyed a
+# literal mutant by its step line alone, so two literals on one line shared a key.
+MIGRATABLE_VERSIONS = (1, SCHEMA_VERSION)
 DIGEST_PREFIX = "sha256:"
 
 NAMESPACE_SEPARATOR = ":"
@@ -127,27 +130,74 @@ def _parse_entry(key: str, value: Any, path: Path) -> Entry:
     )
 
 
-def _parse(raw: Any, path: Path) -> dict[str, Entry]:
+def _version_of(raw: Any, path: Path) -> Any:
     if not isinstance(raw, dict):
         raise RegistryError(f"{path} is not a JSON object")
-    version = raw.get("version")
-    if version != SCHEMA_VERSION:
-        raise RegistryError(f"{path} has schema version {version!r}, expected {SCHEMA_VERSION}")
+    return raw.get("version")
+
+
+def _wrong_version(path: Path, version: Any) -> RegistryError:
+    return RegistryError(f"{path} has schema version {version!r}, expected {SCHEMA_VERSION}")
+
+
+def _parse_entries(raw: dict[str, Any], path: Path) -> dict[str, Entry]:
     entries = raw.get("entries")
     if not isinstance(entries, dict):
         raise RegistryError(f"{path} has a malformed entries table")
     return {key: _parse_entry(key, value, path) for key, value in entries.items()}
 
 
-def load(path: Path) -> Registry:
-    """Read a registry file. A missing file is an empty registry, not an error."""
-    if not path.exists():
-        return Registry()
+def _parse(raw: Any, path: Path) -> dict[str, Entry]:
+    version = _version_of(raw, path)
+    if version == 1:
+        raise RegistryError(
+            f"{path} has schema version 1, expected {SCHEMA_VERSION}: "
+            f"a human runs `gauntlet mutant migrate`"
+        )
+    if version != SCHEMA_VERSION:
+        raise _wrong_version(path, version)
+    return _parse_entries(raw, path)
+
+
+def _read(path: Path) -> Any:
     try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
+        return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise RegistryError(f"{path} is unreadable: {exc}") from exc
-    return Registry(entries=_parse(raw, path))
+
+
+def load(path: Path) -> Registry:
+    """Read a registry file. A missing file is an empty registry, not an error.
+
+    The only loader any command other than `gauntlet mutant migrate` may call:
+    a file at an older schema version is refused here with the remedy, never
+    read as if its keys were current.
+    """
+    if not path.exists():
+        return Registry()
+    return Registry(entries=_parse(_read(path), path))
+
+
+@dataclass(frozen=True)
+class Loaded:
+    """What `load_for_migration` read: the entries and the schema version they were keyed under."""
+
+    version: int
+    registry: Registry
+
+
+def load_for_migration(path: Path) -> Loaded:
+    """Read a registry file at any version `migrate` can rewrite, and say which it was.
+
+    For `gauntlet mutant migrate` only; every other reader goes through `load`.
+    The file must exist: the command says there is nothing to migrate before
+    it asks.
+    """
+    raw = _read(path)
+    version = _version_of(raw, path)
+    if version not in MIGRATABLE_VERSIONS:
+        raise _wrong_version(path, version)
+    return Loaded(version=version, registry=Registry(entries=_parse_entries(raw, path)))
 
 
 def approve(
