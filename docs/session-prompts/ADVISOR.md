@@ -85,9 +85,12 @@ kept. The proof is an identical verdict: the eleven `gate.finished` lines
 carry the same `gate`, `passed`, `error`, `diagnostics` and `actual` as the
 baseline run (durations excepted) — since item 3, one figure: the record's
 `verdict_sha256` is `9c7aececf56dc4f5…`, the tag's, and the eleven lines are read
-anyway — `gauntlet.lock.json` is byte-identical
-(sha256 prefix `61c2ac4d30025e8c`), the ClaimGate working tree is clean after
-the run, `.gauntlet/` lists exactly `acceptance-scope.json coverage.json
+anyway — `gauntlet.lock.json` is byte-identical to the migrated tag lock
+(sha256 prefix `3749d099bb77c55d` since P2's `gauntlet mutant migrate` on
+2026-09-24; `61c2ac4d30025e8c` before it), the ClaimGate working tree after
+the run shows exactly ` M gauntlet.lock.json` — the migration's line, until
+phase 4 migrates ClaimGate's own — and nothing else, `.gauntlet/` lists
+exactly `acceptance-scope.json coverage.json
 events.jsonl jscpd junit.xml last-green.json run.lock` after the check and
 those seven plus `stop-attempts.json` after the `stop-check` skip — the skip
 clears the attempt counter since item 6's `d9e835d`, and the seven-entry
@@ -500,6 +503,27 @@ A commit subject quoting a line count taken before `ruff format` ran — P1's sa
 121 and the committed file was 124; a pushed commit is not amended, and the close records the
 figure. A report that says a findings section "is now false" — read the section; the agent has been
 wrong about what one was about.
+
+Reasoning about what a collapse does without reading the collapse — the advisor argued that a
+survivor sharing a key with a matching approval would read `MODIFIED`, and `classify` keeps one
+survivor per key in a dict, so the other is dropped silently; the agent's throwaway showed it, and
+the subject's exposure was then measured on its own stack. Read the dict before predicting what it
+hides. Writing a matrix before-state the current code cannot produce — a version-1 lock "tracebacks"
+at a ref whose schema is 1. Counting call sites by grepping the modules already read — eight named,
+thirteen found; the count the agent finds binds, and the prompt should say so. Forgetting the tool's
+own protected files: a schema change reaches this repository's own `gauntlet.lock.json`, which the
+agent may not touch, so the commit that bumps the schema needs the human's act between two agent
+turns — check every protected file of the tool itself before ordering a package's commits. Writing a
+floor as a bare number — "four named tests" was read as a cap and two branches went untested until
+the next turn; write "at least" or "and any the code needs". Adding an expectation to a prompt that
+the block did not make — row (b)'s "then green" was the prompt's, its red was the entry's own defect
+surfacing, and the agent rightly reported it as a departure rather than fixing the fixture; an
+expectation beyond the block is the prompt's, and its failure is not the package's. A hand-off
+citing a symbol's file without measuring — `CodeMutant.locator` was placed in `gates/mutation.py`
+and lives in `adapters/python.py`. Passing a scenario name to `pytest -k` — spaces make it an
+expression; collect the node id and run that. Writing a file to the outputs directory and telling
+the owner it is attached without presenting it — it was not, and a turn was lost.
+
 
 ## Areas where I will need you most
 

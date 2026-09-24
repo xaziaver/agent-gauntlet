@@ -440,15 +440,16 @@ red here before it reaches the subject. Since item 2 the Stop hook skips wheneve
 tree: a turn end that ran no gate is a `run.reused` line in the log naming that run, and only
 the log tells it from a crash.
 `cli.py` is at 248 of 300 lines since item 6 moved `init` and `guard` to `cli_setup.py`, with
-`check` and `stop_check` at 24 of 25; `gates/acceptance.py` is 247 since P1 moved its
-reporting half to `acceptance/report.py` (124), with `_surviving` at 23;
-`adapters/python.py` 240 with `interpreter` at 23; `gates/mutation.py` 230;
-`loop.py` 151 with `drive` at 24; `gates/base.py` 214 with `run_cmd` at 25 of 25 since item 7
-change 2; `acceptance/mutation.py` 247 with `_column_mutants` at 25 of 25; `registry.py` 241 since
-change 1 and `tree.py` 249 since change 2; `stop.py` 95, `acceptance/strands.py` 71, `runner.py`
-144, `verdict.py` 210, `cli_verdict.py` 54,
-`cli_mutants.py` 191 since change 3. The two functions at the ceiling each force an
-extraction before the next change to them.
+`check` and `stop_check` at 24 of 25; `gates/acceptance.py` is 251 since P2 caught `RegistryError`
+there (P1 moved its reporting half to `acceptance/report.py`, 124), with `_surviving` at 23;
+`adapters/python.py` 240 with `interpreter` at 23; `gates/mutation.py` 235; `loop.py` 151 with
+`drive` at 24; `gates/base.py` 214 with `run_cmd` at 25 of 25 since item 7 change 2;
+`acceptance/mutation.py` 262 since P2 with `_column_mutants` at 25 of 25; `registry.py` 291 since P2
+(`load_for_migration`) and `tree.py` 249 since change 2; `mutants.py` 231 since P2 with `migrate` at
+24; `cli_mutants.py` 240 since P2 with `mutant_migrate` at 24; `cli_status.py` 49 since P2 extracted
+`_run_now`; `stop.py` 95, `acceptance/strands.py` 71, `runner.py` 144, `verdict.py` 210,
+`cli_verdict.py` 54, `cli_support.py` 62. The two functions at the ceiling each force an extraction
+before the next change to them; the two at 24 are one line from it.
 
 **The inventory of 2026-09-12**, read-only, agent-produced, from which this file was written.
 Three source-line citations in the findings resolve at `a0ef78d` (`cli.py:151` and `cli.py:151-152`

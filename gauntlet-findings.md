@@ -1802,6 +1802,44 @@ found.
 moved). Decision (6) and the "Change, applied" text are in the package block under "Mutation's own
 coverage-guided test selection goes stale on a test-only change".
 
+#### A code mutant's ledger key is its diff, so two identical changes in one function share a key
+
+**What happened.** Found 2026-09-21 while pricing package P2, by reading `adapters/python.py`
+(`CodeMutant.locator`, lines 83–99 at `ca1bb33`): a code mutant's ledger key is
+`module|function|removed|added`. Two survivors in one function that make the identical line change —
+the same `removed` and `added` text on two lines — share a key. `mutants.classify` keeps one
+survivor per key, so the second is collapsed out of every diagnostic; one approval covers both
+positions; and, as the acceptance engine showed under version-1 keys (package P2's throwaway,
+2026-09-23), the collapsed survivor is dropped silently when the retained one matches the digest.
+Not measured: the tag carries no code approval (0 of its 92 entries), and no run here has produced
+two identical survivors in one function.
+
+**Why it matters.** The mutation gate's score `(killed + equivalent) / total` is exact only when no
+two survivors share a key; a collapsed survivor leaves `unresolved` and the score reads high.
+Package P2 made acceptance keys unique with a structural element the engine already had (the
+literal's offset within its step text). The code adapter has no such element: mutmut names a mutant
+by function and diff, and the line number is positional.
+
+**What would address it.** A disambiguator that is structural for code — the mutant's ordinal among
+identical diffs within the function, in source order, is the least positional candidate, and it
+moves only when an identical line is inserted above — or an honest refusal: two identical survivors
+in one function are reported as two, unapprovable until one is made distinct. Either way `classify`
+should count survivors, not keys, when it reports `unresolved`. A key change here is a schema
+migration under `gauntlet mutant migrate`, which package P2 built.
+
+**Proposed change.** Measure first, in a throwaway with two identical lines in one function (a
+repeated `return x + 1` behind two branches), that mutmut yields two survivors with one key and that
+`classify` collapses them; then decide between the ordinal and the refusal. Not in package P2, whose
+two entries were about acceptance locators.
+
+**What it cost us.** Nothing realized: the subject's 757 code mutants are all killed. Package P2's
+hand-off cited this symbol in `gates/mutation.py`; it is in `adapters/python.py`.
+
+**Routes to:** BACKLOG.md, G3 item 7 — a later package; needs a mutmut throwaway on the owner's
+machine to price.
+
+**Status.** Open. Found 2026-09-21 from the source, recorded 2026-09-24 at package P2's save point.
+
 #### Four analysis gates scope to `src` alone, so step definitions are outside static, size, complexity and duplication
 
 **What happened.** `gates/base.py::GateContext.tool_targets` hands external tools `[str(self.src)]`
@@ -2676,6 +2714,39 @@ headline is the whole story.
 **Routes to:** BACKLOG.md, v1, small.
 
 **Status.** Open.
+
+#### A lock only a human can clear is counted against the agent's three attempts
+
+**What happened.** `stop.human_blocked` (`stop.py`) reads a run as blocked on a human only when
+every failed gate carries approval-shaped diagnostics; a gate that failed with `error` set and no
+diagnostics is the agent's to act on. Since package P2 an out-of-date lock is exactly that shape —
+`protect`, `acceptance` and `mutation` go red with `has schema version 1, expected 2: a human runs
+`gauntlet mutant migrate`` in `error` — and only a human may touch the lock. Measured 2026-09-22 on
+this repository: the agent's turn 3a ended with `protect` red for that reason, the Stop hook counted
+it three times, and only then escalated ("Gauntlet gates still failing after 3 attempts").
+
+**Why it matters.** The three-attempt loop exists for failures the agent can fix; spending it on one
+it cannot is three hook runs of the suite for nothing, and on a project whose suite is long it is
+three times the wait before the human is told. After phase 4 every project that upgrades the tool
+with a version-1 lock meets this on its first agent turn.
+
+**What would address it.** A `RegistryError`'s message already names the human as the remedy.
+`human_blocked` should treat a gate whose `error` is a registry refusal as human-blocked — by a
+typed marker on `GateResult` or by the gates that catch `RegistryError` saying so — and escalate on
+the first attempt with the message. The message itself stays.
+
+**Proposed change.** In `stop.py`, one more shape in `_approval_only`, and the three gates that
+catch `RegistryError` mark their result; a test that a version-1 lock escalates on the first
+`stop-check`. Small; a candidate for package P3, whose entries are the messages that name the wrong
+thing.
+
+**What it cost us.** Three suite runs on 2026-09-22 (about 75 s each) and the design cost of knowing
+the turn would end red.
+
+**Routes to:** BACKLOG.md, G3 item 7, package P3 if its pricing takes it.
+
+**Status.** Open. Found 2026-09-22 from the source and the log, recorded 2026-09-24 at package P2's
+save point.
 
 #### The Stop hook cannot be scoped, and the prescribed workflow produces a phase where it cannot pass
 
