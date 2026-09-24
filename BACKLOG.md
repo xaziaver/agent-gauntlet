@@ -133,6 +133,30 @@ Every session reads `CLAUDE.md` and this file. Then, per item:
 
 ## Status as of this handoff
 
+**2026-09-24, G3 item 7 package P2 applied (ledger keys, once).** On `v1/item-7-p2-ledger-keys` from
+`ca1bb33`: the human findings commit `58a578b` (one block — seven decisions, one prediction naming
+the migrated lock's digest, a seven-row matrix, 9 test names — two annotations, one Properties
+addition), `003a1c6` (a literal mutant's key carries the literal's offset within the step text; 111
+of the tag's 1263 mutants were unaddressable, 0 are), `32ac880` (the ledger is schema version 2;
+`gauntlet mutant migrate` re-keys every `literal` approval whose judgment is unchanged and carries
+the rest unpaired; this repository's own lock migrated in the same commit by the human, `"version":
+1` → `2`, `c16d59b56bb162cf` → `7d38480c726c7b19`), `fcfa9f2` (an unreadable lock is a red gate in
+`acceptance` and `mutation` as in `protect`; nine commands refuse a version-1 lock in one line),
+`27a0fca` (README, ARCHITECTURE, GATES), and the close. The `example` key stays whole-row by ruling;
+the whole-row entry stays Open with its re-aim half routed to P7 and its reporting half to P3, so
+the Open count falls by one. The regression subject: the human ran `gauntlet mutant migrate` in the
+clone (8 moved, 0 unpaired, lock `61c2ac4d30025e8c` → `3749d099bb77c55d`, 519 lines), then run
+`20260924T122000-525706` at `27a0fca` reproduced the tag's verdict `9c7aececf56dc4f5…` with the lock
+byte-identical after — the checkpoint green; ClaimGate's committed lock stays version 1 until phase
+4. 13 tests added as named (650 → 671 collected), suite 52.102 s, coverage 97.84 / 94.63. The
+protected-files invariant reads from `32ac880` on: `git diff --name-only 32ac880 HEAD --
+gauntlet.toml gauntlet.lock.json pyproject.toml .claude` prints nothing; against `a0ef78d` it names
+`gauntlet.lock.json`, the one-line version bump, by design. Found and not in this package: a code
+mutant's key `module|function|removed|added` collides the same way (its own entry); `mutant approve`
+re-approves every current survivor and overwrites their `reason` and `approved_at` (P4);
+`stop.human_blocked` counts a lock only a human can clear against the agent's three attempts;
+`events.py`'s docstring "every command emits a line" is false for eleven commands.
+
 **2026-09-21, G3 item 7 package P1 applied (trustworthy numbers).** On
 `v1/item-7-p1-trustworthy-numbers` from `a65d36e`, the first branch under the package rule: the
 human findings commit `6b80f2d` (one block for the package — six decisions, one prediction, a
@@ -382,14 +406,16 @@ xargs -0 sha256sum | sha256sum` at that commit: `gauntlet` is installed with `uv
 
 **This repository's own baseline.** Nine gates configured: protect, static, size, complexity, tests,
 coverage, crap, duplication, acceptance; no `[gates.boundary]` or `[gates.mutation]`.
-The hand `gauntlet check` at the tip of item 7 package P1, run `20260921T124732-112995` at
-`fd172ab`, stamped 2026-09-21T12:47:32Z to 12:48:29Z, agent-quoted and read by the advisor from the
+The hand `gauntlet check` at the tip of item 7 package P2, run `20260923T225550-479480` at
+`27a0fca`, stamped 2026-09-23T22:55:50Z to 22:56:44Z, agent-quoted and read by the advisor from the
 paste: protect 3/3 paths unchanged; static 0 findings; size worst function 25; complexity 6; tests
-650/650 passing in 56.267 s; coverage line 97.72, branch 94.33 against floors of 95, 90 and per-file
+671/671 passing in 52.102 s; coverage line 97.84, branch 94.63 against floors of 95, 90 and per-file
 80; crap 8.21; duplication 0; acceptance "no feature files" (vacuous). Diagnostics 0 and error null
-on all nine; `run.finished` tree `d03ce00092f6dbe4…` over 99 files; the harness `8b71d1b28c22d080…`
-over 54, recomputed by the advisor from a clean clone at `0517451`, whose tree is `fd172ab`'s plus
-the close. Before item 7 package P1 (run `20260920T143457-139464` at `99ba679`) the suite was 623
+on all nine; `run.finished` tree `6faba55603a65498…` over 99 files; the harness `5ec94ada84eed5ac…`
+over 54, recomputed by the advisor from a clean clone at `27a0fca`. Before item 7 package P2 (run
+`20260921T124732-112995` at `fd172ab`) the suite was 650 tests in 56.267 s at 97.72 / 94.33 over 99
+files, harness `8b71d1b28c22d080…` over 54.
+Before item 7 package P1 (run `20260920T143457-139464` at `99ba679`) the suite was 623
 tests in 80.951 s on a loaded machine (48.152 s an hour earlier, same source) at 97.07 / 93.11 over
 98 files, harness `5fa4fb351e88f318…` over 53.
 Before item 7

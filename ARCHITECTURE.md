@@ -377,17 +377,18 @@ deliberate and worth the cost — those tests have caught things no unit test co
   needs an ordinal among same-valued rows, which is positional, and the engine does not know which
   column carries the outcome. The whole row is the only identity it has that is both structural and
   unique. The price is that a cosmetic edit to a neighbouring cell stales the row's approvals, which
-  the review reports as stale.
+  the review reports as stale (package P2, 2026-09-23).
 - **`mutants.migrate` imports the acceptance engine although the module's ledger helpers are
   generic.** The migration pairs each old literal key, with its digest, against the mutants the
   engine enumerates from the current spec, and that pairing is acceptance-specific by nature: no
-  other subject's keys moved, and no other subject can say what a key's mutant is today.
+  other subject's keys moved, and no other subject can say what a key's mutant is today
+  (package P2, 2026-09-23).
 - **An unreadable or out-of-date lock is a red gate carrying the message in `error`, not a crash,
   and a one-line refusal from every command that reads it, while the library modules keep raising.**
   The gate's contract is a `GateResult` and the CLI's is one line and an exit code; a library that
   swallowed the error would hide it from both. `registry.load` raises `RegistryError`; `protect`,
   `acceptance` and `mutation` catch it into `error`, and every command that reads the lock catches
-  it into its one line and exit 1.
+  it into its one line and exit 1 (package P2, 2026-09-23).
 
 ---
 

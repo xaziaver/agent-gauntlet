@@ -2850,7 +2850,9 @@ proposal half had not crossed to this document until now.
 
 **Routes to:** BACKLOG.md, v1. Trade-off, not defect — over-invalidation is the safe direction and the fix must not weaken the self-verifying property described under Properties to preserve.
 
-**Status.** Open.
+**Status.** Open — key half ruled 2026-09-22 (the `example` key stays whole-row; package P2,
+decision (2)); re-aim half to P7 (decision (3), measured at the tag as 107 of 808 `example`
+signatures and three approvals if changed); reporting half to P3.
 
 **Addendum, 2026-09-09.** A second face of the same property: adding a row to
 `notice_intake.feature`'s deployment-fault table changed an existing row's sibling-swap
@@ -3682,7 +3684,14 @@ and cannot say which, and no output anywhere reports that.
 **Routes to.** `BACKLOG.md`, v1 — alongside the contract defects rather than under mutation cost
 management, since this is a correctness question about the ledger's addressing scheme.
 
-**Status.** Open. Found 2026-08-26 by measuring locator counts against mutant counts per spec; there
+**Status.** Applied, 2026-09-24, as G3 item 7 package P2 on `v1/item-7-p2-ledger-keys`: `003a1c6` (a
+literal mutant's key carries the literal's offset within the step text), `32ac880` (schema version 2
+and `gauntlet mutant migrate`), `fcfa9f2` (an unreadable lock a red gate, a version-1 lock a
+one-line refusal from every command). The proposal's `|@{column}` is not what shipped — the key
+carries the offset within the step text, because `Step.column` includes the indentation. Measured at
+the tag before the change: 111 of 1263 mutants unaddressable, all of kind `literal`, 0 after. The
+package's "Change, applied" text is below, after the block. Found 2026-08-26 by measuring locator
+counts against mutant counts per spec; there
 was no prior art in this document or in ClaimGate's `harness-findings.md`, and the uniqueness of a
 locator had been checked once, for one file, and never recorded as not guaranteed.
 
@@ -3843,6 +3852,88 @@ same key set. *Commit 3:* `test_load_rejects_version_one_naming_the_migration`.
 pin a literal (`tests/test_acceptance_mutation.py`, `tests/test_mutmut_parsing.py`), the preview
 tests of 2026-09-20 that print one, and every version-1 fixture in `tests/test_registry.py` and the
 CLI tests — the agent reports each count with the commit it lands in.
+
+**Package P2 — change, applied 2026-09-24 (advisor-recommended, human-ratified).** On
+`v1/item-7-p2-ledger-keys` from `ca1bb33`: `58a578b` (this block, two annotations, one Properties
+addition; script-applied, 4 anchors, 177/0), then `003a1c6` (the key; 16/1 in
+`acceptance/mutation.py`, three tests, `_column_mutants` untouched), `32ac880` (schema version 2,
+`registry.load_for_migration`, `mutants.migrate` with `_paired_key`, `gauntlet mutant migrate`; six
+tests, three version-1 fixtures moved; this repository's own lock migrated in the same commit by the
+human, `c16d59b56bb162cf` → `7d38480c726c7b19`, three `config:` entries under `"version": 2`),
+`fcfa9f2` (the acceptance and mutation gates catch `RegistryError` as `protect` does; nine commands,
+not eight — `mutant prune-code` was the ninth — refuse a version-1 lock in one line; the two approve
+commands read the lock before the mutation run; `status`'s `--run` block extracted to `_run_now`;
+four tests), and `27a0fca` (README, `ARCHITECTURE.md`, `docs/GATES.md`: 3, 2 and 2 anchors,
+script-applied, read by the advisor as diffs at the ref). At the tip, agent-measured and
+advisor-verified from a clone: `acceptance/mutation.py` 262 with `_column_mutants` still the one
+function at 25, `mutants.py` 231 (`migrate` 24), `registry.py` 291, `cli_mutants.py` 240
+(`mutant_migrate` 24), `cli_status.py` 49; harness `5ec94ada84eed5ac…` over 54; 13 tests added as
+named (616 → 629 names; 650 → 671 collected items), nothing deleted; coverage 97.84 line, 94.63
+branch. Sixty agent judgments across seven turns, each ratified; the ones a later reader needs: the
+pairing digest is `registry.digest(signature.encode())`, the function `approve` wrote with; two
+matches at one old key are treated as none and reported; a missing or non-UTF-8 spec makes every
+`literal` entry at its path unpaired; a project with no lock gets `no gauntlet.lock.json to
+migrate`; the no-`mutant:` branch of `_is_literal_key` was removed after coverage showed it
+unreached, and a non-`mutant:` key has no `#` so its locator is empty and the removal preserves
+behaviour.
+
+Corrections to this block, all the advisor's, ratified as amendments before the commit they touched.
+(A1) Decision (5) named eight `registry.load` sites and routed three library modules through
+`cli_support.load_registry`; the agent found thirteen, and `status.py`, `specs.py`, `mutants.py` and
+`locking.py` are library modules that must keep raising, so the refusal is produced per command in
+the CLI layer by the `cli_approvals.lock` pattern. (A2) Matrix row (f)'s before-state was "a
+traceback" on a version-1 lock, which loads at `ca1bb33`; the before-state is the version-99
+traceback and the after-state the version-1 refusal, and `spec status` does not exist — `spec list`
+does. (A3) `test_example_locator_is_unchanged_by_this_change` cannot compare two refs; it is
+`test_example_locator_carries_no_offset`, the first test to pin a locator's text. Beyond the
+amendments: the block's tests paragraph said literal-pinning assertions and the preview tests
+"move"; none pinned a literal's text, so zero moved. The block did not see that this repository's
+own lock is version 1, so commit 3 needed the human's migration between two agent turns, and turn 3a
+ended with `protect` red by design — counted against the agent three times and then escalated,
+because `stop.human_blocked` reads a gate red with `error` and no diagnostics as the agent's, though
+only a human can clear it (a finding, not this package's). And the advisor's reasoning that a
+survivor collapsed under a shared key would read `MODIFIED` was wrong: `classify` keeps one survivor
+per key, and when the retained one matches the digest the other is dropped silently — the agent's
+throwaway showed it (four `approved` lines writing three keys; the `"C-1"` survivor hidden under
+version-1 keys and reported under version-2 ones), and the advisor then measured the tag's one
+approved colliding locator on the subject's own stack: the marker mutant `"AAAA"->"AAAA"_gauntlet`
+raises `StepDefinitionNotFoundError`, so nothing hidden at the tag surfaces after migration.
+
+Proof, first shape. Regression run `20260924T122000-525706`: `gauntlet check --record
+~/gauntlet-review/item7-p2-verdict.json` in the item-1 clone at `be87d38`, `.gauntlet/` and
+`mutants/` removed first, Gauntlet at `27a0fca` installed into the clone's venv with
+`verdict.harness()` printing `5ec94ada84eed5ac…` over 54, then `gauntlet mutant migrate` run by the
+human: eight `moved` lines, none unpaired, the lock `61c2ac4d30025e8c` → `3749d099bb77c55d`, 519
+lines as before, `git status --porcelain` exactly ` M gauntlet.lock.json` — the digest the block
+predicted from the advisor's emulation, reproduced by the landed command at `32ac880` and at
+`fcfa9f2` on a copy of the tag before the run. Every clause of the prediction held: `verdict_sha256`
+`9c7aececf56dc4f5214bfc4a07cd729f347086039dc7ba9193c6edfa3d01ca42`, the tag's and P1's; eleven
+`gate.finished` lines with the tag's `gate`, `passed`, `error`, `diagnostics` and `actual`, the
+acceptance line `16 spec(s), 73 reviewed-equivalent` with 0 diagnostics; `protect` `3/3 paths
+unchanged`; `run.finished` `b203ab90…` over 127; the lock byte-identical to the migrated one after
+the run; `.gauntlet/` the seven after the check and the eight after the skip
+`20260924T123516-542535`; `mutants/` present; no `*.tmp`; the log's 14 lines projected onto `kind`,
+`gate`, `passed`, `error`, `diagnostics`, `actual` differing in nothing from change 2's run and from
+P1's — all agent-measured and quoted, the record `59134aea64d1d8f8…`. The checkpoint read green on
+its two figures. Durations, outside the proof: acceptance 882.565 s against P1's 1092.143 s,
+mutation 15.175 s. ClaimGate's committed lock stays version 1; its migration is a phase-4 act.
+
+Proof, second shape — the throwaway, seven rows, before-state by the agent at `58a578b` on Python
+3.14.4, after-states at `32ac880` and `fcfa9f2`. (a) version-99 lock: before, `protect` red and a
+traceback out of the acceptance gate with no `run.finished`; after, both red with the message in
+`error` and `"failed": ["protect", "acceptance"]`. (b) version-1 lock with three approvals,
+`migrate`: two keys moved (`|@13`, `|@38`), the `example` entry and every payload byte-identical,
+then the acceptance gate red with the `"C-1"` survivor the old keys hid — ruled correct as measured.
+(c) `migrate` again: the already-current line, bytes unchanged. (d) a changed step: one key carried
+unpaired and named, stale at the next check. (e) the hidden survivor approved under its own key
+`|@8`, then `4 reviewed-equivalent`, `mutant list` four keys — with `mutant approve` re-approving
+every current survivor and overwriting their `reason` and `approved_at`, pre-existing and P4's. (f)
+nine commands on a version-1 lock: exit 1, one stderr line naming `gauntlet mutant migrate`, no
+traceback, the lock unchanged, no `mutants/` created; `mutant preview` unaffected. (g) a step
+re-indented by two spaces: the preview diff empty. Own gates nine green at every commit; the tip run
+`20260923T225550-479480` at `27a0fca`: 671/671, coverage 97.84 / 94.63, worst function 25,
+complexity 6, crap 8.21, duplication 0, gated tree `6faba556…` over 99, agent-quoted; the run turn's
+Stop hook one `run.reused` naming it.
 
 #### `LITERAL_PATTERN`'s single-quote alternative matches English possessives
 
