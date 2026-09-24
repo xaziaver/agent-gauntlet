@@ -110,16 +110,36 @@ def test_load_rejects_a_wrong_schema_version(tmp_path: Path) -> None:
         registry.load(path)
 
 
+def test_load_rejects_version_one_naming_the_migration(tmp_path: Path) -> None:
+    """A version-1 ledger keys literals by their step line; it is refused with the one remedy.
+
+    Any other version is refused as before, without naming a migration it has none of.
+    """
+    path = tmp_path / "lock.json"
+    path.write_text(json.dumps({"version": 1, "entries": {}}))
+    with pytest.raises(registry.RegistryError) as refused:
+        registry.load(path)
+    assert (
+        str(refused.value)
+        == f"{path} has schema version 1, expected 2: a human runs `gauntlet mutant migrate`"
+    )
+    path.write_text(json.dumps({"version": 99, "entries": {}}))
+    with pytest.raises(registry.RegistryError) as other:
+        registry.load(path)
+    assert str(other.value) == f"{path} has schema version 99, expected 2"
+    assert "gauntlet mutant migrate" not in str(other.value)
+
+
 def test_load_rejects_a_malformed_entries_table(tmp_path: Path) -> None:
     path = tmp_path / "lock.json"
-    path.write_text(json.dumps({"version": 1, "entries": []}))
+    path.write_text(json.dumps({"version": 2, "entries": []}))
     with pytest.raises(registry.RegistryError, match="entries table"):
         registry.load(path)
 
 
 def test_load_rejects_an_entry_without_a_digest(tmp_path: Path) -> None:
     path = tmp_path / "lock.json"
-    path.write_text(json.dumps({"version": 1, "entries": {"k": {"approved_at": "now"}}}))
+    path.write_text(json.dumps({"version": 2, "entries": {"k": {"approved_at": "now"}}}))
     with pytest.raises(registry.RegistryError, match="malformed"):
         registry.load(path)
 
@@ -164,7 +184,7 @@ EXPECTED_LEDGER = """\
       "digest": "sha256:46aa5ea64a93dd2dba8ba866754c54398eb29645f0abfdda9a215762eaf8cbaf"
     }
   },
-  "version": 1
+  "version": 2
 }
 """
 

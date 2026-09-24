@@ -215,7 +215,11 @@ def _mutation_result(features: list[Path], outcome: report.MutationOutcome) -> G
 def _stages(
     ctx: GateContext, config: dict[str, Any], features: list[Path], steps: Path, timeout: int
 ) -> GateResult:
-    approved = registry.load(locking.lock_path(ctx.project_root))
+    try:
+        approved = registry.load(locking.lock_path(ctx.project_root))
+    except registry.RegistryError as exc:
+        # As protect reports it: a ledger the tool cannot read is red, never a crash.
+        return GateResult(gate=name, passed=False, threshold=THRESHOLD, actual=None, error=str(exc))
     failure = _approval_stage(ctx, config, features, approved) or _baseline_stage(
         ctx, features, steps, timeout
     )

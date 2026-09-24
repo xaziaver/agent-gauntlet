@@ -8,7 +8,7 @@ import typer
 
 from gauntlet import locking, registry
 from gauntlet import specs as specs_mod
-from gauntlet.cli_support import fail, resolve_config
+from gauntlet.cli_support import fail, load_registry, resolve_config
 
 spec_app = typer.Typer(no_args_is_help=True, help="Manage acceptance specifications.")
 
@@ -21,6 +21,8 @@ def spec_approve(paths: list[Path]) -> None:
         updated = specs_mod.approve(root, paths)
     except FileNotFoundError as exc:
         fail(f"no such spec: {exc}")
+    except registry.RegistryError as exc:
+        fail(str(exc))
     registry.save(updated, locking.lock_path(root))
     for path in paths:
         typer.echo(f"approved  {specs_mod.key_for(root, path)}")
@@ -31,6 +33,6 @@ def spec_list() -> None:
     """Show every discovered spec and whether it is approved."""
     root, cfg = resolve_config()
     features_dir = str(cfg.gates.get("acceptance", {}).get("features", "features/"))
-    approved = registry.load(locking.lock_path(root))
+    approved = load_registry(locking.lock_path(root))
     for line in specs_mod.status_lines(root, features_dir, approved):
         typer.echo(line)

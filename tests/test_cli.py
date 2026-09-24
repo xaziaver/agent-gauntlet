@@ -456,3 +456,60 @@ def test_the_cap_escalation_carries_its_reason(project: Path) -> None:
     assert "1 attempts" in json.loads(result.output)["systemMessage"]
     (escalated,) = _escalations(project)
     assert (escalated["reason"], escalated["attempts"]) == ("attempts", 1)
+
+
+LEDGER_CONFIG = (
+    CONFIG
+    + """
+[gates.acceptance]
+features = "features/"
+"""
+)
+
+LEDGER_COMMANDS = [
+    pytest.param(["spec", "approve", "features/rating.feature"], id="spec-approve"),
+    pytest.param(["spec", "list"], id="spec-list"),
+    pytest.param(["mutant", "list"], id="mutant-list"),
+    pytest.param(["mutant", "prune", "features/rating.feature"], id="mutant-prune"),
+    pytest.param(
+        ["mutant", "approve", "features/rating.feature", "--reason", "r", "--reviewer", "h"],
+        id="mutant-approve",
+    ),
+    pytest.param(["mutant", "approve-code", "--reason", "r"], id="mutant-approve-code"),
+    pytest.param(["mutant", "prune-code"], id="mutant-prune-code"),
+    pytest.param(["status"], id="status"),
+    pytest.param(["review"], id="review"),
+]
+
+
+@pytest.fixture
+def ledger_project(project: Path) -> Path:
+    """A project whose ledger is still at schema version 1."""
+    (project / "features").mkdir()
+    (project / "features" / "rating.feature").write_text(
+        "Feature: Rating\n\n  Scenario: x\n    Given an amount of 100\n"
+    )
+    (project / "gauntlet.toml").write_text(LEDGER_CONFIG)
+    (project / "gauntlet.lock.json").write_text(json.dumps({"version": 1, "entries": {}}))
+    return project
+
+
+@pytest.mark.parametrize("command", LEDGER_COMMANDS)
+def test_every_ledger_command_refuses_a_version_one_lock_in_one_line(
+    ledger_project: Path, command: list[str]
+) -> None:
+    """Every command whose body reaches the ledger answers a version-1 file with one line naming
+    the migration and exit 1: no traceback, nothing on stdout, the file untouched — and for the
+    two approve commands, refused before the mutation run, so no `mutants/` was ever made."""
+    lock = ledger_project / "gauntlet.lock.json"
+    before = lock.read_bytes()
+
+    result = runner.invoke(app, command)
+
+    assert result.exit_code == EXIT_CONFIG_ERROR
+    assert result.stdout == ""
+    assert result.stderr.count("\n") == 1
+    assert "gauntlet mutant migrate" in result.stderr
+    assert "Traceback" not in result.stderr
+    assert lock.read_bytes() == before
+    assert not (ledger_project / "mutants").exists()

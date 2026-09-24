@@ -12,7 +12,7 @@ import typer
 
 from gauntlet import events, locking, registry, review
 from gauntlet import status as status_mod
-from gauntlet.cli_support import EXIT_OK, resolve_config
+from gauntlet.cli_support import EXIT_OK, fail, resolve_config
 
 review_app = typer.Typer(no_args_is_help=False, help="Walk pending approvals one at a time.")
 
@@ -75,7 +75,10 @@ def review_command(
 ) -> None:
     """Review what is waiting on you, one item at a time."""
     root, cfg = resolve_config()
-    items = [review.build_item(root, p) for p in status_mod.pending(root, cfg)]
+    try:
+        items = [review.build_item(root, p) for p in status_mod.pending(root, cfg)]
+    except registry.RegistryError as exc:
+        fail(str(exc))
     if not items:
         typer.echo("nothing needs your approval")
         raise typer.Exit(code=EXIT_OK)

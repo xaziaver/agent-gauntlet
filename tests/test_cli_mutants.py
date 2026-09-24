@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import signal
 from pathlib import Path
 from typing import Any
@@ -478,3 +479,246 @@ def test_the_preview_help_says_background_steps_yield_no_mutants() -> None:
     result = runner.invoke(app, ["mutant", "preview", "--help"])
     assert result.exit_code == EXIT_OK
     assert "Background" in result.stdout
+
+
+# One step carrying two quoted literals and a number, one bare-number step, one outline.
+MIGRATION_FEATURE = """\
+Feature: Migration
+
+  Scenario: Literals on one line
+    Given a "home" policy in "TX" costs 100
+    Then the premium is 250
+
+  Scenario Outline: Amount decides the tier
+    Given an amount of <amount>
+    Then the tier is "<tier>"
+
+    Examples:
+      | amount | tier     |
+      | 75000  | high     |
+      | 100    | standard |
+"""
+
+MIGRATION_KEY = "features/migration.feature"
+WHEN = "2026-07-28T00:00:00+00:00"
+
+
+def _version_one_key(mutant: mutation.Mutant) -> str:
+    """The key a version-1 ledger held: a literal's locator ended at the step text."""
+    locator = mutant.locator
+    if mutant.kind == mutation.KIND_LITERAL:
+        locator = locator[: locator.rfind("|@")]
+    return registry.namespaced(mutants_mod.MUTANT_NAMESPACE, f"{MIGRATION_KEY}#{locator}")
+
+
+def _approved_at_version_one(mutant: mutation.Mutant, key: str | None = None) -> registry.Registry:
+    """An approval as a version-1 writer recorded it, with every payload field set."""
+    return registry.approve(
+        registry.Registry(),
+        key or _version_one_key(mutant),
+        mutant.signature.encode("utf-8"),
+        when=WHEN,
+        reason=f"equivalent: {mutant.signature}",
+        reviewer="ada",
+    )
+
+
+def _write_version_one_lock(project: Path, approvals: list[registry.Registry]) -> Path:
+    """Merge the approvals into one ledger and write it as version 1, through `save`'s bytes."""
+    merged: dict[str, registry.Entry] = {}
+    for approval in approvals:
+        merged.update(approval.entries)
+    lock = locking.lock_path(project)
+    registry.save(registry.Registry(entries=merged), lock)
+    text = lock.read_text(encoding="utf-8")
+    assert text.count('"version": 2') == 1
+    lock.write_text(text.replace('"version": 2', '"version": 1'), encoding="utf-8")
+    return lock
+
+
+@pytest.fixture
+def migration_project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    (tmp_path / "features").mkdir()
+    (tmp_path / "src").mkdir()
+    (tmp_path / "tests" / "steps").mkdir(parents=True)
+    (tmp_path / "gauntlet.toml").write_text(CONFIG)
+    (tmp_path / "features" / "migration.feature").write_text(MIGRATION_FEATURE)
+    (tmp_path / "src" / "rating.py").write_text(RATING)
+    (tmp_path / "conftest.py").write_text(CONFTEST)
+    (tmp_path / "tests" / "steps" / "test_migration.py").write_text(
+        BINDINGS.replace("tiering.feature", "migration.feature")
+    )
+    monkeypatch.chdir(tmp_path)
+    return tmp_path
+
+
+def _engine_mutants(project: Path) -> list[mutation.Mutant]:
+    text = (project / MIGRATION_KEY).read_text(encoding="utf-8")
+    return mutation.mutants(gherkin.parse(text, MIGRATION_KEY))
+
+
+def _entry_lines(text: str, key: str) -> list[str]:
+    """The ledger's own lines for one entry, from its key line to its closing brace."""
+    lines = text.splitlines()
+    start = next(i for i, line in enumerate(lines) if line.strip().startswith(f'"{key}"'))
+    end = next(i for i in range(start, len(lines)) if lines[i].strip() in {"},", "}"})
+    return lines[start : end + 1]
+
+
+def test_migrate_rekeys_literal_approvals_and_preserves_payloads(migration_project: Path) -> None:
+    """Two literal approvals move to offset-carrying keys; the example approval and every
+    payload are the bytes a version-1 writer left."""
+    found = _engine_mutants(migration_project)
+    home = next(m for m in found if m.original == '"home"')
+    premium = next(m for m in found if m.original == "250")
+    example = next(m for m in found if m.kind == mutation.KIND_EXAMPLE and m.original == "75000")
+    lock = _write_version_one_lock(
+        migration_project, [_approved_at_version_one(m) for m in (home, premium, example)]
+    )
+    before = json.loads(lock.read_text(encoding="utf-8"))
+    before_text = lock.read_text(encoding="utf-8")
+
+    result = runner.invoke(app, ["mutant", "migrate"])
+
+    assert result.exit_code == EXIT_OK
+    after_text = lock.read_text(encoding="utf-8")
+    after = json.loads(after_text)
+    assert after["version"] == 2
+    expected_keys = {
+        registry.namespaced(mutants_mod.MUTANT_NAMESPACE, mutants_mod.key_for(MIGRATION_KEY, m))
+        for m in (home, premium, example)
+    }
+    assert set(after["entries"]) == expected_keys
+    for mutant in (home, premium):
+        new_key = registry.namespaced(
+            mutants_mod.MUTANT_NAMESPACE, mutants_mod.key_for(MIGRATION_KEY, mutant)
+        )
+        assert new_key.endswith(f"|@{mutant.offset}")
+        assert after["entries"][new_key] == before["entries"][_version_one_key(mutant)]
+    example_key = _version_one_key(example)
+    assert after["entries"][example_key] == before["entries"][example_key]
+    assert _entry_lines(after_text, example_key) == _entry_lines(before_text, example_key)
+    assert sorted(e["approved_at"] for e in after["entries"].values()) == [WHEN] * 3
+    moved_lines = [line for line in result.stdout.splitlines() if line.startswith("moved  ")]
+    assert len(moved_lines) == 2
+    assert not [line for line in result.stdout.splitlines() if line.startswith("unpaired  ")]
+    assert registry.load(lock).entries.keys() == expected_keys
+
+
+def test_migrate_carries_an_unpairable_approval_unchanged(migration_project: Path) -> None:
+    """A literal whose step is gone pairs to nothing: its key and payload stay, and it is named."""
+    found = _engine_mutants(migration_project)
+    premium = next(m for m in found if m.original == "250")
+    gone = _version_one_key(premium).replace("Then the premium is 250", "Then the surcharge is 7")
+    lock = _write_version_one_lock(migration_project, [_approved_at_version_one(premium, gone)])
+    before = json.loads(lock.read_text(encoding="utf-8"))
+
+    result = runner.invoke(app, ["mutant", "migrate"])
+
+    assert result.exit_code == EXIT_OK
+    after = json.loads(lock.read_text(encoding="utf-8"))
+    assert after["version"] == 2
+    assert after["entries"] == before["entries"]
+    assert f"unpaired  {gone}" in result.stdout.splitlines()
+    assert not [line for line in result.stdout.splitlines() if line.startswith("moved  ")]
+
+
+def _migrate_expecting_nothing_paired(lock: Path, keys: list[str]) -> None:
+    """`migrate` carries every named approval under its old key, payload intact, and says so."""
+    before = json.loads(lock.read_text(encoding="utf-8"))
+
+    result = runner.invoke(app, ["mutant", "migrate"])
+
+    assert result.exit_code == EXIT_OK
+    after = json.loads(lock.read_text(encoding="utf-8"))
+    assert after["version"] == 2
+    assert after["entries"] == before["entries"]
+    lines = result.stdout.splitlines()
+    assert [line for line in lines if line.startswith("unpaired  ")] == [
+        f"unpaired  {key}" for key in sorted(keys)
+    ]
+    assert not [line for line in lines if line.startswith("moved  ")]
+
+
+def test_migrate_reports_every_literal_approval_of_a_missing_spec_as_unpaired(
+    migration_project: Path,
+) -> None:
+    """A spec that is gone, or that is not UTF-8, enumerates no mutants: each literal approval
+    pointing at it is carried unpaired and named, nothing moves, and the version still advances."""
+    found = _engine_mutants(migration_project)
+    home = next(m for m in found if m.original == '"home"')
+    premium = next(m for m in found if m.original == "250")
+    keys = [_version_one_key(home), _version_one_key(premium)]
+    spec = migration_project / MIGRATION_KEY
+
+    spec.unlink()
+    lock = _write_version_one_lock(
+        migration_project, [_approved_at_version_one(m) for m in (home, premium)]
+    )
+    _migrate_expecting_nothing_paired(lock, keys)
+
+    spec.write_bytes(b"\xff\xfe" + MIGRATION_FEATURE.encode("utf-16-le"))
+    with pytest.raises(UnicodeDecodeError):
+        spec.read_text(encoding="utf-8")
+    lock = _write_version_one_lock(
+        migration_project, [_approved_at_version_one(m) for m in (home, premium)]
+    )
+    _migrate_expecting_nothing_paired(lock, keys)
+
+
+def test_migrate_treats_two_matches_as_unpaired(migration_project: Path) -> None:
+    """One step carrying the same literal twice gives two mutants with one version-1 key and one
+    signature; `migrate` cannot tell which the approval meant, so it carries the entry unpaired."""
+    (migration_project / MIGRATION_KEY).write_text(
+        'Feature: Twice\n\n  Scenario: Same literal twice\n    Given "x" then "x"\n'
+    )
+    found = _engine_mutants(migration_project)
+    assert [m.kind for m in found] == [mutation.KIND_LITERAL] * 2
+    assert len({_version_one_key(m) for m in found}) == 1
+    assert len({m.signature for m in found}) == 1
+    assert len({m.locator for m in found}) == 2
+    first = found[0]
+
+    lock = _write_version_one_lock(migration_project, [_approved_at_version_one(first)])
+    _migrate_expecting_nothing_paired(lock, [_version_one_key(first)])
+
+
+def test_migrate_is_a_no_op_on_a_current_lock(migration_project: Path) -> None:
+    lock = locking.lock_path(migration_project)
+    registry.save(_approved_at_version_one(next(iter(_engine_mutants(migration_project)))), lock)
+    assert json.loads(lock.read_text(encoding="utf-8"))["version"] == 2
+    before = lock.read_bytes()
+
+    result = runner.invoke(app, ["mutant", "migrate"])
+
+    assert result.exit_code == EXIT_OK
+    assert result.stdout.count("\n") == 1
+    assert "already at schema version 2" in result.stdout
+    assert lock.read_bytes() == before
+
+    lock.unlink()
+    result = runner.invoke(app, ["mutant", "migrate"])
+
+    assert result.exit_code == EXIT_OK
+    assert result.stdout.splitlines() == [f"no {lock.name} to migrate"]
+    assert not lock.exists()
+
+
+def test_migrate_refuses_an_unreadable_lock_in_one_line(migration_project: Path) -> None:
+    """A version `migrate` cannot rewrite, or a file that is not an object, is one line and
+    exit 1, the file's bytes untouched."""
+    lock = locking.lock_path(migration_project)
+    for text, message in (
+        (json.dumps({"version": 99, "entries": {}}), "schema version 99"),
+        (json.dumps([]), "is not a JSON object"),
+    ):
+        lock.write_text(text, encoding="utf-8")
+
+        result = runner.invoke(app, ["mutant", "migrate"])
+
+        assert result.exit_code == EXIT_CONFIG_ERROR
+        assert result.stdout == ""
+        assert result.stderr.count("\n") == 1
+        assert message in result.stderr
+        assert "Traceback" not in result.stderr
+        assert lock.read_text(encoding="utf-8") == text
