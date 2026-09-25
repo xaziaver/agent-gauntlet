@@ -129,10 +129,13 @@ def mutant_approve_code(
 def mutant_prune(
     feature: Path = typer.Argument(..., help="The feature file to prune approvals for"),
 ) -> None:
-    """Drop approvals for acceptance mutants that no longer survive.
+    """Drop approvals for acceptance mutants that no longer survive at their key.
 
-    An assertion got sharper and now kills what a human once judged equivalent.
-    The judgment is stale, not wrong — remove it so the ledger stays honest.
+    Two causes, which the gate's diagnostic tells apart: an assertion got sharper
+    and now kills what a human once judged equivalent (superseded — do not
+    re-approve without review), or a spec edit moved the locator and the same
+    mutation survives at a new one (relocated — re-approve it there). Either way
+    the entry is stale at its key; remove it so the ledger stays honest.
     """
     root, cfg = resolve_config()
     key = _feature_key(root, feature)

@@ -231,6 +231,23 @@ def test_prune_removes_only_the_approval_that_no_longer_survives(project: Path) 
     assert any("100|standard" in key for key in remaining)
 
 
+def test_prune_removes_a_relocated_key_as_before(project: Path) -> None:
+    """A renamed scenario moves both keys; prune drops them so they can be re-approved
+    at the new locators. Pruning is unchanged by the cause the gate now reports."""
+    runner.invoke(app, ["mutant", "approve", "features/tiering.feature", "--reason", "x"])
+    assert len(_mutant_keys(project)) == 2
+    (project / "features" / "tiering.feature").write_text(
+        FEATURE.replace("Amount decides the tier", "Amount picks the tier")
+    )
+    updated = specs.approve(project, [project / "features" / "tiering.feature"])
+    registry.save(updated, locking.lock_path(project))
+
+    result = runner.invoke(app, ["mutant", "prune", "features/tiering.feature"])
+    assert result.exit_code == EXIT_OK
+    assert _text(result).count("pruned  ") == 2
+    assert _mutant_keys(project) == set()
+
+
 @pytest.fixture
 def fake_code_survivors(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(cli_mutants, "survivors_for", lambda *a, **k: [CODE_MUTANT])

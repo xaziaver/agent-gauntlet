@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -18,11 +19,12 @@ import pytest
 from typer.testing import CliRunner
 
 from gauntlet import locking, registry, specs
-from gauntlet.acceptance import report
+from gauntlet import mutants as mutants_mod
+from gauntlet.acceptance import gherkin, mutation, report
 from gauntlet.adapters.base import RunResult
 from gauntlet.cli import app
 from gauntlet.gates import acceptance
-from gauntlet.gates.base import GateContext
+from gauntlet.gates.base import GateContext, GateResult
 
 FEATURE = """\
 Feature: Premium rating
@@ -249,6 +251,135 @@ def test_spec_diagnostics_name_spec_approve_and_never_lock() -> None:
         assert "gauntlet lock" not in diagnostic.message
     missing = registry.Finding("spec:features/rating.feature", registry.Status.MISSING)
     assert "gauntlet" not in report.approval_diagnostics([missing])[0].message
+
+
+RATING_KEY = "features/rating.feature"
+ALL_MUTANTS = {"features": "features/", "steps": "tests/steps"}  # no sample: every mutant
+
+
+def _approve_every_mutant(root: Path, text: str = FEATURE) -> None:
+    """Every mutant of rating.feature judged equivalent, beside the spec approval."""
+    _approve(root)
+    survivors = mutation.mutants(gherkin.parse(text, RATING_KEY))
+    registry.save(
+        mutants_mod.approve(root, RATING_KEY, survivors, reason="x"), locking.lock_path(root)
+    )
+
+
+def _by_symbol(result: GateResult, symbol: str) -> list[str]:
+    return [d.message for d in result.diagnostics if d.symbol == symbol]
+
+
+def test_a_relocated_approval_is_reported_with_its_new_locator_and_a_prune_naming_the_feature(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Renaming the outline moves four locators; the same four mutations survive there."""
+    _approve_every_mutant(project)
+    renamed = FEATURE.replace("Scenario Outline: Terms", "Scenario Outline: Term lengths")
+    (project / "features" / "rating.feature").write_text(renamed)
+    _approve(project)
+    _record_runs(project, monkeypatch, "rating.feature")  # nothing reads: all survive
+    result = acceptance.run(_ctx(project), ALL_MUTANTS)
+    assert (
+        result.actual
+        == "1 spec(s), 4 surviving mutant(s), 2 reviewed-equivalent, 4 stale approval(s)"
+    )
+    relocated = _by_symbol(result, "relocated")
+    assert len(relocated) == 1 and _by_symbol(result, "superseded") == []
+    assert "Terms|example|annual|50|600 -> Term lengths|example|annual|50|600" in relocated[0]
+    assert relocated[0].count(" -> ") == 3 and " ...;" in relocated[0]  # three pairs, then " ..."
+    assert "judgment still holds" in relocated[0]
+    assert relocated[0].endswith("`gauntlet mutant prune features/rating.feature`")
+    assert [d.file for d in result.diagnostics] == ["features/rating.feature", "gauntlet.lock.json"]
+
+
+def test_a_superseded_approval_is_reported_stale_and_not_offered_for_re_approval(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The bindings now kill every mutant: no survivor carries any approved digest."""
+    _approve_every_mutant(project)
+    _record_runs(project, monkeypatch, "rating.feature", reads=frozenset({"rating.feature"}))
+    result = acceptance.run(_ctx(project), ALL_MUTANTS)
+    assert result.passed is True
+    assert result.actual == "1 spec(s), 6 stale approval(s)"
+    superseded = _by_symbol(result, "superseded")
+    assert len(superseded) == 1 and _by_symbol(result, "relocated") == []
+    assert "an assertion now kills them" in superseded[0]
+    assert "not re-approved without review" in superseded[0]
+    assert superseded[0].endswith("`gauntlet mutant prune features/rating.feature`")
+
+
+def test_relocated_and_superseded_are_two_diagnostics_and_stale_still_holds_both_keys(
+    tmp_path: Path,
+) -> None:
+    moved = mutation.Mutant("Terms", 12, 8, "50", "51", mutation.KIND_EXAMPLE, "monthly|50|600")
+    killed = mutation.Mutant(
+        "Terms", 13, 8, "200", "201", mutation.KIND_EXAMPLE, "monthly|200|2400"
+    )
+    approved = mutants_mod.approve(tmp_path, RATING_KEY, [moved, killed], reason="x")
+    at_new_locator = mutation.Mutant(
+        "Lengths", 12, 8, "50", "51", mutation.KIND_EXAMPLE, "monthly|50|600"
+    )
+    verdict = mutants_mod.classify(approved, RATING_KEY, [at_new_locator])
+    assert sorted(verdict.stale) == sorted(
+        mutants_mod.key_for(RATING_KEY, m) for m in (moved, killed)
+    )
+    diagnostics = report.stale_diagnostics(verdict.stale, verdict.relocated)
+    assert [d.symbol for d in diagnostics] == ["relocated", "superseded"]
+    assert all(d.file == "gauntlet.lock.json" for d in diagnostics)
+
+
+def test_a_modified_approval_is_named_re_aimed_inside_its_scenario_diagnostic(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The locator held and the digest moved: the survivor is reported in its scenario's
+    one diagnostic, with the sentence saying the judgment was about something else."""
+    _approve_every_mutant(project)
+    lock = locking.lock_path(project)
+    key = registry.namespaced(
+        mutants_mod.MUTANT_NAMESPACE, f"{RATING_KEY}#Terms|example|monthly|50|600"
+    )
+    registry.save(registry.approve(registry.load(lock), key, b"50->99"), lock)
+    _record_runs(project, monkeypatch, "rating.feature")
+    result = acceptance.run(_ctx(project), ALL_MUTANTS)
+    assert result.actual == "1 spec(s), 1 surviving mutant(s), 5 reviewed-equivalent"
+    [message] = _by_symbol(result, "Terms")
+    assert (
+        "line 13: 50->51 (approved at this locator for a different substitution; "
+        "the judgment was not about `50->51`)"
+    ) in message
+    assert len(result.diagnostics) == 1
+
+
+@pytest.mark.parametrize(
+    ("stale", "relocated_keys"),
+    [
+        (["features/a.feature#S|example|x|1|2"], []),
+        (["features/a.feature#S|example|x|1|2"], ["features/a.feature#S|example|x|1|2"]),
+        (
+            ["features/a.feature#S|example|x|1|2", "features/b.feature#T|example|y|3|4"],
+            ["features/a.feature#S|example|x|1|2"],
+        ),
+        (
+            [f"features/{n}.feature#S|example|x|1|2" for n in "abcde"],
+            [f"features/{n}.feature#S|example|x|1|2" for n in "ab"],
+        ),
+    ],
+)
+def test_the_stale_remedy_never_emits_prune_without_a_feature(
+    stale: list[str], relocated_keys: list[str]
+) -> None:
+    """The entry's own near miss: the remedy pasted verbatim failed on a missing argument."""
+    survivor = mutation.Mutant("S2", 9, 8, "1", "2", mutation.KIND_EXAMPLE, "x|1|2")
+    relocated = {key: [survivor] for key in relocated_keys}
+    messages = [d.message for d in report.stale_diagnostics(stale, relocated)]
+    assert messages
+    for message in messages:
+        prunes = re.findall(r"`gauntlet mutant prune([^`]*)`", message)
+        assert prunes
+        assert all(arg.startswith(" features/") and arg.endswith(".feature") for arg in prunes)
+    named = {arg for m in messages for arg in re.findall(r"`gauntlet mutant prune ([^`]*)`", m)}
+    assert named == {mutants_mod.subject_of(key) for key in stale}
 
 
 def test_failing_scenarios_fail_the_gate(project: Path) -> None:

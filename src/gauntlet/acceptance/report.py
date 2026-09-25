@@ -6,12 +6,12 @@ words. Nothing here runs a scenario, reads the ledger or touches the tree.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from gauntlet import config as config_mod
+from gauntlet import mutants as mutants_mod
 from gauntlet import registry
-from gauntlet.acceptance import mutation
 from gauntlet.acceptance.mutation import Mutant
 from gauntlet.gates.base import Diagnostic
 
@@ -24,6 +24,8 @@ class MutationOutcome:
     equivalent: int
     stale: list[str]
     not_measured: int = 0  # specs whose mutants would have measured nothing
+    # The stale keys whose judgment moved, each with the survivors carrying its digest.
+    relocated: dict[str, list[Mutant]] = field(default_factory=dict)
 
 
 def merged(outcomes: list[MutationOutcome]) -> MutationOutcome:
@@ -35,6 +37,7 @@ def merged(outcomes: list[MutationOutcome]) -> MutationOutcome:
             total.equivalent + outcome.equivalent,
             total.stale + outcome.stale,
             total.not_measured + outcome.not_measured,
+            {**total.relocated, **outcome.relocated},
         )
     return total
 
@@ -67,13 +70,27 @@ def approval_diagnostics(findings: list[registry.Finding]) -> list[Diagnostic]:
     ]
 
 
-def _values(items: list[Mutant]) -> str:
-    listed = ", ".join(f"line {m.line}: {m.original}->{m.mutated}" for m in items[:MAX_LISTED])
+def _value(m: Mutant, re_aimed: frozenset[Mutant]) -> str:
+    """A re-aimed mutant is approved at this locator, but for a substitution that a
+    neighbouring edit has since changed under the key: the judgment does not carry."""
+    listed = f"line {m.line}: {m.signature}"
+    if m in re_aimed:
+        listed += (
+            f" (approved at this locator for a different substitution; the judgment "
+            f"was not about `{m.signature}`)"
+        )
+    return listed
+
+
+def _values(items: list[Mutant], re_aimed: frozenset[Mutant]) -> str:
+    listed = ", ".join(_value(m, re_aimed) for m in items[:MAX_LISTED])
     extra = len(items) - MAX_LISTED
     return listed + (f" (+{extra} more)" if extra > 0 else "")
 
 
-def _scenario_diagnostic(path: str, scenario: str, items: list[mutation.Mutant]) -> Diagnostic:
+def _scenario_diagnostic(
+    path: str, scenario: str, items: list[Mutant], re_aimed: frozenset[Mutant]
+) -> Diagnostic:
     """One diagnostic per scenario, not per value: thirteen identical sentences
     burn the diagnostic budget and the hook's character cap for no added signal."""
     return Diagnostic(
@@ -82,7 +99,7 @@ def _scenario_diagnostic(path: str, scenario: str, items: list[mutation.Mutant])
         line=min(m.line for m in items),
         value=len(items),
         message=(
-            f"{len(items)} surviving mutant(s) in {scenario!r}: {_values(items)}. "
+            f"{len(items)} surviving mutant(s) in {scenario!r}: {_values(items, re_aimed)}. "
             f"The scenario still passes with these values changed, so it is not "
             f"checking them. Assert on them, or — if the specification maps both "
             f"values to the same outcome — have a human review them with "
@@ -91,22 +108,66 @@ def _scenario_diagnostic(path: str, scenario: str, items: list[mutation.Mutant])
     )
 
 
-def by_scenario(path: str, items: list[mutation.Mutant]) -> list[Diagnostic]:
-    grouped: dict[str, list[mutation.Mutant]] = {}
+def by_scenario(path: str, items: list[Mutant], changed: list[Mutant]) -> list[Diagnostic]:
+    """`items` are the failing survivors; those also in `changed` are re-aimed."""
+    grouped: dict[str, list[Mutant]] = {}
     for mutant in items:
         grouped.setdefault(mutant.scenario, []).append(mutant)
-    return [_scenario_diagnostic(path, scenario, ms) for scenario, ms in grouped.items()]
+    re_aimed = frozenset(changed)
+    return [_scenario_diagnostic(path, s, ms, re_aimed) for s, ms in grouped.items()]
 
 
-def stale_diagnostic(stale: list[str]) -> Diagnostic:
+def _listed(items: list[str]) -> str:
+    return ", ".join(items[:3]) + (" ..." if len(items) > 3 else "")
+
+
+def _prune_lines(keys: list[str]) -> str:
+    """One runnable `gauntlet mutant prune <feature>` per feature holding a key."""
+    features = sorted({mutants_mod.subject_of(key) for key in keys})
+    return ", ".join(f"`gauntlet mutant prune {feature}`" for feature in features)
+
+
+def _relocated_diagnostic(relocated: dict[str, list[Mutant]]) -> Diagnostic:
+    pairs = [
+        f"{registry.bare(key).partition(mutants_mod.SUBJECT_SEPARATOR)[2]} -> {m.locator}"
+        for key, survivors in relocated.items()
+        for m in survivors
+    ]
     return Diagnostic(
         file=config_mod.LOCK_FILENAME,
+        symbol="relocated",
         message=(
-            f"{len(stale)} approved equivalent mutant(s) no longer survive — the "
-            f"assertions got sharper, so these judgments are stale. Remove them with "
-            f"`gauntlet mutant prune`: {', '.join(stale[:3])}" + (" ..." if len(stale) > 3 else "")
+            f"{len(relocated)} approved equivalent mutant(s) moved — a spec edit changed the "
+            f"locator and the same mutation still survives at a new one, so the judgment "
+            f"still holds: {_listed(pairs)}; prune the old key, then re-approve at the "
+            f"new locator: {_prune_lines(list(relocated))}"
         ),
     )
+
+
+def _superseded_diagnostic(superseded: list[str]) -> Diagnostic:
+    return Diagnostic(
+        file=config_mod.LOCK_FILENAME,
+        symbol="superseded",
+        message=(
+            f"{len(superseded)} approved equivalent mutant(s) no longer survive at any "
+            f"locator — an assertion now kills them, so the judgment is not re-approved "
+            f"without review: {_listed(superseded)}; remove them with "
+            f"{_prune_lines(superseded)}"
+        ),
+    )
+
+
+def stale_diagnostics(stale: list[str], relocated: dict[str, list[Mutant]]) -> list[Diagnostic]:
+    """Up to two diagnostics on the lock, one per cause present: relocated keys are
+    the stale keys paired to a survivor by digest; every other stale key is superseded."""
+    diagnostics: list[Diagnostic] = []
+    if relocated:
+        diagnostics.append(_relocated_diagnostic(relocated))
+    superseded = [key for key in stale if key not in relocated]
+    if superseded:
+        diagnostics.append(_superseded_diagnostic(superseded))
+    return diagnostics
 
 
 def _survivor_count(diagnostics: list[Diagnostic]) -> int:

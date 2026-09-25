@@ -100,7 +100,10 @@ def _classify_feature(
         return report.MutationOutcome([report.not_measured_diagnostic(key, str(exc))], 0, [], 1)
     verdict = mutants_mod.classify(approved, key, survivors)
     return report.MutationOutcome(
-        report.by_scenario(key, verdict.failing), len(verdict.equivalent), verdict.stale
+        report.by_scenario(key, verdict.failing, verdict.changed),
+        len(verdict.equivalent),
+        verdict.stale,
+        relocated=verdict.relocated,
     )
 
 
@@ -205,10 +208,9 @@ def _baseline_stage(
 
 
 def _mutation_result(features: list[Path], outcome: report.MutationOutcome) -> GateResult:
-    diagnostics = list(outcome.diagnostics)
-    if outcome.stale:
-        # Stale approvals are housekeeping, not a defect: report, do not fail.
-        diagnostics.append(report.stale_diagnostic(outcome.stale))
+    # Stale approvals are housekeeping, not a defect: report by cause, do not fail.
+    stale = report.stale_diagnostics(outcome.stale, outcome.relocated)
+    diagnostics = [*outcome.diagnostics, *stale]
     return _result(not outcome.diagnostics, report.summary(features, outcome), diagnostics)
 
 

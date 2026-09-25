@@ -57,6 +57,9 @@ class Classification(Generic[M]):
     changed: list[M] = field(default_factory=list)  # judgment lapsed -> fail
     equivalent: list[M] = field(default_factory=list)  # judged equivalent -> pass
     stale: list[str] = field(default_factory=list)  # approved, no longer survives
+    # A stale key paired to the unreviewed survivors carrying its digest: the judgment
+    # moved with a spec edit rather than lapsed. A stale key absent here is superseded.
+    relocated: dict[str, list[M]] = field(default_factory=dict)
 
     @property
     def failing(self) -> list[M]:
@@ -76,6 +79,11 @@ def _split_key(key: str) -> tuple[str, str]:
     """`mutant:<subject>#<locator>` -> (subject, locator), at the first `#`."""
     subject, _, locator = registry.bare(key).partition(SUBJECT_SEPARATOR)
     return subject, locator
+
+
+def subject_of(key: str) -> str:
+    """The subject a ledger key lives in: the feature file for an acceptance mutant."""
+    return _split_key(key)[0]
 
 
 def subjects(subject_key: str, survivors: list[M]) -> dict[str, bytes]:
@@ -102,6 +110,21 @@ def _place(result: Classification[M], finding: registry.Finding, mutant: M | Non
         bucket.append(mutant)
 
 
+def _relocated(findings: list[registry.Finding], unreviewed: list[M]) -> dict[str, list[M]]:
+    """Each MISSING key paired, by digest alone, to the unreviewed survivors whose
+    mutation it approved: the locator moved under an edit and the judgment stands.
+    A key no survivor's digest matches is superseded — the mutant now dies — and
+    is left out, so its judgment is not offered for re-approval."""
+    by_digest: dict[str, list[M]] = {}
+    for mutant in unreviewed:
+        by_digest.setdefault(registry.digest(mutant.signature.encode("utf-8")), []).append(mutant)
+    return {
+        registry.bare(f.key): by_digest[f.expected]
+        for f in findings
+        if f.status is registry.Status.MISSING and f.expected in by_digest
+    }
+
+
 def _subject_scope(approved: registry.Registry, subject_key: str) -> registry.Registry:
     """Only approvals belonging to this subject.
 
@@ -120,9 +143,12 @@ def classify(
     approved: registry.Registry, subject_key: str, survivors: list[M]
 ) -> Classification[M]:
     """Split survivors against the ledger.
-    MISSING means an approved equivalent no longer survives — the assertion got
-    sharper, so the judgment is stale and the entry should be pruned. That is
-    the self-invalidation requirement, and it comes free from verify_all.
+    MISSING means an approved equivalent no longer survives at its key, for one of
+    two causes: the assertion got sharper and the mutant now dies (superseded), or
+    a spec edit moved the locator while the same mutation survives at a new one
+    (relocated — paired by digest in `relocated`). Either way the judgment is stale
+    at that key and the entry should be pruned. That is the self-invalidation
+    requirement, and it comes free from verify_all.
     """
     by_key = {key_for(subject_key, m): m for m in survivors}
     findings = registry.verify_namespace(
@@ -131,6 +157,7 @@ def classify(
     result: Classification[M] = Classification()
     for finding in findings:
         _place(result, finding, by_key.get(registry.bare(finding.key)))
+    result.relocated.update(_relocated(findings, result.unreviewed))
     return result
 
 
