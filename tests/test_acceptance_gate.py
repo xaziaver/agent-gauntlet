@@ -18,6 +18,7 @@ import pytest
 from typer.testing import CliRunner
 
 from gauntlet import locking, registry, specs
+from gauntlet.acceptance import report
 from gauntlet.adapters.base import RunResult
 from gauntlet.cli import app
 from gauntlet.gates import acceptance
@@ -234,6 +235,20 @@ def test_an_edited_approved_spec_fails(project: Path) -> None:
     assert result.passed is False
     assert result.diagnostics[0].symbol == "modified"
     assert "spec is the human's artifact" in result.diagnostics[0].message
+
+
+def test_spec_diagnostics_name_spec_approve_and_never_lock() -> None:
+    """`gauntlet lock` re-baselines the protect gate, not a spec: the remedy for a modified
+    or unapproved spec is the command that owns specs, with the spec filled in."""
+    findings = [
+        registry.Finding("spec:features/rating.feature", status)
+        for status in (registry.Status.MODIFIED, registry.Status.UNAPPROVED)
+    ]
+    for diagnostic in report.approval_diagnostics(findings):
+        assert "`gauntlet spec approve features/rating.feature`" in diagnostic.message
+        assert "gauntlet lock" not in diagnostic.message
+    missing = registry.Finding("spec:features/rating.feature", registry.Status.MISSING)
+    assert "gauntlet" not in report.approval_diagnostics([missing])[0].message
 
 
 def test_failing_scenarios_fail_the_gate(project: Path) -> None:

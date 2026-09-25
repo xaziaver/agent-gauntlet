@@ -54,11 +54,14 @@ def not_measured_diagnostic(key: str, reason: str) -> Diagnostic:
 
 
 def approval_diagnostics(findings: list[registry.Finding]) -> list[Diagnostic]:
+    """A spec is approved by `gauntlet spec approve`, the same command `gauntlet status` names."""
     return [
         Diagnostic(
             file=registry.bare(f.key),
             symbol=f.status.value,
-            message=registry.describe(f, noun="spec"),
+            message=registry.describe(
+                f, noun="spec", command=f"gauntlet spec approve {registry.bare(f.key)}"
+            ),
         )
         for f in findings
     ]

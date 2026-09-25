@@ -162,6 +162,18 @@ def test_describe_uses_the_caller_s_noun() -> None:
     assert "This spec is the human's artifact" in message
 
 
+def test_describe_names_the_command_the_caller_owns() -> None:
+    """The default is the protect gate's; a caller whose artifact another command approves
+    passes that one, and both the MODIFIED and the UNAPPROVED sentence name it."""
+    for status in (Status.MODIFIED, Status.UNAPPROVED):
+        finding = registry.Finding("features/rating.feature", status)
+        message = registry.describe(finding, noun="spec", command="gauntlet spec approve r")
+        assert "`gauntlet spec approve r`" in message
+        assert "gauntlet lock" not in message
+    missing = registry.Finding("features/rating.feature", Status.MISSING)
+    assert "gauntlet" not in registry.describe(missing, command="gauntlet spec approve r")
+
+
 def test_verify_absent_and_unapproved_is_not_a_finding() -> None:
     """A default verified path that a project does not have is normal, not a violation."""
     finding = registry.verify(registry.Registry(), "pyproject.toml", None)

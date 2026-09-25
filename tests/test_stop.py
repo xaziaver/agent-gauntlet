@@ -125,7 +125,14 @@ def test_human_blocked_is_true_only_for_approval_findings(
     assert stop.human_blocked(results) is expected
 
 
-def test_blocked_message_names_the_human_and_carries_the_report() -> None:
+def test_blocked_message_names_no_command() -> None:
+    """One command for every cause was the defect: a spec, a mutant and a ledger refusal
+    each carry their own remedy in the report, so the preamble names none."""
     message = stop.blocked_message("✗ acceptance ...")
-    assert message.startswith("Gauntlet is blocked on a human: the failures below need approval")
-    assert message.endswith("Nothing here is for the agent.\n✗ acceptance ...")
+    preamble, _, carried = message.partition("\n")
+    assert preamble.startswith(
+        "Gauntlet is blocked on a human: the failures below need a human's action"
+    )
+    assert "gauntlet" not in preamble
+    assert preamble.endswith("Nothing here is for the agent.")
+    assert carried == "✗ acceptance ..."

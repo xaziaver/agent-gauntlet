@@ -89,7 +89,9 @@ def human_blocked(results: list[GateResult]) -> bool:
 
 
 def blocked_message(lines: str) -> str:
+    """Names no command: each line of the report already carries the one for its cause."""
     return (
-        "Gauntlet is blocked on a human: the failures below need approval (`gauntlet lock`), "
-        "not code. Nothing here is for the agent.\n" + lines
+        "Gauntlet is blocked on a human: the failures below need a human's action — an "
+        "approval or a ledger repair, named in each line — not code. Nothing here is for "
+        "the agent.\n" + lines
     )
