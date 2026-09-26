@@ -464,6 +464,22 @@ def test_a_human_blocked_stop_check_escalates_without_counting_an_attempt(projec
     ]
 
 
+def test_stop_check_escalates_a_version_1_lock_on_the_first_attempt(project: Path) -> None:
+    """Since P2 a version-1 lock is a red `error` only a human can clear; it cost the
+    agent three attempts. Now it escalates at once with the refusal's own remedy."""
+    (project / "gauntlet.toml").write_text(CONFIG + "\n[gates.protect]\n")
+    (project / "gauntlet.lock.json").write_text('{"version": 1, "entries": {}}\n')
+    result = runner.invoke(app, ["stop-check"], input=STOP_PAYLOAD)
+    assert result.exit_code == EXIT_OK
+    message = json.loads(result.output)["systemMessage"]
+    assert message.startswith("Gauntlet is blocked on a human")
+    assert "gauntlet mutant migrate" in message
+    assert [(e["reason"], e["attempts"], e["session"]) for e in _escalations(project)] == [
+        ("human-blocked", 0, "s1")
+    ]
+    assert not (project / ".gauntlet" / "stop-attempts.json").exists()
+
+
 def test_a_stop_check_red_for_an_agent_actionable_reason_still_counts(project: Path) -> None:
     (project / "src" / "a.py").write_text(LONG_FUNCTION)
     result = runner.invoke(app, ["stop-check"], input=STOP_PAYLOAD)

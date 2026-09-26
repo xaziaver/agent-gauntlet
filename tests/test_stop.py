@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from gauntlet import stop
+from gauntlet import registry, stop
 from gauntlet.gates.base import Diagnostic, GateResult
 
 
@@ -121,8 +121,40 @@ GREEN = GateResult(gate="size", passed=True, threshold="t", actual="a")
 def test_human_blocked_is_true_only_for_approval_findings(
     results: list[GateResult], expected: bool
 ) -> None:
-    """Every failure must be one only `gauntlet lock` clears; anything else is the agent's."""
+    """Every failure must be one only a human clears — an approval finding, or an error
+    that names the ledger first; anything else, a pytest exit or a crashed tool included,
+    is the agent's."""
     assert stop.human_blocked(results) is expected
+
+
+def test_a_gate_whose_error_names_the_ledger_is_human_blocked(tmp_path: Path) -> None:
+    """The error string is the registry's own, raised through `load` on a version-1
+    file, never typed: the property this rests on is that every refusal names the
+    ledger first."""
+    lock = tmp_path / "gauntlet.lock.json"
+    lock.write_text('{"version": 1, "entries": {}}\n')
+    with pytest.raises(registry.RegistryError) as raised:
+        registry.load(lock)
+    error = str(raised.value)
+    assert error.split()[0] == str(lock)
+    assert stop.human_blocked([GREEN, _red(error=error)]) is True
+    assert stop.human_blocked([_red(error=error), _red(_finding("unapproved"))]) is True
+    assert stop.human_blocked([_red(error=error), _red(_finding("big"))]) is False
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        "pytest exited 127: could not run '/nowhere/python': No such file or directory",
+        "tool crashed reading gauntlet.lock.json",
+        "the ledger /p/gauntlet.lock.json is fine; something else is not",
+        "",
+    ],
+)
+def test_an_error_that_does_not_name_the_ledger_is_the_agent_s(error: str) -> None:
+    """Only the first token counts: a mention of the ledger later in the text is not a
+    refusal of it, and a pytest exit names pytest or a path."""
+    assert stop.human_blocked([_red(error=error)]) is False
 
 
 def test_blocked_message_names_no_command() -> None:

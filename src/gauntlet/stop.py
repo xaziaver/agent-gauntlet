@@ -12,6 +12,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from gauntlet import config as config_mod
 from gauntlet.gates.base import GateResult
 
 ATTEMPTS_FILE = Path(".gauntlet") / "stop-attempts.json"
@@ -71,9 +72,23 @@ def escalation_message(count: int, lines: str) -> str:
     )
 
 
+def _names_the_ledger(error: str) -> bool:
+    """A ledger refusal: the error's first token ends with the lock's file name.
+
+    Every `RegistryError` names the path it refused first, and the ledger is a
+    protected path no agent may touch, so this red is the human's by construction.
+    Any other error — a missing interpreter, a collection error — is the agent's.
+    """
+    tokens = error.split()
+    return bool(tokens) and tokens[0].endswith(config_mod.LOCK_FILENAME)
+
+
 def _approval_only(result: GateResult) -> bool:
-    """Every diagnostic of a failing gate is an approval finding, and there is at least one."""
-    if result.error is not None or not result.diagnostics:
+    """Every diagnostic of a failing gate is an approval finding, and there is at least
+    one — or its error is a ledger refusal."""
+    if result.error is not None:
+        return _names_the_ledger(result.error)
+    if not result.diagnostics:
         return False
     return all(d.symbol in APPROVAL_SYMBOLS for d in result.diagnostics)
 
