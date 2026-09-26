@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
@@ -40,11 +41,13 @@ def _counts(root: ET.Element) -> dict[str, int]:
     return counts
 
 
-def _case_diagnostic(case: ET.Element) -> Diagnostic | None:
-    node = _failure_node(case)
-    if node is None:
-        return None
-    headline = (node.get("message") or node.get("type") or "test failed").strip()
+def _headline(node: ET.Element) -> str:
+    """The junit `message`: the one line a whole class of failures shares."""
+    return (node.get("message") or node.get("type") or "test failed").strip()
+
+
+def _case_diagnostic(case: ET.Element, node: ET.Element) -> Diagnostic:
+    headline = _headline(node)
     tail = "\n".join((node.text or "").splitlines()[-TRACEBACK_TAIL_LINES:]).strip()
     test_id = f"{case.get('classname', '')}.{case.get('name', '?')}".lstrip(".")
     return Diagnostic(
@@ -59,11 +62,37 @@ def _case_diagnostic(case: ET.Element) -> Diagnostic | None:
     )
 
 
+def _grouped(diagnostics: list[Diagnostic]) -> Diagnostic:
+    """One headline's diagnostics as one: the first case's, carrying the count."""
+    first = diagnostics[0]
+    if len(diagnostics) == 1:
+        return first
+    prefix = f"{len(diagnostics)} test(s) failed the same way — first: "
+    return dataclasses.replace(first, message=prefix + first.message)
+
+
+def _collapsed(cases: list[ET.Element]) -> list[Diagnostic]:
+    """Failed cases sharing a headline become one diagnostic, in first-occurrence order.
+
+    One unbound step fails every scenario the same way; reported once per scenario,
+    each with a traceback tail, the report outgrows the hook's output limit while
+    saying one thing. A headline seen once yields the diagnostic it always did.
+    """
+    groups: dict[str, list[Diagnostic]] = {}
+    for case in cases:
+        node = _failure_node(case)
+        if node is not None:
+            groups.setdefault(_headline(node), []).append(_case_diagnostic(case, node))
+    return [_grouped(diagnostics) for diagnostics in groups.values()]
+
+
 def parse_junit(junit_path: Path) -> tuple[dict[str, int], list[Diagnostic]]:
-    """junitxml file -> (counts, one diagnostic per failed test)."""
+    """junitxml file -> (counts, one diagnostic per distinct failure headline).
+
+    The counts are the file's own; only the diagnostics collapse.
+    """
     root = ET.parse(junit_path).getroot()
-    diagnostics = [d for d in map(_case_diagnostic, root.iter("testcase")) if d is not None]
-    return _counts(root), diagnostics
+    return _counts(root), _collapsed(list(root.iter("testcase")))
 
 
 def _pytest_command(ctx: GateContext, junit: Path) -> list[str]:
