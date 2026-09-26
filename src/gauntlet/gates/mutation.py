@@ -22,7 +22,7 @@ from gauntlet import locking, registry
 from gauntlet import mutants as mutants_mod
 from gauntlet.adapters import python as python_adapter
 from gauntlet.adapters.python import CodeMutant
-from gauntlet.gates.base import Diagnostic, GateContext, GateResult, timed
+from gauntlet.gates.base import Diagnostic, GateContext, GateResult, interpreter_note, timed
 
 name = "mutation"
 
@@ -210,9 +210,15 @@ def _no_mutants(threshold: dict[str, Any], filters: list[str]) -> GateResult:
     )
 
 
-def _tool_failure(threshold: dict[str, Any], error: str) -> GateResult:
+def _tool_failure(ctx: GateContext, threshold: dict[str, Any], error: str) -> GateResult:
+    """mutmut's own failure, with the fallback named after the cut when it applies.
+    A ledger refusal is not reported here: its first token stays the ledger's path."""
     return GateResult(
-        gate=name, passed=False, threshold=threshold, actual=None, error=explain(error)[:800]
+        gate=name,
+        passed=False,
+        threshold=threshold,
+        actual=None,
+        error=explain(error)[:800] + interpreter_note(ctx),
     )
 
 
@@ -229,7 +235,7 @@ def run(ctx: GateContext, config: dict[str, Any]) -> GateResult:
     timeout = int(config.get("timeout", 1800))
     outcome = python_adapter.run_mutmut(ctx.project_root, ctx.python, filters, timeout)
     if not outcome.ok:
-        return _tool_failure(threshold, outcome.error)
+        return _tool_failure(ctx, threshold, outcome.error)
     if outcome.total == 0:
         return _no_mutants(threshold, filters)
     return _classified_result(ctx, outcome, min_score, require_review)

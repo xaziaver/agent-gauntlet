@@ -23,7 +23,9 @@ def doctor() -> None:
     root, cfg = resolve_config()
     project_python = python_adapter.interpreter(root, cfg.python)
     checks = doctor_mod.run_checks(cfg.enabled_gates, project_python)
-    warnings = doctor_mod.warnings_for(root, cfg.src, cfg.enabled_gates, cfg.disabled_gates)
+    warnings = doctor_mod.warnings_for(
+        root, cfg.src, cfg.enabled_gates, cfg.disabled_gates, python=cfg.python
+    )
     typer.echo(doctor_mod.render(checks, project_python, warnings))
     raise typer.Exit(code=EXIT_OK if doctor_mod.healthy(checks) else EXIT_CONFIG_ERROR)
 

@@ -136,6 +136,21 @@ def is_analyzable(path: Path) -> bool:
     return path.is_file()
 
 
+FALLBACK_NOTE = (
+    "no project .venv, no active virtualenv and no [project].python: this ran on "
+    "Gauntlet's own interpreter, which does not carry the project's tooling"
+)
+
+
+def interpreter_note(ctx: GateContext) -> str:
+    """Appended to a failure that ran on the fallback interpreter; empty otherwise.
+
+    The message names the module; the cause is the missing venv. Nothing else in
+    a gate's output says a fallback occurred.
+    """
+    return f" ({FALLBACK_NOTE})" if ctx.interpreter_fallback else ""
+
+
 @dataclass
 class GateContext:
     """Everything a gate needs to run."""
@@ -147,6 +162,7 @@ class GateContext:
     enabled_gates: list[str] = field(default_factory=list)
     verified_paths: list[str] = field(default_factory=list)
     python: str = field(default_factory=lambda: sys.executable)
+    interpreter_fallback: bool = False  # `python` is Gauntlet's own, nothing else matched
 
     def python_files(self) -> list[Path]:
         """Analyzable Python files under src/, narrowed to changed files with --changed."""

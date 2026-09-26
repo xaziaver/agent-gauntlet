@@ -97,20 +97,40 @@ def test_render_shows_warnings() -> None:
 # --- the mutants directory -----------------------------------------------
 
 
+def test_doctor_warns_when_the_interpreter_fell_back(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Visible before any gate runs; silent once a project .venv exists."""
+    monkeypatch.delenv("VIRTUAL_ENV", raising=False)
+    root = _with_hooks(tmp_path)
+    warnings = doctor.warnings_for(root, tmp_path / "src", ["tests"], python=None)
+    assert [w for w in warnings if doctor.FALLBACK_NOTE in w] == [
+        f"Interpreter fallback: {doctor.FALLBACK_NOTE}."
+    ]
+    assert doctor.warnings_for(root, tmp_path / "src", ["tests"], python=sys.executable) == []
+    (root / ".venv" / "bin").mkdir(parents=True)
+    (root / ".venv" / "bin" / "python").write_text("")
+    assert doctor.warnings_for(root, tmp_path / "src", ["tests"], python=None) == []
+
+
+# A configured interpreter is never the fallback: the tests below are about other warnings.
+CONFIGURED = sys.executable
+
+
 def test_no_warning_when_the_mutation_gate_is_off(tmp_path: Path) -> None:
     root = _with_hooks(_project(tmp_path))
-    assert doctor.warnings_for(root, tmp_path / "src", ["tests"]) == []
+    assert doctor.warnings_for(root, tmp_path / "src", ["tests"], python=CONFIGURED) == []
 
 
 def test_no_warning_without_a_mutants_directory(tmp_path: Path) -> None:
     root = _with_hooks(tmp_path)
-    assert doctor.warnings_for(root, tmp_path / "src", ["mutation"]) == []
+    assert doctor.warnings_for(root, tmp_path / "src", ["mutation"], python=CONFIGURED) == []
 
 
 def test_a_mutants_directory_without_the_pytest_ignore_warns(tmp_path: Path) -> None:
     """Otherwise a bare `pytest` fails with an opaque import-file-mismatch error."""
     root = _with_hooks(_project(tmp_path))
-    warnings = doctor.warnings_for(root, tmp_path / "src", ["mutation"])
+    warnings = doctor.warnings_for(root, tmp_path / "src", ["mutation"], python=CONFIGURED)
     assert len(warnings) == 1
     assert "--ignore=mutants" in warnings[0]
 
@@ -118,7 +138,7 @@ def test_a_mutants_directory_without_the_pytest_ignore_warns(tmp_path: Path) -> 
 def test_the_configured_ignore_silences_the_warning(tmp_path: Path) -> None:
     pyproject = '[tool.pytest.ini_options]\naddopts = "--ignore=mutants"\n'
     root = _with_hooks(_project(tmp_path, pyproject))
-    assert doctor.warnings_for(root, tmp_path / "src", ["mutation"]) == []
+    assert doctor.warnings_for(root, tmp_path / "src", ["mutation"], python=CONFIGURED) == []
 
 
 # --- editor artifacts ----------------------------------------------------
@@ -128,7 +148,7 @@ def test_editor_lock_files_are_warned_about(tmp_path: Path) -> None:
     src = tmp_path / "src"
     src.mkdir()
     (src / ".#module.py").symlink_to(src / "gone.py")
-    warnings = doctor.warnings_for(_with_hooks(tmp_path), src, ["mutation"])
+    warnings = doctor.warnings_for(_with_hooks(tmp_path), src, ["mutation"], python=CONFIGURED)
     assert any("Editor lock" in w for w in warnings)
 
 
@@ -136,14 +156,14 @@ def test_a_clean_source_tree_produces_no_artifact_warning(tmp_path: Path) -> Non
     src = tmp_path / "src"
     src.mkdir()
     (src / "module.py").write_text("x = 1\n")
-    assert doctor.warnings_for(_with_hooks(tmp_path), src, ["mutation"]) == []
+    assert doctor.warnings_for(_with_hooks(tmp_path), src, ["mutation"], python=CONFIGURED) == []
 
 
 def test_artifacts_are_ignored_when_the_mutation_gate_is_off(tmp_path: Path) -> None:
     src = tmp_path / "src"
     src.mkdir()
     (src / ".#module.py").symlink_to(src / "gone.py")
-    assert doctor.warnings_for(_with_hooks(tmp_path), src, ["tests"]) == []
+    assert doctor.warnings_for(_with_hooks(tmp_path), src, ["tests"], python=CONFIGURED) == []
 
 
 # --- the hook path -------------------------------------------------------
@@ -193,6 +213,6 @@ def test_no_warning_when_every_gate_is_enabled() -> None:
 def test_disabled_gates_surface_through_warnings_for(tmp_path: Path) -> None:
     """ClaimGate ran with 7 of 10 gates for a whole phase without anyone noticing."""
     warnings = doctor.warnings_for(
-        _with_hooks(tmp_path), tmp_path / "src", ["static"], ["mutation"]
+        _with_hooks(tmp_path), tmp_path / "src", ["static"], ["mutation"], python=CONFIGURED
     )
     assert any("not enabled" in w for w in warnings)

@@ -1,5 +1,8 @@
+import dataclasses
 from pathlib import Path
 
+from gauntlet.gates import tests as tests_gate
+from gauntlet.gates.base import FALLBACK_NOTE, GateContext
 from gauntlet.gates.tests import parse_junit
 
 PASSING = """<?xml version="1.0" encoding="utf-8"?>
@@ -147,6 +150,24 @@ def test_a_collapsed_diagnostic_keeps_the_first_case_s_location_and_tail(tmp_pat
     _, alone = parse_junit(_write(tmp_path, FIVE_WITHOUT_THE_REPEATS))
     first_alone = next(d for d in alone if d.symbol == "tests.test_a.test_one")
     assert collapsed.message == SAME_WAY + first_alone.message
+
+
+def test_a_failing_tests_gate_on_the_fallback_names_it_in_error(tmp_path: Path) -> None:
+    """Appended after the 800-character cut, never in front of the exit code."""
+    (tmp_path / "tests").mkdir()
+    ctx = GateContext(
+        project_root=tmp_path,
+        src=tmp_path / "src",
+        tests=tmp_path / "tests",
+        python=str(tmp_path / "nowhere" / "python"),
+        interpreter_fallback=True,
+    )
+    result = tests_gate.run(ctx, {})
+    assert result.passed is False and result.error is not None
+    assert result.error.startswith("pytest exited 127: could not run")
+    assert result.error.endswith(f" ({FALLBACK_NOTE})")
+    on_a_real_venv = tests_gate.run(dataclasses.replace(ctx, interpreter_fallback=False), {})
+    assert on_a_real_venv.error is not None and FALLBACK_NOTE not in on_a_real_venv.error
 
 
 def test_bare_testsuite_root_is_handled(tmp_path: Path) -> None:

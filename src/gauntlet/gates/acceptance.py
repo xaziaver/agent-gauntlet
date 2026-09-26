@@ -214,7 +214,9 @@ def _baseline_stage(
         passed=False,
         threshold=THRESHOLD,
         actual=f"{len(features)} spec(s), scenarios failing",
-        diagnostics=[Diagnostic(file=str(steps), message=suite.output[:800])],
+        diagnostics=[
+            Diagnostic(file=str(steps), message=suite.output[:800] + base.interpreter_note(ctx))
+        ],
     )
 
 

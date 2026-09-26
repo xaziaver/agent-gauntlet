@@ -81,6 +81,36 @@ def test_interpreter_uses_an_active_virtualenv(
     assert adapter.interpreter(tmp_path) == str(venv_bin / "python")
 
 
+def test_resolve_reports_a_fallback_only_when_nothing_else_matched(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Each earlier step of the order is not a fallback; only landing on us is."""
+    monkeypatch.delenv("VIRTUAL_ENV", raising=False)
+    assert adapter.resolve(tmp_path) == adapter.Resolved(sys.executable, True)
+    env_bin = tmp_path / "env" / "bin"
+    env_bin.mkdir(parents=True)
+    (env_bin / "python").write_text("")
+    monkeypatch.setenv("VIRTUAL_ENV", str(tmp_path / "env"))
+    assert adapter.resolve(tmp_path) == adapter.Resolved(str(env_bin / "python"), False)
+    local_bin = tmp_path / ".venv" / "bin"
+    local_bin.mkdir(parents=True)
+    (local_bin / "python").write_text("")
+    assert adapter.resolve(tmp_path) == adapter.Resolved(str(local_bin / "python"), False)
+    assert adapter.resolve(tmp_path, "/usr/bin/python3") == adapter.Resolved(
+        "/usr/bin/python3", False
+    )
+
+
+def test_a_configured_interpreter_that_does_not_exist_is_not_a_fallback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The human chose the path; the error will name it, which is the right message."""
+    monkeypatch.delenv("VIRTUAL_ENV", raising=False)
+    resolved = adapter.resolve(tmp_path, "nowhere/python")
+    assert resolved == adapter.Resolved(str(tmp_path / "nowhere" / "python"), False)
+    assert not Path(resolved.python).exists()
+
+
 def test_a_local_venv_beats_an_active_one(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     local = tmp_path / ".venv" / "bin"
     local.mkdir(parents=True)

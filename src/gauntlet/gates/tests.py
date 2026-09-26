@@ -8,7 +8,14 @@ from pathlib import Path
 from typing import Any
 
 from gauntlet import artifacts
-from gauntlet.gates.base import Diagnostic, GateContext, GateResult, run_cmd, timed
+from gauntlet.gates.base import (
+    Diagnostic,
+    GateContext,
+    GateResult,
+    interpreter_note,
+    run_cmd,
+    timed,
+)
 
 name = "tests"
 
@@ -163,7 +170,8 @@ def run(ctx: GateContext, config: dict[str, Any]) -> GateResult:  # noqa: ARG001
             passed=False,
             threshold=THRESHOLD,
             actual=None,
-            error=f"pytest exited {proc.returncode}: {(proc.stderr or proc.stdout).strip()[:800]}",
+            error=f"pytest exited {proc.returncode}: {(proc.stderr or proc.stdout).strip()[:800]}"
+            + interpreter_note(ctx),
         )
 
     counts, diagnostics = parse_junit(junit)
