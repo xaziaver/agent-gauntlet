@@ -13,6 +13,7 @@ from typer.testing import CliRunner
 from gauntlet import cli_mutants, locking, registry, specs
 from gauntlet import mutants as mutants_mod
 from gauntlet.acceptance import gherkin, mutation
+from gauntlet.adapters.base import RunResult
 from gauntlet.adapters.python import CodeMutant
 from gauntlet.cli import app
 from gauntlet.cli_support import EXIT_CONFIG_ERROR, EXIT_OK
@@ -229,6 +230,65 @@ def test_prune_removes_only_the_approval_that_no_longer_survives(project: Path) 
     assert len(remaining) == 1
     assert not any("75000" in key for key in remaining)
     assert any("100|standard" in key for key in remaining)
+
+
+REFUSAL = "baseline suite failing; refusing to classify survivors:"
+ACCEPTANCE = {"features": "features/", "steps": "tests/steps"}
+
+
+def _redden_baseline(project: Path) -> None:
+    """The step module's assertion reversed: every scenario fails before any mutation."""
+    steps = project / "tests" / "steps" / "test_tiering.py"
+    steps.write_text(steps.read_text().replace("== expected", "!= expected"))
+
+
+def _bytes(project: Path) -> tuple[bytes, bytes]:
+    lock = locking.lock_path(project).read_bytes()
+    return lock, (project / "features" / "tiering.feature").read_bytes()
+
+
+def test_prune_refuses_when_the_baseline_suite_fails_and_writes_nothing(project: Path) -> None:
+    """The near miss: on a red suite prune would have dropped every approval as stale."""
+    runner.invoke(app, ["mutant", "approve", "features/tiering.feature", "--reason", "x"])
+    assert len(_mutant_keys(project)) == 2
+    _redden_baseline(project)
+    before = _bytes(project)
+    result = runner.invoke(app, ["mutant", "prune", "features/tiering.feature"])
+    assert result.exit_code == EXIT_CONFIG_ERROR
+    assert REFUSAL in _text(result)
+    assert _bytes(project) == before
+
+
+def test_approve_refuses_when_the_baseline_suite_fails(project: Path) -> None:
+    """Not "no surviving mutants to approve": nothing survived because nothing passed."""
+    _redden_baseline(project)
+    before = _bytes(project)
+    result = runner.invoke(app, ["mutant", "approve", "features/tiering.feature", "--reason", "x"])
+    assert result.exit_code == EXIT_CONFIG_ERROR
+    assert REFUSAL in _text(result)
+    assert "no surviving mutants" not in _text(result)
+    assert _bytes(project) == before
+
+
+def test_the_gate_s_baseline_stage_and_the_cli_share_one_baseline_function(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One patched name, observed from both sides: the gate's stage and `mutant prune`."""
+    calls: list[tuple[Path, int]] = []
+
+    def red(ctx: GateContext, steps: Path, timeout: int) -> RunResult:
+        calls.append((steps, timeout))
+        return RunResult(passed=False, output="\n\nFAILED tests/steps/test_tiering.py::x\n")
+
+    monkeypatch.setattr(acceptance, "baseline", red)
+    ctx = GateContext(project_root=project, src=project / "src", tests=project / "tests")
+    gate = acceptance.run(ctx, ACCEPTANCE)
+    assert gate.passed is False
+    assert gate.actual == "1 spec(s), scenarios failing; mutation not run"
+    result = runner.invoke(app, ["mutant", "prune", "features/tiering.feature"])
+    assert result.exit_code == EXIT_CONFIG_ERROR
+    assert f"{REFUSAL} FAILED tests/steps/test_tiering.py::x" in _text(result)
+    assert calls == [(project / "tests" / "steps", 600)] * 2
 
 
 def test_prune_removes_a_relocated_key_as_before(project: Path) -> None:

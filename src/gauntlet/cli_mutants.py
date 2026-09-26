@@ -66,13 +66,24 @@ def _acceptance_config(cfg: config_mod.Config) -> dict[str, object]:
     return cfg.gates.get("acceptance", {})
 
 
+def _first_line(output: str) -> str:
+    return next((line for line in output.splitlines() if line.strip()), "")
+
+
 def _current_survivors(
     root: Path, cfg: config_mod.Config, feature: Path, scenario: str
 ) -> list[Mutant]:
-    """Re-run the mutation loop for one feature, through the gate's own helper."""
+    """Re-run the mutation loop for one feature, through the gate's own helpers.
+
+    The baseline first, as the gate runs it: on a red suite every mutant "dies" and
+    every approval would read stale, so the command refuses before it classifies.
+    """
     config = _acceptance_config(cfg)
     ctx = runner.build_context(root, cfg, cfg.enabled_gates, changed=False)
     steps = root / str(config.get("steps", "tests/steps"))
+    suite = acceptance.baseline(ctx, steps, int(config.get("timeout", 600)))
+    if not suite.passed:
+        fail(f"baseline suite failing; refusing to classify survivors: {_first_line(suite.output)}")
     try:
         survivors = acceptance.survivors_for(ctx, config, feature, steps)
     except base.Interrupted as exc:
