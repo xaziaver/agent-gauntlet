@@ -35,7 +35,8 @@ gauntlet check                      # green baseline
 
 Your project supplies its own test-runner environment. Gauntlet brings ruff, mypy, and radon; the
 project's virtualenv needs `pytest` plus `pytest-cov`, and `pytest-bdd` / `mutmut` if you enable
-those gates. `gauntlet doctor` tells you which are missing and which interpreter it is looking in.
+those gates. `gauntlet doctor` tells you which are missing, which interpreter it is looking in,
+and when that interpreter is Gauntlet's own rather than your project's.
 
 Now open Claude Code in the project and describe what you want built. The hooks do the rest.
 
@@ -244,8 +245,10 @@ mutant:code#policy|_bump|...             a mutant no test could kill
 
 Every entry follows the same lifecycle: **propose → review → hash → auto-invalidate on change.**
 Approval records a content hash plus your reason and name. If the thing changes, the approval lapses
-and the gate asks again. If an approved item stops being produced — a formerly unkillable mutant now
-dies because you sharpened a test — the entry is reported stale and can be pruned.
+and the gate asks again. If an approved item stops being produced, the entry is reported stale by
+cause — *relocated*, the same mutation survives under a new key because you renamed or edited the
+spec around it, or *superseded*, a formerly unkillable mutant now dies because you sharpened a
+test — with the prune command carrying its feature.
 
 Three properties make this more than a suppression file. The record is a **diff**, so approvals are
 reviewable in a pull request. It is **self-invalidating**, so it can't quietly rot. And it is itself
