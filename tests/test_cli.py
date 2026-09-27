@@ -3,13 +3,17 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from pathlib import Path
 from typing import Any
 
 import pytest
+import typer
+from typer.core import TyperGroup
 from typer.testing import CliRunner
 
+import gauntlet
 from gauntlet import events
 from gauntlet.cli import EXIT_CONFIG_ERROR, EXIT_GATE_FAILURE, EXIT_OK, app
 from gauntlet.gates import base
@@ -386,9 +390,39 @@ def test_the_lock_is_released_after_a_run(project: Path) -> None:
 
 
 BLOCKED_PREFIX = (
-    "Gauntlet is blocked on a human: the failures below need approval (`gauntlet lock`), "
-    "not code. Nothing here is for the agent.\n"
+    "Gauntlet is blocked on a human: the failures below need a human's action — an "
+    "approval or a ledger repair, named in each line — not code. Nothing here is for "
+    "the agent.\n"
 )
+
+# `gauntlet <command>` or `gauntlet <group> <command>` inside backticks; an option
+# (`gauntlet init --agent`, `gauntlet status --run`) is not a word, so those
+# resolve on their first word.
+COMMAND_IN_BACKTICKS = re.compile(r"`gauntlet ([a-z][a-z-]*)(?: ([a-z][a-z-]*))?")
+
+
+def _resolves(words: tuple[str, ...]) -> bool:
+    node: Any = typer.main.get_command(app)
+    for word in words:
+        node = node.get_command(None, word) if isinstance(node, TyperGroup) else None
+        if node is None:
+            return False
+    return True
+
+
+def test_every_command_named_in_source_resolves_in_the_cli() -> None:
+    """Remedy text is an interface — an agent is told to act on it — so a command a
+    diagnostic names must exist in the command tree, or a rename leaves it pointing
+    nowhere. Every `.py` under the package, every backticked `gauntlet ...`."""
+    package = Path(gauntlet.__file__).parent
+    named: list[tuple[str, ...]] = []
+    for source in sorted(package.rglob("*.py")):
+        for match in COMMAND_IN_BACKTICKS.finditer(source.read_text(encoding="utf-8")):
+            words = tuple(word for word in match.groups() if word)
+            assert _resolves(words), f"{source.relative_to(package)} names `gauntlet {' '.join(words)}`"
+            named.append(words)
+    assert ("spec", "approve") in named
+    assert ("lock",) in named
 
 
 def _unapproved_spec(project: Path) -> None:
@@ -428,6 +462,22 @@ def test_a_human_blocked_stop_check_escalates_without_counting_an_attempt(projec
         ("human-blocked", 1, "s1"),
         ("human-blocked", 1, "s1"),
     ]
+
+
+def test_stop_check_escalates_a_version_1_lock_on_the_first_attempt(project: Path) -> None:
+    """Since P2 a version-1 lock is a red `error` only a human can clear; it cost the
+    agent three attempts. Now it escalates at once with the refusal's own remedy."""
+    (project / "gauntlet.toml").write_text(CONFIG + "\n[gates.protect]\n")
+    (project / "gauntlet.lock.json").write_text('{"version": 1, "entries": {}}\n')
+    result = runner.invoke(app, ["stop-check"], input=STOP_PAYLOAD)
+    assert result.exit_code == EXIT_OK
+    message = json.loads(result.output)["systemMessage"]
+    assert message.startswith("Gauntlet is blocked on a human")
+    assert "gauntlet mutant migrate" in message
+    assert [(e["reason"], e["attempts"], e["session"]) for e in _escalations(project)] == [
+        ("human-blocked", 0, "s1")
+    ]
+    assert not (project / ".gauntlet" / "stop-attempts.json").exists()
 
 
 def test_a_stop_check_red_for_an_agent_actionable_reason_still_counts(project: Path) -> None:

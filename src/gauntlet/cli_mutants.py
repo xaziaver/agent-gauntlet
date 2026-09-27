@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import NoReturn, TypeVar
+from typing import Any, NoReturn, TypeVar
 
 import typer
 
@@ -66,13 +66,26 @@ def _acceptance_config(cfg: config_mod.Config) -> dict[str, object]:
     return cfg.gates.get("acceptance", {})
 
 
+def _first_line(output: str) -> str:
+    return next((line for line in output.splitlines() if line.strip()), "")
+
+
+def _require_green_baseline(ctx: base.GateContext, config: dict[str, Any], steps: Path) -> None:
+    """The baseline first, as the gate runs it: on a red suite every mutant "dies" and
+    every approval would read stale, so the command refuses before it classifies."""
+    suite = acceptance.baseline(ctx, steps, int(config.get("timeout", 600)))
+    if not suite.passed:
+        fail(f"baseline suite failing; refusing to classify survivors: {_first_line(suite.output)}")
+
+
 def _current_survivors(
     root: Path, cfg: config_mod.Config, feature: Path, scenario: str
 ) -> list[Mutant]:
-    """Re-run the mutation loop for one feature, through the gate's own helper."""
+    """Re-run the mutation loop for one feature, through the gate's own helpers."""
     config = _acceptance_config(cfg)
     ctx = runner.build_context(root, cfg, cfg.enabled_gates, changed=False)
     steps = root / str(config.get("steps", "tests/steps"))
+    _require_green_baseline(ctx, config, steps)
     try:
         survivors = acceptance.survivors_for(ctx, config, feature, steps)
     except base.Interrupted as exc:
@@ -129,10 +142,13 @@ def mutant_approve_code(
 def mutant_prune(
     feature: Path = typer.Argument(..., help="The feature file to prune approvals for"),
 ) -> None:
-    """Drop approvals for acceptance mutants that no longer survive.
+    """Drop approvals for acceptance mutants that no longer survive at their key.
 
-    An assertion got sharper and now kills what a human once judged equivalent.
-    The judgment is stale, not wrong — remove it so the ledger stays honest.
+    Two causes, which the gate's diagnostic tells apart: an assertion got sharper
+    and now kills what a human once judged equivalent (superseded — do not
+    re-approve without review), or a spec edit moved the locator and the same
+    mutation survives at a new one (relocated — re-approve it there). Either way
+    the entry is stale at its key; remove it so the ledger stays honest.
     """
     root, cfg = resolve_config()
     key = _feature_key(root, feature)

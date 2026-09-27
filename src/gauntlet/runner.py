@@ -74,6 +74,7 @@ def changed_python_files(root: Path) -> list[Path]:
 def build_context(
     root: Path, cfg: config_mod.Config, selected: list[str], changed: bool
 ) -> base.GateContext:
+    resolved = python_adapter.resolve(root, cfg.python)
     return base.GateContext(
         project_root=root,
         src=cfg.src,
@@ -81,7 +82,8 @@ def build_context(
         changed_files=changed_python_files(root) if changed else None,
         enabled_gates=selected,
         verified_paths=cfg.verified_paths,
-        python=python_adapter.interpreter(root, cfg.python),
+        python=resolved.python,
+        interpreter_fallback=resolved.fallback,
     )
 
 

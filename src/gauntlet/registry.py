@@ -272,13 +272,14 @@ def verify_all(registry: Registry, subjects: Mapping[str, bytes | None]) -> list
     return [verify(registry, key, subjects.get(key)) for key in keys]
 
 
-def describe(finding: Finding, noun: str = "file") -> str:
-    """Prescriptive message for a failing finding. Never called for UNCHANGED."""
+def describe(finding: Finding, noun: str = "file", command: str = "gauntlet lock") -> str:
+    """Prescriptive message for a failing finding. Never called for UNCHANGED.
+    `command` approves the caller's artifact: the protect gate's `gauntlet lock` by default."""
     if finding.status is Status.MODIFIED:
         return (
             f"{bare(finding.key)} changed since it was approved. This {noun} is the human's "
             f"artifact, not yours: revert the change, or explain why it should change "
-            f"and let the human re-approve it with `gauntlet lock`."
+            f"and let the human re-approve it with `{command}`."
         )
     if finding.status is Status.MISSING:
         return (
@@ -286,6 +287,6 @@ def describe(finding: Finding, noun: str = "file") -> str:
             f"human to remove its approval."
         )
     return (
-        f"{bare(finding.key)} is not approved. A human must review it and run `gauntlet lock` "
+        f"{bare(finding.key)} is not approved. A human must review it and run `{command}` "
         f"before it can be relied on."
     )

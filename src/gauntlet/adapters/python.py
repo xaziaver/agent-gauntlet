@@ -25,11 +25,21 @@ MUTANTS_DIR = "mutants"  # mutmut's copy of the tree and its results, which it r
 NOTHING_MATCHES = "nothing matches"  # mutmut's words when the filters name no mutant
 
 
-def interpreter(root: Path, configured: str | None = None) -> str:
-    """The interpreter that has the PROJECT's dependencies installed.
+@dataclass(frozen=True)
+class Resolved:
+    """Which interpreter runs the project's tooling, and whether that is Gauntlet's own."""
+
+    python: str
+    fallback: bool
+
+
+def resolve(root: Path, configured: str | None = None) -> Resolved:
+    """The interpreter that has the PROJECT's dependencies installed, and how it was found.
 
     Not sys.executable: when Gauntlet runs as an agent hook, that is Gauntlet's
-    own venv, which knows nothing about the project's libraries.
+    own venv, which knows nothing about the project's libraries. Landing there is
+    the fallback, and the result says so. A configured path that does not exist
+    is not a fallback: the human chose it, and the error names it.
 
     Symlinks are deliberately NOT resolved. A venv's bin/python is a symlink to
     the base interpreter, and resolving it yields an interpreter without the
@@ -38,16 +48,21 @@ def interpreter(root: Path, configured: str | None = None) -> str:
     """
     if configured:
         candidate = Path(configured)
-        return str(candidate if candidate.is_absolute() else root / candidate)
+        return Resolved(str(candidate if candidate.is_absolute() else root / candidate), False)
     local = _venv_python(root)
     if local is not None:
-        return local
+        return Resolved(local, False)
     active = os.environ.get("VIRTUAL_ENV")
     if active:
         found = _bin_python(Path(active))
         if found is not None:
-            return found
-    return sys.executable
+            return Resolved(found, False)
+    return Resolved(sys.executable, True)
+
+
+def interpreter(root: Path, configured: str | None = None) -> str:
+    """The resolved interpreter's path alone; see `resolve`."""
+    return resolve(root, configured).python
 
 
 def _bin_python(venv: Path) -> str | None:

@@ -30,7 +30,12 @@ Read `gates/base.py` first; the rest is variations on it.
 
 **`GateContext`** is everything a gate may look at: `project_root`, `src`, `tests`, the list of
 `changed_files` (or `None`, meaning a full run), the enabled gate names, the paths the protect
-gate verifies, and the interpreter to hand to subprocesses. Two helpers matter:
+gate verifies, the interpreter to hand to subprocesses, and `interpreter_fallback`, true when
+that interpreter is Gauntlet's own because no `[project] python`, no `.venv` and no active
+virtualenv resolved (`adapters.python.resolve`). The tests, mutation and acceptance gates append
+the fallback note to their error when they fail on it, and `gauntlet doctor` reports the
+condition before any gate runs as a WARNING beginning "Interpreter fallback:" (package P3,
+2026-09-26). Two helpers matter:
 
 - `python_files()` — the analyzable `.py` files under `src/`, narrowed to `changed_files` under
   `--changed`. "Analyzable" excludes Emacs lock/autosave artifacts (`.#x.py`, `#x.py#`) and
@@ -236,8 +241,12 @@ directory is a valid way to go green.
 interpreter. If the coverage or CRAP gate is enabled, the same command also carries
 `--cov=<src> --cov-branch --cov-report=json:.gauntlet/coverage.json`, so the suite runs once and
 three gates read its artifacts. The gate parses the JUnit XML rather than pytest's stdout: counts
-from every `<testsuite>` element, one diagnostic per failed `<testcase>` with the failure message
-as headline and the last 25 lines of the traceback.
+from every `<testsuite>` element, one diagnostic per *distinct failure headline* — the junit
+`message` attribute — with the headline and the last 25 lines of the first such case's traceback.
+Failed cases sharing a headline collapse into that one diagnostic, prefixed
+`N test(s) failed the same way — first: `, keeping the first case's file, line, symbol and tail;
+the collapse is keyed on the headline alone, and the counts in `actual` are the file's own
+(package P3, 2026-09-26).
 
 *Delete before produce:* the gate unlinks `.gauntlet/junit.xml` and `.gauntlet/coverage.json`
 before pytest starts. A collection error (pytest exit 2) rewrites `junit.xml` and leaves
@@ -427,7 +436,8 @@ into a contract.
 
 1. **Approval.** Every spec is in the lock with its current SHA-256 (`specs.verify`). An
    unapproved or modified spec fails the gate before anything runs, with the remedy
-   `gauntlet spec approve`.
+   `gauntlet spec approve <spec>`, the spec filled in (package P3, 2026-09-26; the diagnostics
+   named `gauntlet lock`, the protect gate's command, before).
 2. **Baseline.** `pytest <steps> -q --no-header -p no:cacheprovider` under the project interpreter
    passes. A failing scenario fails the gate here, with the first 800 characters of pytest's output.
 3. **Mutation.** Every mutant of a specification value must make the suite fail. A surviving mutant
@@ -448,7 +458,10 @@ survives means nothing read the file. A not-measured spec fails the gate with on
 (symbol `not measured`) and no survivor count — a count of survivors nothing could have killed
 carries no information — and `actual` gains `<k> spec(s) not measured`; the other specs are still
 mutated. `gauntlet mutant approve` and `gauntlet mutant prune` refuse such a spec with the same
-sentence, exit 1 and write nothing (package P1, 2026-09-21).
+sentence, exit 1 and write nothing (package P1, 2026-09-21). Both commands also run the baseline
+first, through the gate's public `baseline`, and refuse a red suite with "baseline suite failing;
+refusing to classify survivors: <first line>", exit 1, the ledger unwritten — on a red suite every
+mutant "dies" and `prune` would have dropped every approval as stale (package P3, 2026-09-26).
 
 *What gets mutated:*
 
@@ -496,7 +509,16 @@ SIGKILL leaves its backup, which the gate's next run restores from before anythi
 so in `actual` — the backup directory is empty after every completed run (item 5, 2026-09-16).
 
 *Classification and reporting:* survivors are classified against the lock under `spec:<path>`
-exactly as code mutants are (equivalent, unresolved, stale). Diagnostics are grouped **one per
+exactly as code mutants are (equivalent, unresolved, stale). A stale approval is diagnosed by
+cause (package P3, 2026-09-26): *relocated* — a missing key whose digest an unreviewed survivor at
+another locator carries, the judgment moved with a spec edit — and *superseded* — a missing key no
+survivor's digest matches, an assertion now kills the mutant — are two separate diagnostics on the
+lock (symbols `relocated` and `superseded`), each present only when its cause is, each listing up
+to three keys or `old -> new` pairs and ending in `gauntlet mutant prune <feature>` once per
+feature holding such a key; *re-aimed* — a modified key, the locator stable and the substitution
+changed under it by a neighbouring edit — is named inside the scenario diagnostic that carries the
+mutant. `actual`'s `<s> stale approval(s)` counts relocated and superseded together, and `prune`
+removes both. Diagnostics are grouped **one per
 scenario**, listing up to six of its surviving values, because thirteen identical sentences burn
 the diagnostic budget and the hook's character cap for no signal. `actual` reads
 `"<n> spec(s), <m> surviving mutant(s), <k> spec(s) not measured, <e> reviewed-equivalent"`, each
@@ -510,8 +532,9 @@ per suite run (default 600 s).
 
 *Vacuous when:* no feature files.
 
-*Public seams:* `survivors_for` is public so that `gauntlet mutant approve` and `prune` share the
-gate's exact code path — the CLI must never disagree with the gate about what survived. Of the
+*Public seams:* `survivors_for` and `baseline` are public so that `gauntlet mutant approve` and
+`prune` share the gate's exact code path — the CLI must never disagree with the gate about what
+survived, nor classify against a suite the gate would have refused to mutate. Of the
 others, `list` reads the ledger and runs nothing, and `preview` stops at enumeration: on one file it
 makes the two calls `survivors_for` opens with, `mutation.mutants(gherkin.parse(text, path))`, and
 reads no configuration — so with `mutation_sample` set it lists more than the gate runs, and with
@@ -541,8 +564,11 @@ first failure by default. Exit 2 blocks the agent's stop and feeds the report ba
 `run.finished` carrying the tree hash and its file count; like `check`, it writes the record only
 when every enabled gate ran over the whole tree and passed. The record is a cache, never evidence: a
 run is. A red run whose every failure is an approval finding (`unapproved`, `modified`, `missing`)
-is human-blocked: it spends no attempt and escalates at once with a `systemMessage` beginning
-"Gauntlet is blocked on a human" (item 6, 2026-09-17).
+— or, since package P3 (2026-09-26), an `error` whose first whitespace-delimited token is the
+ledger's path, the shape of every `RegistryError` — is human-blocked: it spends no attempt and
+escalates at once with a `systemMessage` beginning "Gauntlet is blocked on a human" that names no
+command, because each line of the report carries the remedy for its own cause (item 6, 2026-09-17;
+package P3).
 
 ## Reading a gate quickly
 

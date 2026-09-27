@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import json
 import subprocess
 from pathlib import Path
@@ -14,7 +15,7 @@ from gauntlet.adapters import python as python_adapter
 from gauntlet.adapters.python import CodeMutant, MutationRun
 from gauntlet.cli import app
 from gauntlet.gates import mutation
-from gauntlet.gates.base import GateContext
+from gauntlet.gates.base import FALLBACK_NOTE, GateContext
 
 SURVIVORS = ["m.x_f__mutmut_2"]
 TOTAL = 4  # 3 killed, 1 survived
@@ -308,6 +309,19 @@ tests = "tests"
 [gates.acceptance]
 features = "features/"
 """
+
+
+def test_a_ledger_refusal_never_carries_the_fallback_note(project: Path, fake_mutmut: None) -> None:
+    """A gate whose `error` names the ledger is a human's to clear (P3 decision 6 reads
+    the first token), so the fallback note must not displace or follow that refusal."""
+    lock = locking.lock_path(project)
+    lock.write_text('{"version": 1, "entries": {}}\n')
+    ctx = dataclasses.replace(_ctx(project), interpreter_fallback=True)
+    result = mutation.run(ctx, {"min_score": 90, "scope": "full"})
+    assert result.passed is False and result.error is not None
+    assert result.error.split()[0] == str(lock)
+    assert result.error.endswith("a human runs `gauntlet mutant migrate`")
+    assert FALLBACK_NOTE not in result.error
 
 
 def test_mutation_gate_reports_a_bad_lock_as_a_red_gate(

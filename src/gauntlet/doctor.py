@@ -16,6 +16,8 @@ from pathlib import Path
 from typing import Any
 
 from gauntlet import __version__
+from gauntlet.adapters import python as python_adapter
+from gauntlet.gates.base import FALLBACK_NOTE
 
 SETTINGS_PATH = Path(".claude") / "settings.json"
 
@@ -148,15 +150,28 @@ def mutants_dir_warning(root: Path, enabled_gates: list[str]) -> str | None:
     )
 
 
+def fallback_warning(root: Path, python: str | None) -> str | None:
+    """The condition three gates name only once they fail on it, visible before any runs."""
+    if not python_adapter.resolve(root, python).fallback:
+        return None
+    return f"Interpreter fallback: {FALLBACK_NOTE}."
+
+
 def warnings_for(
-    root: Path, src: Path, enabled_gates: list[str], disabled_gates: list[str] | None = None
+    root: Path,
+    src: Path,
+    enabled_gates: list[str],
+    disabled_gates: list[str] | None = None,
+    python: str | None = None,
 ) -> list[str]:
-    """Advisory environment problems: real, but not a missing tool."""
+    """Advisory environment problems: real, but not a missing tool. `python` is the
+    configured interpreter, resolved here the way the gates resolve it."""
     found = [
         hook_warning(root),
         disabled_warning(disabled_gates or []),
         mutants_dir_warning(root, enabled_gates),
         editor_artifact_warning(src, enabled_gates),
+        fallback_warning(root, python),
     ]
     return [w for w in found if w is not None]
 

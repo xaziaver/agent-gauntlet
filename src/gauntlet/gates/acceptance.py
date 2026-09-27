@@ -18,6 +18,7 @@ from gauntlet import mutants as mutants_mod
 from gauntlet.acceptance import binding, gherkin, mutation, report, strands
 from gauntlet.acceptance.mutation import Mutant
 from gauntlet.adapters import python as python_adapter
+from gauntlet.adapters.base import RunResult
 from gauntlet.gates import base
 from gauntlet.gates.base import Diagnostic, GateContext, GateResult, timed
 
@@ -100,7 +101,10 @@ def _classify_feature(
         return report.MutationOutcome([report.not_measured_diagnostic(key, str(exc))], 0, [], 1)
     verdict = mutants_mod.classify(approved, key, survivors)
     return report.MutationOutcome(
-        report.by_scenario(key, verdict.failing), len(verdict.equivalent), verdict.stale
+        report.by_scenario(key, verdict.failing, verdict.changed),
+        len(verdict.equivalent),
+        verdict.stale,
+        relocated=verdict.relocated,
     )
 
 
@@ -189,26 +193,37 @@ def _approval_stage(
     )
 
 
+def baseline(ctx: GateContext, steps: Path, timeout: int) -> RunResult:
+    """The unmutated suite over the steps directory, once.
+
+    Public so the `gauntlet mutant` commands refuse on the same red the gate's
+    baseline stage refuses on: with a red suite every mutant "dies", and a
+    classification would mark every approval stale.
+    """
+    return python_adapter.run_acceptance(ctx.project_root, steps, ctx.python, timeout)
+
+
 def _baseline_stage(
     ctx: GateContext, features: list[Path], steps: Path, timeout: int
 ) -> GateResult | None:
-    baseline = python_adapter.run_acceptance(ctx.project_root, steps, ctx.python, timeout)
-    if baseline.passed:
+    suite = baseline(ctx, steps, timeout)
+    if suite.passed:
         return None
     return GateResult(
         gate=name,
         passed=False,
         threshold=THRESHOLD,
         actual=f"{len(features)} spec(s), scenarios failing",
-        diagnostics=[Diagnostic(file=str(steps), message=baseline.output[:800])],
+        diagnostics=[
+            Diagnostic(file=str(steps), message=suite.output[:800] + base.interpreter_note(ctx))
+        ],
     )
 
 
 def _mutation_result(features: list[Path], outcome: report.MutationOutcome) -> GateResult:
-    diagnostics = list(outcome.diagnostics)
-    if outcome.stale:
-        # Stale approvals are housekeeping, not a defect: report, do not fail.
-        diagnostics.append(report.stale_diagnostic(outcome.stale))
+    # Stale approvals are housekeeping, not a defect: report by cause, do not fail.
+    stale = report.stale_diagnostics(outcome.stale, outcome.relocated)
+    diagnostics = [*outcome.diagnostics, *stale]
     return _result(not outcome.diagnostics, report.summary(features, outcome), diagnostics)
 
 

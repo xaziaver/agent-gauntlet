@@ -118,9 +118,10 @@ be hashed — so the log can always pair a run with the tree it measured, partia
 `stop-check` that skips because the tree matches the last wholly green run emits exactly one event,
 `run.reused` (`command`, `tree`, `files`, `reused_run`, `reused_at`), and nothing else.
 A `stop-check` that escalates emits one `agent.escalated` with `reason`: `attempts` at the
-retry cap, or `human-blocked` when every failure is an approval finding, in which case it
-escalates at once and the session's attempt count is neither spent nor cleared (item 6,
-2026-09-17).
+retry cap, or `human-blocked` when every failure is an approval finding or a ledger refusal — a
+gate `error` whose first token is `gauntlet.lock.json`'s path — in which case it escalates at
+once and the session's attempt count is neither spent nor cleared (item 6, 2026-09-17; package P3,
+2026-09-26).
 `check --record` adds no event: the record is a file, and the log of a recorded run is the
 log of the same run without it.
 
@@ -168,9 +169,13 @@ because an uncaught exception in a hook exits 1 and fails open.
 
 Gauntlet supplies ruff, mypy, and radon and runs them with **its own** interpreter. The project
 supplies pytest, pytest-cov, pytest-bdd, and mutmut, which run with **the project's** interpreter,
-resolved by `adapters.python.interpreter()`. mypy bridges the two with `--python-executable`.
+resolved by `adapters.python.resolve()`, which returns the path and a `fallback` flag — true only
+when nothing but `sys.executable` matched; `interpreter()` is kept as the path alone. The flag
+rides on `GateContext` and is appended to the tests, mutation and acceptance gates' errors when they
+fail on the fallback, and `doctor` warns on it (package P3, 2026-09-26). mypy bridges the two
+with `--python-executable`.
 
-`interpreter()` deliberately does **not** resolve symlinks: `.venv/bin/python` is a symlink to the
+`resolve()` deliberately does **not** resolve symlinks: `.venv/bin/python` is a symlink to the
 base interpreter, and resolving it yields a Python without the venv's packages. That bug cost an
 afternoon.
 
@@ -274,6 +279,25 @@ deliberate and worth the cost — those tests have caught things no unit test co
   verified path, and then tells you to run `gauntlet lock`. Self-approval would defeat the purpose.
 - **Stale approvals report but do not fail.** A judgment that no longer applies is housekeeping, not
   a defect.
+- **The tests gate collapses failures on the junit headline alone.** Two unrelated tests failing
+  with a bare `assert False` become one diagnostic whose count says two and whose location is the
+  first's. The headline is what an unbound step, a missing fixture or a broken import repeats
+  eighty times, and one root cause reported once per scenario outgrew the hook's output limit
+  while saying one thing; the price is the occasional pair of strangers sharing a line, and the
+  count names them (package P3, 2026-09-26).
+- **A ledger refusal is recognised by its error's first token, not by a field on `GateResult`.**
+  `to_dict` is `asdict`, so a `human: bool` field would enter `--json` and `status --json`: a
+  contract change for a hook fix. Every `RegistryError` names the path it refused first, so the
+  Stop hook reads that token; the cost is that an error naming the ledger beside diagnostics on
+  one result reads blocked, though no gate produces that shape (package P3, 2026-09-26).
+- **`doctor`'s existing warning tests pass a configured interpreter.** A bare temporary root has
+  no `.venv`, and the test process may have no active virtualenv, so it is a fallback by
+  construction and would warn about that in a test about hooks or lock files. The fallback
+  warning has its own test; the others pin only their own subject (package P3, 2026-09-26).
+- **`classify` computes `relocated` for code mutants too, and the mutation gate ignores it.** The
+  pairing is by digest inside one subject and costs a dictionary; giving code mutants a second
+  `classify` to skip it would split the one function the two ledgers share. The code gate's stale
+  diagnostic stays "the code or the tests changed" (package P3, 2026-09-26).
 - **Mutation defaults to `require_review = false`** while acceptance mutation effectively requires
   review. Unit-test mutants number in the hundreds; acceptance mutants number in the dozens and each
   one means something.
@@ -338,8 +362,9 @@ deliberate and worth the cost — those tests have caught things no unit test co
   unapproved or modified spec would cost the full stage on every Stop-hook turn of a tree the
   human has not reviewed, and a red tree never skips; the survivors that stay hidden until the
   approval clears are the price, and the gate names it. A red run whose every failure is an
-  approval finding is human-blocked: `stop-check` escalates it at once without spending an
-  attempt, and `gauntlet loop` stops after that iteration (item 6, 2026-09-17).
+  approval finding, or an `error` whose first token is the ledger's path (a `RegistryError`), is
+  human-blocked: `stop-check` escalates it at once without spending an attempt, and
+  `gauntlet loop` stops after that iteration (item 6, 2026-09-17; package P3, 2026-09-26).
 - **`gauntlet mutant preview` reads no configuration and no ledger, and its lines carry no line
   number and no path.** It looks like the one `mutant` command that forgot `resolve_config`. The
   file it prices may not be in a project yet, so it takes a path and nothing else and writes
