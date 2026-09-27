@@ -2713,7 +2713,12 @@ headline is the whole story.
 
 **Routes to:** BACKLOG.md, v1, small.
 
-**Status.** Open.
+**Status.** Applied, 2026-09-27, as G3 item 7 package P3 on `v1/item-7-p3-remedies`: `0a0a4d5` — the
+tests gate collapses failed cases sharing a junit headline into one diagnostic prefixed `N test(s)
+failed the same way — first: `, before the per-gate cap, keyed on the headline alone. On the
+throwaway an unbound Background step went from 2 diagnostics and 1614 bytes of stderr to 1 and 891.
+The package's "Change, applied" text is under "The acceptance gate's remedy names a command that
+re-baselines a different gate". *(Read "Open." until the P3 close.)*
 
 *(Annotation, 2026-09-25, from pricing package P3 against `cfbebbf`: decision (4) of the P3
 block, under "The acceptance gate's remedy names a command that re-baselines a different
@@ -2751,8 +2756,15 @@ the turn would end red.
 
 **Routes to:** BACKLOG.md, G3 item 7, package P3 if its pricing takes it.
 
-**Status.** Open. Found 2026-09-22 from the source and the log, recorded 2026-09-24 at package P2's
-save point.
+**Status.** Applied, 2026-09-27, as G3 item 7 package P3 on `v1/item-7-p3-remedies`: `49d2276` —
+`stop._approval_only` accepts a failing gate whose error's first whitespace-delimited token ends
+with the ledger's file name (the shape of every `RegistryError`); a version-1 lock now escalates on
+the first `stop-check` with exit 0, `agent.escalated` `reason: "human-blocked"`, `attempts: 0`, and
+no attempts file, measured on the throwaway against the before-state of 2, 2, 0 and three counted
+attempts. The package's "Change, applied" text is under "The acceptance gate's remedy names a
+command that re-baselines a different gate". Found 2026-09-22 from the source and the log, recorded
+2026-09-24 at package P2's save point. *(Read "Open. Found 2026-09-22 from the source and the log,
+recorded 2026-09-24 at package P2's save point." until the P3 close.)*
 
 *(Annotation, 2026-09-25: taken into package P3 at its pricing, decision (6) of the P3 block
 under "The acceptance gate's remedy names a command that re-baselines a different gate". The
@@ -3157,7 +3169,11 @@ trust, and because the wrong command here is not inert — it writes.
 README-versus-table drift but not diagnostics-versus-CLI — a different axis from the "Ten gates"
 observation in the note below.
 
-**Status.** Open.
+**Status.** Applied, 2026-09-27, as G3 item 7 package P3 on `v1/item-7-p3-remedies`: `e64be43`
+(`registry.describe` names the command its caller owns, spec diagnostics name `gauntlet spec approve
+<spec>`, and `stop.blocked_message` names no command; a test resolves every backticked `gauntlet …`
+in source against the CLI tree). The package's "Change, applied" text is after the block below.
+*(Read "Open." until the P3 close.)*
 
 **Addition, 2026-08-24.** The defect is wider than the quoted message. Read from
 `registry.describe` and observed in output the same day: the spec diagnostics are three
@@ -3436,6 +3452,94 @@ hold as written, because `pytest exited 127` and `tool crashed` name no ledger. 
 each count with the commit it lands in, and the suite total at every turn end as a measurement, not
 against a floor.
 
+**Package P3 — change, applied 2026-09-27 (advisor-recommended, human-ratified).** On
+`v1/item-7-p3-remedies` from `cfbebbf`: `1774cf3` (this block, seven annotations, one Properties
+addition; script-applied, 9 anchors, 340/0, `60c736da2132fb66` → `e2fbf831e3a70431`), then `e64be43`
+(decision (1): `describe(…, command=)`, spec diagnostics name `gauntlet spec approve <spec>`,
+`blocked_message` names no command; four tests, one replacing
+`test_blocked_message_names_the_human_and_carries_the_report`; `registry.py` 292), `68b4dcf`
+(decision (2): `Classification.relocated` filled by `_relocated` from the survivors already placed
+in `unreviewed`, `MutationOutcome.relocated` merged by dict union, `stale_diagnostics` returning up
+to two lock diagnostics, `by_scenario` taking `changed`, two docstrings corrected; nine named tests
+plus three parametrised rows), `6e48069` and `28ee9f5` (decision (3): public `acceptance.baseline`,
+`_current_survivors` through `_require_green_baseline`; the first commit red on this repository's
+static and complexity gates — complexity 7, mypy on the `object`-typed config — the tidy green; its
+message states estimated sizes, 253 → 262 and 232 → 243, where the measured were 264 and 254; three
+tests), `0a0a4d5` (decision (4): `parse_junit` → `_collapsed` → `_grouped`, `_headline` the one
+reader; three tests, byte-identity of singletons proved against a second junit), `ce3a61e` (decision
+(5): `Resolved`, `resolve`, `GateContext.interpreter_fallback`, `FALLBACK_NOTE`, `interpreter_note`,
+appended after the 800-character cut at three sites and not at the mutation gate's `RegistryError`
+site, `doctor.warnings_for(…, python)`; five tests, the eight existing doctor tests now passing a
+configured interpreter), `49d2276` (decision (6): `_names_the_ledger`; three tests, one driving
+`stop-check` on a version-1 lock), and `0d707a7` (README, docs/GATES.md, ARCHITECTURE.md: 2, 5 and 3
+sentences plus four "deliberate" entries; read by the advisor as a diff at the ref). At the tip,
+agent-measured and advisor-verified from a clone: `acceptance/report.py` 188, `mutants.py` 258,
+`gates/acceptance.py` 266, `cli_mutants.py` 256, `gates/tests.py` 178, `adapters/python.py` 255,
+`gates/base.py` 230, `doctor.py` 264, `stop.py` 112, `registry.py` 292, `gates/mutation.py` 241,
+`runner.py` 146; every function at or under 25 lines, complexity 6; harness `9665f4ba4e4fd37f…` over
+54; 27 tests added as named and one replaced (631 → 657 names; 671 → 703 collected items); coverage
+98.01 line, 95.03 branch; the tests gate between 60.8 s and 73.9 s across the seven own runs, the
+thirteen added baseline runs inside that noise. Forty-three agent judgments across eight turns, each
+ratified; the ones a later reader needs: a relocated key pairs only against survivors already placed
+in `unreviewed`, so an approved or modified survivor is never a candidate; relocated pairs are
+listed as bare locators and the prune lines carry the feature; the baseline refusal prints under
+`fail`'s `config error:` prefix; an error naming the ledger beside diagnostics on one result reads
+blocked, which no gate produces; `_names_the_ledger` on an empty error is false by test.
+
+Corrections to this block, all the advisor's, dated 2026-09-25 and 2026-09-26. Matrix row (i)
+specified a parametrised outline's unbound step, whose headline carries the substituted placeholder
+and so differs per example; the entry's identical-headline case was a Background step, and the row
+was retaken with one. Row (j) specified a fallback that reddens the tests gate; Gauntlet's own venv
+carries pytest, pytest-cov and pytest-bdd as dependencies, so the fallback can only fail on what the
+project alone provides — the entry's mutmut — and the row was retaken with two venvs and the
+mutation gate, whose baseline on the tiering fixture is red regardless because mutmut copies `src`
+and `tests` and not `features/` (a tool-level observation, checked against ClaimGate's own mutmut
+configuration at the save point). Row (n)'s third `stop-check` exits 0 with the escalation message,
+not 2. Row (o) named a size violation the throwaway's config had no gate to see; retaken with
+`[gates.size]`, where fail-fast stops at size and the lock is never read, which is the row's point.
+Rows (a) to (d) omitted the `gauntlet spec approve` after each spec edit without which the approval
+stage short-circuits before mutation; the agent supplied it. The subject-run prompt named
+ClaimGate's `main` `c22df38` as the clone's expected HEAD instead of the tag `be87d38`; the agent
+stopped at step 1 without touching the clone, and the run went on the corrected prompt. The doctor
+crash on a configured interpreter that does not exist (row (l)) was proposed as an amendment to
+decision (5) and not ratified in time, so commit 6 landed as the block wrote it and the crash is its
+own entry.
+
+Proof, first shape. Regression run `20260926T230759-43451`: `gauntlet check --record
+~/gauntlet-review/item7-p3-verdict.json` in the item-1 clone at `be87d38` with its migrated lock
+`3749d099bb77c55d`, `.gauntlet/` and `mutants/` removed first, the P2 log copied out as
+`claimgate-item1-events-before-p3.jsonl` (14 lines, `b4aca781b589c869…`), Gauntlet at `0d707a7`
+installed into the clone's venv (byte-equal to the ref; `direct_url.json` records the commit), wall
+1025.14 s. Every clause of the prediction held: `verdict_sha256`
+`9c7aececf56dc4f5214bfc4a07cd729f347086039dc7ba9193c6edfa3d01ca42`, the tag's, P1's and P2's; eleven
+`gate.finished` lines with the tag's `gate`, `passed`, `error`, `diagnostics` and `actual`, the
+acceptance line `16 spec(s), 73 reviewed-equivalent` with 0 diagnostics, tests `966/966 passing`,
+mutation `score 100.0%, 757 killed`; `run.finished` `b203ab90…` over 127; the lock byte-identical
+after the run; `git status --porcelain` exactly ` M gauntlet.lock.json`; `.gauntlet/` the seven
+after the check and the eight after the skip `20260926T232523-60654`; no `*.tmp`; the log's 14 lines
+with `at`, `duration`, `run` and id fields stripped differing in nothing from P2's run — all
+agent-measured and quoted, the record `bd44f31ce0e2af42…`, harness `9665f4ba4e4fd37f…` over 54.
+Durations, outside the proof: acceptance 997.848 s against P2's 882.565 s and P1's 1092.143 s,
+mutation 18.46 s against 15.175 s. ClaimGate's committed lock stays version 1.
+
+Proof, second shape — the tiering throwaway, fifteen rows, before-states by the agent at `cfbebbf`
+on Python 3.12.13 and after-states at `49d2276`, every row as predicted. (a) scenario renamed: one
+`relocated` diagnostic naming both `old -> new` pairs and `gauntlet mutant prune
+features/tiering.feature`, where before it was "got sharper" and a bare `prune` that failed `Missing
+argument 'feature'`; the pasted line prunes both. (b) a row sharpened: one `superseded`. (c) both:
+three diagnostics where there were two — the count rise the block allowed. (d) a re-aimed row: the
+same one scenario diagnostic, now carrying "(approved at this locator for a different substitution;
+the judgment was not about `fire->theft`)". (e) prune after (a): 3 → 1 keys, as before. (f) prune on
+a red suite: 3 → 3 with the refusal, where before 3 → 1. (g) approve on the same: exit 1 with the
+refusal, where before "no surviving mutants to approve". (h) five junit failures, three sharing a
+headline: 5 → 3 diagnostics. (i) an unbound Background step: 2 → 1 diagnostics, stderr 1614 → 891
+bytes. (j) no `.venv`, no `VIRTUAL_ENV`: the mutmut error carries the note; `doctor` warns. (k), (m)
+a `.venv` or a `VIRTUAL_ENV`: no note, no warning. (l) a configured path that does not exist: the
+same `pytest exited 127` naming the path, no note. (n) a version-1 lock: `stop-check` exit 0 on the
+first call, `reason: "human-blocked"`, `attempts: 0`, no attempts file, where before 2, 2, 0 with
+three counted attempts. (o) the same beside a size violation under fail-fast: counted and bounced,
+the lock unread.
+
 #### The stale-approval remedy asserts one cause for a condition with two, and emits an incomplete command
 
 **What happened.** ClaimGate item 4d renamed one Scenario Outline column (`inception_date` to
@@ -3502,7 +3606,12 @@ rather than identities. Related also to "Approval reasons go stale silently wher
 which is the inverse failure: there the key holds while the prose rots, here the key moves while the
 judgment holds.
 
-**Status.** Open.
+**Status.** Applied, 2026-09-27, as G3 item 7 package P3 on `v1/item-7-p3-remedies`: `68b4dcf`, one
+commit with the reporting half of "Mutant approval keys are content-addressed on the whole row" — a
+missing or modified approval is diagnosed by cause: relocated and superseded as two diagnostics on
+the lock, each ending in `gauntlet mutant prune <feature>` per feature, re-aimed inside the scenario
+diagnostic. The package's "Change, applied" text is under "The acceptance gate's remedy names a
+command that re-baselines a different gate". *(Read "Open." until the P3 close.)*
 
 *(Annotation, 2026-09-25, from pricing package P3 against `cfbebbf`: this entry and the
 reporting half of "Mutant approval keys are content-addressed on the whole row" are one
@@ -3551,8 +3660,16 @@ no such protection.
 two" — both are the ledger's hygiene commands doing the wrong thing on a state the gate would have
 recognized.
 
-**Status.** Open. Not patched: Gauntlet is frozen for the duration of the ClaimGate project. Read from
-source at `9afd421`, 2026-09-06; not exercised.
+**Status.** Applied, 2026-09-27, as G3 item 7 package P3 on `v1/item-7-p3-remedies`: `6e48069` with
+`28ee9f5` (a tidy that extracts `_require_green_baseline`; the first commit was red on this
+repository's own static and complexity gates and the second made it green in the same turn) — the
+gate's baseline is the public `acceptance.baseline`, and `mutant approve` and `mutant prune` run it
+before classifying, refusing a red suite with the ledger unwritten. The destructive case was
+measured before the guard landed: on a red suite `prune` dropped every approval of the feature (3
+keys → 1); after, exit 1 and 3 → 3. The package's "Change, applied" text is under "The acceptance
+gate's remedy names a command that re-baselines a different gate". *(Read "Open. Not patched:
+Gauntlet is frozen for the duration of the ClaimGate project. Read from source at `9afd421`,
+2026-09-06; not exercised." until the P3 close.)*
 
 *(Annotation, 2026-09-25, from pricing package P3 against `cfbebbf`: the path read here still
 holds — `cli_mutants._current_survivors` → `acceptance.survivors_for` → `_surviving`, no
@@ -4466,7 +4583,16 @@ source, on a repository whose author had used the tool daily for weeks.
 
 **Routes to.** `BACKLOG.md`.
 
-**Status.** Open.
+**Status.** Applied, 2026-09-27, as G3 item 7 package P3 on `v1/item-7-p3-remedies`: `ce3a61e` —
+`adapters.python.resolve` returns the path and a fallback flag, `GateContext.interpreter_fallback`
+carries it, the tests, mutation and acceptance gates append the fallback note to their error when
+they fail on it, and `gauntlet doctor` warns "Interpreter fallback: …". The entry's own incident
+reproduced on the throwaway: `…/venv-tool/bin/python: No module named mutmut` now ends "(no project
+.venv, no active virtualenv and no [project].python: this ran on Gauntlet's own interpreter, which
+does not carry the project's tooling)". The doctor crash on a configured interpreter that does not
+exist, found while taking the matrix, is a separate entry. The package's "Change, applied" text is
+under "The acceptance gate's remedy names a command that re-baselines a different gate". *(Read
+"Open." until the P3 close.)*
 
 *(Annotation, 2026-09-25, from pricing package P3 against `cfbebbf`: the resolution order read
 here holds — `adapters/python.py` `interpreter`, configured, `.venv`, `$VIRTUAL_ENV`,
