@@ -524,6 +524,33 @@ and lives in `adapters/python.py`. Passing a scenario name to `pytest -k` — sp
 expression; collect the node id and run that. Writing a file to the outputs directory and telling
 the owner it is attached without presenting it — it was not, and a turn was lost.
 
+From package P3 (2026-09-25 to 27). Naming the subject repository's `main` as the clone's expected
+HEAD — the subject is the tag, always, and the agent rightly stopped at step 1 rather than run on
+the wrong figure; `main` of the subject is never a figure in a run prompt. Predicting a fallback
+that reddens the tests gate — Gauntlet's own venv carries pytest, pytest-cov and pytest-bdd as
+dependencies, so a fallback onto it can only fail on what the project alone provides; check
+`pyproject.toml`'s dependencies before writing a row about the tool's own interpreter. Writing an
+identical-headline row on a parametrised outline — pytest-bdd substitutes the placeholder into "Step
+definition is not found", so an outline's failures differ per example and only a Background or plain
+step repeats; read the message the failing library formats before predicting what repeats. Stating a
+throwaway's gate configuration by implication — row (o)'s size violation was seen by no gate because
+the fixture enables two; a matrix row names every gate it needs. Omitting a step the fixture needs —
+the acceptance gate short-circuits at the approval stage after any spec edit until `gauntlet spec
+approve` runs, and the block had rows (a) to (d) edit specs without it; the agent supplied the step,
+and a recipe that edits a spec names the re-approval. Leaving a numbered placeholder in a block —
+decision (6) was for a while "reserved so the commit numbers agree", which is a slip a reader would
+have carried; number decisions by content and let commits follow. Sending two texts to be spliced
+with one newline between them — they arrived run together and the agent had to split them; two blank
+lines between spliceable texts, and say which is which at the top. Sending a markdown paste that
+loses its marks in transit — the agent restored bold, backticks and the 100-column wrap itself, and
+the words were verified identical from a clone afterwards; when a text must be spliced verbatim, the
+checker is a normalised word comparison against the draft, run by the advisor, not the agent's care.
+Ruling that an unratified amendment falls back to the block as written — it kept commit 6 exact and
+the crash became its own entry, which is the right default; say the rule in the same message as the
+amendment. A commit message stating sizes estimated before measuring — `6e48069` says 253 → 262
+where 264 was measured; the prompt now says a message states no figure the agent has not measured,
+and that is the standing rule.
+
 
 ## Areas where I will need you most
 

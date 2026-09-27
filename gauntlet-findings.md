@@ -3002,6 +3002,14 @@ reports both, so the two entries coincide rather than collide and the package do
 Re-aimed is reported inside the scenario diagnostic; relocated and superseded are two
 diagnostics on the lock. The re-aim half stays routed to P7.)*
 
+*(Annotation, 2026-09-27: the reporting half is applied by P3 at `68b4dcf` — see the stale-approval
+entry's Status and the P3 "Change, applied" text under "The acceptance gate's remedy names a command
+that re-baselines a different gate"; measured on the throwaway, a renamed scenario reports
+`relocated` with both `old -> new` pairs, a sharpened row `superseded`, and a re-aimed row its
+sentence inside the scenario diagnostic. This entry stays Open for its re-aim half alone, routed to
+P7: the second-channel report of the 2026-08-30 addition is `mutant preview` over two refs, P10's
+guidance or v2.)*
+
 #### A same-outcome enumeration guarantees one surviving mutant per row
 
 **What happened.** Drafting ClaimGate item 4e, a closed set of fourteen loss types had to be
@@ -4602,6 +4610,61 @@ in the `error` of the three gates that run the project interpreter when they fai
 reported by `gauntlet doctor` as an advisory. A configured interpreter that is missing is not a
 fallback and keeps its own message.)*
 
+#### `gauntlet doctor` crashes on a configured interpreter that does not exist
+
+**What happened.** With `[project] python = "nowhere/python"` in `gauntlet.toml`, `gauntlet check
+--gates tests` reports cleanly — `pytest exited 127: could not run '…/nowhere/python': [Errno 2] No
+such file or directory …` — but `gauntlet doctor` exits 1 with a `FileNotFoundError` traceback.
+Found 2026-09-25 by the agent taking package P3's matrix row (l) on the `tiering` throwaway at
+`cfbebbf`; mechanism read by the advisor at the same ref: `doctor._importable_by` calls
+`subprocess.run` on the interpreter directly, so a missing executable is raised, where every gate
+goes through `gates.base.run_cmd` and gets exit 127 with the message instead.
+
+**Why it matters.** `doctor` is the command that exists to say what is wrong with the environment
+before a gate runs, and the one environment fault that makes every gate fail is the one it cannot
+report. The traceback names `subprocess`, not the path the human typed.
+
+**What would address it.** `_importable_by` through `run_cmd`; a missing interpreter is a failed
+check that names the path, beside the "Interpreter fallback" advisory P3 added. One line and an
+import; a test that configures a missing path and asserts exit 1 with the path in the output and no
+traceback. Proposed as an amendment to P3's decision (5) and not ratified in time, so it is its own
+entry.
+
+**Routes to:** BACKLOG.md, v1, small; package P4 if its pricing takes it, else P6.
+
+**Status.** Open. Found 2026-09-25 from the throwaway, recorded 2026-09-27 at package P3's save
+point.
+
+
+#### mutmut's copy omits `features/`, so a pytest-bdd project's mutation gate fails at collection
+
+**What happened.** On the `tiering` throwaway (one feature under `features/`, its scenarios bound by
+`scenarios("../../features/tiering.feature")` in `tests/steps/`), enabling `[gates.mutation]` with
+no `[tool.mutmut]` selection made the gate red before any mutant ran: mutmut copies `src` and
+`tests` into `mutants/` and runs pytest there, the relative path resolves inside the copy, and
+`features/tiering.feature` is not in it — `FileNotFoundError` at collection, reported by the gate as
+mutmut's spinner output cut at 800 characters. Found 2026-09-25 by the agent taking P3's matrix row
+(j). ClaimGate never meets it because its `[tool.mutmut]` sets `pytest_add_cli_args_test_selection =
+["tests/unit/"]` and `also_copy = ["conftest.py", "tests/"]`, so the code-mutation run collects unit
+tests only.
+
+**Why it matters.** The acceptance gate is built for exactly this project shape, and the tool's own
+`init` and `docs/GATES.md` say nothing about what the mutation gate needs from it. A new pytest-bdd
+project that enables both gates gets a red mutation gate with an error about a feature file, and
+nothing in the output says the fix is a mutmut selection. The 800-character cut of a spinner is also
+the wrong thing to show — the cause is on the line after it.
+
+**What would address it.** Documentation first: `docs/GATES.md`'s mutation section and the `init`
+template name the two settings and say why — the step modules belong to the acceptance gate, the
+unit tests to the mutation gate. Possibly `doctor`: when `[gates.mutation]` and `[gates.acceptance]`
+are both enabled and `[tool.mutmut]` has no test selection, an advisory. The spinner cut is the
+mutation gate's error text, P6's.
+
+**Routes to:** BACKLOG.md, documentation (GATES.md, `init` template); P6 for the error text.
+
+**Status.** Open. Found 2026-09-25 from the throwaway, recorded 2026-09-27 at package P3's save
+point.
+
 #### The approval ledger is written non-atomically, and it is the one artifact no gate can rebuild
 
 **What happened.** `registry.save` ends in `path.write_text(...)` — no temp file, no atomic
@@ -6088,6 +6151,13 @@ message begins with anything but the path, or a gate that rewrites the error bef
 it, silently returns that refusal to the agent's three attempts. Recorded 2026-09-25 at P3's
 pricing, where it held by measurement; the P3 close records the test that pins it.
 
+*(Annotation, 2026-09-27: pinned at P3's close by
+`test_a_gate_whose_error_names_the_ledger_is_human_blocked` (`tests/test_stop.py`, the error string
+taken from `registry.load` on a version-1 file, never typed) and
+`test_a_ledger_refusal_never_carries_the_fallback_note` (`tests/test_mutation_gate.py`, the fallback
+note is appended and the first token stays the ledger's path). `stop._names_the_ledger` is the
+reader, at `49d2276`.)*
+
 ### Mutant locators are structural, not positional
 
 A locator is scenario name, kind, column, and row values — not a line number and not a file offset.
@@ -6487,6 +6557,17 @@ entries in eight packages and seven subject runs, and `grep -c '^\*\*Status\.\*\
 gauntlet-findings.md` prints 34 until P3 closes. The prediction is "nothing changes", held by
 two measured facts: the verdict digests diagnostic counts, not text, and the subject's run has
 no stale, modified or missing approval, no failing test and no interpreter fallback.)*
+
+*(Annotation, 2026-09-27: P3 closed at `6466055`, merged at `e6ac033`; six entries Applied, the
+whole-row entry Open for its re-aim half. The prediction held on both proofs — run
+`20260926T230759-43451` reproduced `9c7aececf56dc4f5…` with eleven tuples identical to P2's, and all
+fifteen matrix rows read as predicted after five block corrections dated 2026-09-25 and 26. Two
+entries recorded at this save point ("`gauntlet doctor` crashes on a configured interpreter that
+does not exist" and "mutmut's copy omits `features/`, so a pytest-bdd project's mutation gate fails
+at collection"), so the tail is 29 live entries in seven packages, P4 to P10, and six subject runs,
+and `grep -c '^\*\*Status\.\*\* Open' gauntlet-findings.md` prints 30 until P4 closes. P4 opens next
+with an advisor pricing: its entries, the `mutant approve` overwrite loose end, and the code-mutant
+key collision, which the P2 hand-off placed there.)*
 
 **The v1 backlog's root-cause-diagnostics item needs a fourth category.** It
 currently distinguishes "tool failed," "tool found nothing," and "nothing to

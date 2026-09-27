@@ -133,6 +133,42 @@ Every session reads `CLAUDE.md` and this file. Then, per item:
 
 ## Status as of this handoff
 
+**2026-09-27, G3 item 7 package P3 applied (remedies and messages that name the wrong thing).** On
+`v1/item-7-p3-remedies` from `cfbebbf`, merged at `e6ac033`: the human findings commit `1774cf3`
+(one block — six decisions, one prediction, a fifteen-row matrix in five parts, 23 test names —
+seven annotations, one Properties addition; script-applied, 9 anchors, 340/0), `e64be43`
+(`registry.describe` names the command its caller owns, so spec diagnostics say `gauntlet spec
+approve <spec>` where they said `gauntlet lock`; `stop.blocked_message` names no command; a test
+resolves every backticked `gauntlet …` in source against the CLI tree), `68b4dcf` (a missing or
+modified approval is diagnosed by cause — *relocated*, *superseded*, *re-aimed* — the first two as
+separate lock diagnostics each ending in `gauntlet mutant prune <feature>` per feature, the third
+inside the scenario diagnostic; this was the stale-approval entry and the whole-row entry's
+reporting half in one commit), `6e48069` with `28ee9f5` (`mutant approve` and `prune` run the
+baseline through the public `acceptance.baseline` before classifying and refuse a red suite with the
+ledger unwritten; the first commit was red on this repository's own static and complexity gates and
+the tidy made it green the same turn), `0a0a4d5` (the tests gate collapses failures sharing a junit
+headline into one diagnostic carrying the count, before the per-gate cap), `ce3a61e`
+(`adapters.python.resolve` returns the interpreter and a fallback flag; the tests, mutation and
+acceptance gates append the fallback note to their error when they fail on it; `doctor` warns
+"Interpreter fallback: …"), `49d2276` (a failing gate whose `error`'s first token is the ledger's
+path is human-blocked: a version-1 lock escalates on the first `stop-check` at exit 0 and spends no
+attempt), `0d707a7` (README, ARCHITECTURE, GATES), and the close `6466055`. The package did not
+split; it grew by one entry (the human-blocked lock). The regression subject: run
+`20260926T230759-43451` at `0d707a7` in the item-1 clone at `be87d38` with its migrated lock
+reproduced the tag's verdict `9c7aececf56dc4f5…`, eleven tuples identical to P2's, the lock
+byte-identical after, the stripped event log differing in nothing — the checkpoint green; harness
+`9665f4ba4e4fd37f` over 54. 27 tests added as named and one replaced (631 → 657 names; 671 → 703
+collected), suite 60.8 s to 73.9 s across the own runs, coverage 98.01 / 95.03. Five block errors,
+all the advisor's, corrected before the rows they touched were retaken (matrix rows (i), (j), (n),
+(o) and the omitted `spec approve` step), and one wrong figure in the subject-run prompt
+(ClaimGate's `main` for the tag), on which the agent stopped without touching the clone. Found and
+not in this package: `gauntlet doctor` crashes on a configured interpreter that does not exist (its
+own entry); a pytest-bdd project whose mutmut test selection reaches the step modules fails at
+collection inside `mutants/`, because mutmut copies `src` and `tests` and not `features/` —
+ClaimGate points mutmut at `tests/unit/` and never meets it (its own entry, documentation); the
+baseline refusal prints under `fail`'s `config error:` prefix (P6); acceptance wall time 997.848 s
+against 882.565 s and 1092.143 s across three identical verdicts, not investigated.
+
 **2026-09-24, G3 item 7 package P2 applied (ledger keys, once).** On `v1/item-7-p2-ledger-keys` from
 `ca1bb33`: the human findings commit `58a578b` (one block — seven decisions, one prediction naming
 the migrated lock's digest, a seven-row matrix, 9 test names — two annotations, one Properties
@@ -440,16 +476,17 @@ red here before it reaches the subject. Since item 2 the Stop hook skips wheneve
 tree: a turn end that ran no gate is a `run.reused` line in the log naming that run, and only
 the log tells it from a crash.
 `cli.py` is at 248 of 300 lines since item 6 moved `init` and `guard` to `cli_setup.py`, with
-`check` and `stop_check` at 24 of 25; `gates/acceptance.py` is 251 since P2 caught `RegistryError`
-there (P1 moved its reporting half to `acceptance/report.py`, 124), with `_surviving` at 23;
-`adapters/python.py` 240 with `interpreter` at 23; `gates/mutation.py` 235; `loop.py` 151 with
-`drive` at 24; `gates/base.py` 214 with `run_cmd` at 25 of 25 since item 7 change 2;
-`acceptance/mutation.py` 262 since P2 with `_column_mutants` at 25 of 25; `registry.py` 291 since P2
-(`load_for_migration`) and `tree.py` 249 since change 2; `mutants.py` 231 since P2 with `migrate` at
-24; `cli_mutants.py` 240 since P2 with `mutant_migrate` at 24; `cli_status.py` 49 since P2 extracted
-`_run_now`; `stop.py` 95, `acceptance/strands.py` 71, `runner.py` 144, `verdict.py` 210,
-`cli_verdict.py` 54, `cli_support.py` 62. The two functions at the ceiling each force an extraction
-before the next change to them; the two at 24 are one line from it.
+`check` and `stop_check` at 24 of 25; `gates/acceptance.py` is 266 since P3 made `baseline` public
+(P1 moved its reporting half to `acceptance/report.py`, 188 since P3's stale-by-cause diagnostics),
+with `_surviving` at 23; `adapters/python.py` 255 since P3 with `resolve` at 25 of 25;
+`gates/mutation.py` 241; `gates/tests.py` 178 since P3's headline collapse; `loop.py` 151 with
+`drive` at 24; `gates/base.py` 230 since P3 with `run_cmd` at 25 of 25 since item 7 change 2;
+`acceptance/mutation.py` 262 since P2 with `_column_mutants` at 25 of 25; `registry.py` 292 and
+`tree.py` 249; `mutants.py` 258 since P3 with `migrate` at 24; `cli_mutants.py` 256 since P3 with
+`mutant_migrate` at 24; `cli_status.py` 49; `doctor.py` 264 since P3; `stop.py` 112 since P3;
+`acceptance/strands.py` 71, `runner.py` 146, `verdict.py` 210, `cli_verdict.py` 54, `cli_support.py`
+62. The three functions at the ceiling each force an extraction before the next change to them; the
+four at 24 are one line from it.
 
 **The inventory of 2026-09-12**, read-only, agent-produced, from which this file was written.
 Three source-line citations in the findings resolve at `a0ef78d` (`cli.py:151` and `cli.py:151-152`
