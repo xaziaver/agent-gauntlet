@@ -2900,6 +2900,12 @@ nobody had actually reviewed.
 
 **Status.** Open.
 
+*(Annotation, 2026-09-27, from pricing package P4 against `ede9530`: decision (5) of the P4 block
+under "The approval ledger has no per-mutant reason" — with neither `--scenario` nor `--locator`,
+survivors about to be written in more than one scenario are refused in one line until
+`--all-scenarios` is passed; the same decision stops the command re-recording approvals it was not
+asked to touch.)*
+
 #### Mutant approval keys are content-addressed on the whole row
 
 **What happened.** Mutant keys embed every literal cell value in the example row. Changing
@@ -3713,6 +3719,12 @@ permission to walk away from a red gate that is waiting on exactly them.
 human-facing surface contradicting the state it reports.
 
 **Status.** Open.
+
+*(Annotation, 2026-09-27, from pricing package P4 against `ede9530`: taken into package P4 from P6,
+decision (2) of the P4 block under "The approval ledger has no per-mutant reason". `gauntlet review`
+walks `status.pending`, so the design that gives the walker its mutants — a record the gate writes,
+classified at read time — gives `pending` its survivors, on `--run` and bare alike; left in P6 this
+entry would have built a second source for the same list. P6 falls to three entries.)*
 
 #### The two ledger figures most quoted in prose are the two no status surface reports
 
@@ -4635,6 +4647,10 @@ entry.
 **Status.** Open. Found 2026-09-25 from the throwaway, recorded 2026-09-27 at package P3's save
 point.
 
+*(Annotation, 2026-09-27: P4's pricing did not take it — outside the verdict path and outside that
+package's one design — so it routes to P6, beside the `config error:` prefix loose end in the same
+command family.)*
+
 
 #### mutmut's copy omits `features/`, so a pytest-bdd project's mutation gate fails at collection
 
@@ -5083,6 +5099,13 @@ restructured to work around a tool constraint rather than because the structure 
 
 **Status.** Open.
 
+*(Annotation, 2026-09-27, from pricing package P4 against `ede9530`: decision (4) of the P4 block
+under "The approval ledger has no per-mutant reason" — `mutant approve` gains repeatable
+`--locator`, and `gauntlet review` is the finer scope, one mutant and one reason at a time (decision
+(3)); the overwrite this entry names is decision (5)'s rule, `--rewrite` the one way to change a
+reason. The dependency-locator field of "Approval reasons go stale silently where the key does not"
+keeps its room: the addressing is the ledger key, and the payload does not move.)*
+
 #### Mutation cannot reach a fixed Given, so a specification can state a rule nothing protects
 
 **What happened.** `_literal_mutants` returns `[]` for any scenario where `is_outline` is true, so
@@ -5209,6 +5232,13 @@ re-deriving the mutant algorithm by hand.
 
 **Status.** Open.
 
+*(Annotation, 2026-09-27, from pricing package P4 against `ede9530`: decision (1) of the P4 block
+under "The approval ledger has no per-mutant reason" — the gate writes every survivor it measured to
+`.gauntlet/acceptance-survivors.json`, the capped diagnostic says so and names `gauntlet review`,
+and the complete list reaches the contract through `gauntlet status --json`, decision (2).
+`MAX_LISTED` stays: P3 paid for the hook's output cap, and the file is the uncapped surface this
+entry proposed.)*
+
 #### The approval ledger has no per-mutant reason
 
 **What happened.** `gauntlet mutant approve` applies one `--reason` to every currently-surviving
@@ -5273,6 +5303,250 @@ defaults to the widest scope" the same change seen from `mutant approve`. Packag
 "A gate requiring human review must show the human what to review". The design leaves room for the
 dependency-locator field proposed under "Approval reasons go stale silently where the key does
 not".)*
+
+**Package P4 — approve one mutant at a time. Design decisions, advisor-recommended, human-ratified
+2026-09-27.** One block for the package, per the rule of 2026-09-20; it sits here because this
+entry's 2026-09-20 annotation names the design the package shares, and the other entries point at
+it: "A gate requiring human review must show the human what to review", "Approval scope is coarser
+than the judgments it records, and it is now shaping the Gherkin", "Mutant approval defaults to the
+widest scope", and — taken into the package at this pricing from P6, decision (2) — "`status --run`
+reports "nothing needs your approval" beside the survivors it just counted". **The package does not
+split.** Its five entries are one design seen from four surfaces — a record the gate writes, a
+status that reads it, a walker that approves from it, and a batch command that stops sweeping — and
+no two of them touch one function except the two `mutant approve` entries, which share commit 5 as
+one change to one command. Three things the hand-off asked this pricing to place: the `mutant
+approve` overwrite carried as a loose end since P2's row (e) is already the text of this entry ("a
+second call overwrites rather than adds") and of "Approval scope is coarser" ("every re-approval
+overwrites all of them"), so it is decision (5) here and not an entry; "`gauntlet doctor` crashes on
+a configured interpreter that does not exist" routes to P6 — outside the verdict path and outside
+this package's one design, beside the `config error:` prefix loose end in the same command family,
+at no realized cost, since every gate already reports the missing interpreter as exit 127; and "A
+code mutant's ledger key is its diff" stays where its own words put it, measured first on the
+owner's mutmut, this package touching the `_record` it shares with `approve-code` and never a key.
+Branch `v1/item-7-p4-one-at-a-time` from `ede9530`; four code commits in this order, then the
+documents commit, one subject run at the tip, one close. Commit 1 is this block. Commits 2 to 5 are
+decisions (1) to (6) below — commit 5 carries (4), (5) and (6), the `mutant approve` commit — and
+commit 6 is decision (7). Everything below that describes existing code was read by the advisor at
+`ede9530` from a clone; every figure labelled measured was taken there on Python 3.12.3, and the
+agent retakes every throwaway before-state on the owner's machine before code moves.
+
+Three measured facts frame the prediction. The verdict digest and every `gate.finished` line carry
+`diagnostics` as a count (`verdict._gate_line`, `runner._finished`, P3's first fact), so a remedy's
+wording never moves a verdict. `.gauntlet/` is git-ignored at `be87d38` (`.gitignore` line 2) and is
+`NEVER_HASHED` in `tree.py`, so a file the gate writes there moves neither the clone's porcelain nor
+the skip hash — `acceptance-scope.json` has lived there since P1 under both proofs. And
+`GateContext` carries no run id and no clock, so a record the gate writes is a function of the tree
+and the ledger alone. On the subject every one of the migrated lock's seventy-three `mutant:`
+entries is UNCHANGED against its survivor (P2's and P3's runs), so nothing this package adds to a
+diagnostic is ever rendered there.
+
+**(1) The gate writes every survivor it measured to `.gauntlet/acceptance-survivors.json`, and the
+scenario diagnostic names `gauntlet review` and, when capped, the file** — "A gate requiring human
+review must show the human what to review". A new module `acceptance/survivors.py` owns the record,
+write side here and read side in decision (2), because `gates/acceptance.py` is at 266 of 300
+(measured) and the record is read by two commands the gate never calls. The record is one JSON
+object: per feature key (`specs.key_for`), `spec` — `registry.digest` of the file's bytes, the value
+the lock's `spec:` entry holds when the spec is approved and unchanged — and `survivors`, the list
+`survivors_for` returned, in engine order, each as `dataclasses.asdict(Mutant)` (its eight fields;
+`locator`, `signature` and `description` derive from them, so a reader rebuilds one with
+`Mutant(**item)`); unclassified, because classification is the reader's act against the ledger of
+the moment. Serialised as the scope record is, `json.dumps(record, indent=2, sort_keys=True) +
+"\n"`, but through `base.write_text_atomic`, so a `status` that reads while a check writes never
+sees half a file. Written once per mutation stage, after every feature is classified and beside the
+`_record_scope` call; left untouched when the stage does not run (approval or baseline failure,
+`mutate_examples = false`); a spec that raised `NotMeasuredError` is absent from it. The diagnostic
+keeps `MAX_LISTED` — P3 just paid for the hook's output cap — but its remedy sentence ends "have a
+human review them with `gauntlet review`" and never names `mutant approve`, the coarse call this
+entry names as the path of least resistance; and when the list is capped the marker reads "(+N more;
+every survivor is in .gauntlet/acceptance-survivors.json)". `gauntlet check --json` is unchanged:
+the complete list reaches the contract through `gauntlet status --json`, decision (2).
+`gates/mutation.py`'s remedy keeps `approve-code`; code survivors have no walker in this package, by
+scope.
+
+**(2) `status.pending` reads the record and classifies it now** — "`status --run` reports "nothing
+needs your approval" beside the survivors it just counted", from P6. `pending` gains a third source
+after config and spec: `survivors.read(root)`; for every recorded feature whose file exists and
+whose `registry.digest` of its bytes equals the recorded `spec`, the survivors are rebuilt and
+`mutants.classify(approved, key, survivors)` is run against the ledger just loaded; each of
+`failing` becomes `Pending(namespace=mutants.MUTANT_NAMESPACE, subject=mutants.key_for(key, m),
+status=…)`, with `unapproved` for an unreviewed survivor and `modified` for a re-aimed one — the
+registry's own words — and the default action `gauntlet review` that `ACTION_FOR` already gives an
+unknown namespace. A feature whose spec moved yields nothing, and says nothing: its own `spec` item
+is already pending as `modified`, and is the reason. No record, or a record the tool cannot parse,
+is no record — `pending` excludes mutants as it does today, the rule `tree.py` applies to its own
+cache — and the docstring's exclusion is rewritten to say so: mutants come from the last mutation
+run's record, classified against the ledger now, because knowing whether one survives requires a run
+and the last run already paid. `--run` gets the P6 entry free: `_run_now` runs the gate, which
+writes the record, before `collect` reads it. The contract grows additively: `pending[].namespace`
+may be `mutant`, and its `subject` is the bare ledger key; ARCHITECTURE records it under decision
+(7). `status_render` is untouched — the key is long, and it is the address.
+
+**(3) `gauntlet review` walks mutants, one reason each, and `--yes` skips them** — this entry.
+`review.build_item` for the mutant namespace finds the survivor in the record by key (absent:
+`fail`, nothing shown) and shows what a judge needs: the scenario, the kind and line, the context as
+the engine holds it (the Examples row with its header, or the step line), and `original -> mutated`;
+a re-aimed survivor adds P3's sentence, approved at this locator for a different substitution.
+`needs_reason` is true: the reason is required, as `mutant approve` requires it. `review.apply` for
+the namespace is `mutants_mod.approve(root, subject_of(key), [mutant], reason, reviewer)` — one key,
+one reason, one `approved_at` — and `cli_review._record` already emits `approval.granted` with the
+subject and namespace. `--yes` never approves a mutant: it skips each one, counts them, and the
+summary line says how many need their own reason and that `review` without `--yes` asks for it; an
+empty reason on a mutant is the rubber stamp this entry exists to prevent, where `--yes` on a
+modified threshold is a choice the human made knowingly.
+
+**(4) `mutant approve` gains `--locator`** — "Approval scope is coarser than the judgments it
+records". Repeatable, matching `Mutant.locator` exactly and filtering after `--scenario`; every
+named locator must be a current survivor of the feature, or the command refuses in one line naming
+the first that is not, with nothing written — a locator nothing survives at is not a vacuous
+approval, it is a mistake. The walker of decision (3) is the finer scope, one mutant and one reason
+at a time; `--locator` is the same scope for a hand that knows the key. Room for the v2 dependency
+field: both address a judgment by its ledger key, which is the addressing "Approval reasons go stale
+silently where the key does not" asks for; the entry payload is untouched, so no schema bump and no
+`migrate` change.
+
+**(5) `mutant approve` writes only what is unreviewed, re-records only under `--rewrite`, and sweeps
+only under `--all-scenarios`** — this entry's overwrite and "Mutant approval defaults to the widest
+scope". `_record`, shared with `approve-code`, classifies the survivors in scope and writes
+`failing` — unreviewed and re-aimed, the two the gate fails on — and, only under `--rewrite` (on
+both commands), the `equivalent` ones too; an approved entry outside that set is left
+byte-identical, `reason`, `reviewer` and `approved_at` alike. Today `_current_survivors` returns
+every survivor unclassified and `_record` writes all of them, which is the overwrite (measured: a
+second `approve` with a new reason rewrote both of the tiering fixture's entries, moved their dates
+and dropped the reviewer — P2's row (e), retaken 2026-09-27). `--rewrite` is the one sanctioned way
+to change a reason, since the lock stays off-limits to hand edits; its lines print `rewritten` where
+a new entry prints `approved`. Nothing to write says so and exits 0: "no unreviewed survivors to
+approve" (with `--rewrite`, "no surviving mutants to record"). With neither `--scenario` nor
+`--locator`, the command counts the scenarios of the survivors it is about to write — after
+classification, so a file whose only new survivor sits in one scenario proceeds without a flag
+however many approved ones sit elsewhere — and when they are more than one it refuses, exit 1, one
+line naming the count and the scenarios and the three ways forward: name one with `--scenario`, one
+mutant with `--locator`, or pass `--all-scenarios`. `--all-scenarios` combined with `--scenario` or
+`--locator` is refused the same way. Exactly the entry's proposal: the narrow invocation is the one
+that needs no thought.
+
+**(6) The approval commands log their act.** `mutant approve` and `approve-code` emit
+`approval.granted` after `registry.save`, with `namespace` `mutant`, `subject` the feature key or
+`code`, and `count` the entries written, as `lock` emits its count and `review` its subject; today
+neither command, nor `prune` nor `prune-code`, emits anything. `prune` stays silent: there is no
+revoke event, and inventing one is not this package. `events.py`'s docstring "every command emits a
+line" is corrected in decision (7) to the count the agent measures after this commit.
+
+**(7) Documents.** README: `gauntlet review` walks pending mutants with their row or step on screen;
+`mutant approve` is the batch path, one scenario at a time unless told otherwise, `--locator` for
+one, `--rewrite` to change a reason; the record named beside `coverage.json`. ARCHITECTURE: the
+`status --json` `pending` contract gains the `mutant` namespace with the bare ledger key as subject;
+under "Things that look wrong but are deliberate": the record is classified at read time, not
+written classified; an unreadable record is no record; `review --yes` skips mutants. `docs/GATES.md`
+acceptance: the record, what it holds and when it is rewritten, and the remedy. `events.py`'s
+docstring, corrected. `CLAUDE.md` only if the agent's own workflow changed, which it did not.
+
+**Predicted effect on the regression subject.** One difference, named. After the check `.gauntlet/`
+lists eight entries — `acceptance-scope.json acceptance-survivors.json coverage.json events.jsonl
+jscpd junit.xml last-green.json run.lock` — and those plus `stop-attempts.json` after the skip; the
+new file sits in a directory git-ignored at the tag and never hashed, so `git status --porcelain`
+reads exactly ` M gauntlet.lock.json` and the skip fires as P3's did. Its content is checked from
+the clone by a script the run prompt carries, not by eye: sixteen feature keys, each `spec` equal to
+the lock's `spec:` digest for that key; seventy-three survivors in all, whose `<feature>#<locator>`
+keys are exactly the lock's seventy-three `mutant:` keys and whose `registry.digest` of `signature`
+equals each entry's digest; no other survivor. Everything else is unchanged. The eleven
+`gate.finished` lines carry the tag's `gate`, `passed`, `error`, `diagnostics` and `actual`:
+`protect` `3/3 paths unchanged`, `static` `0 findings`, `size` `{"worst_function_lines": 25}`,
+`complexity` `6`, `boundary` `18 step file(s), 0 direct import(s)`, `tests` `966/966 passing`,
+`coverage` `{"branch": 100.0, "line": 100.0}`, `crap` `6.0`, `duplication` `0`, `mutation` `score
+100.0%, 757 killed` — their modules are not touched; `acceptance` `16 spec(s), 73
+reviewed-equivalent` with 0 diagnostics — `summary` and `classify` are untouched, every survivor is
+UNCHANGED at the migrated lock so `by_scenario` is handed an empty list and the changed remedy is
+never rendered, and the gate's only new act is one file write after classification. `error` is null
+on all eleven. The record's `verdict_sha256` is `9c7aececf56dc4f5…`; the lock after the run is
+byte-identical to `3749d099bb77c55d`; no `*.tmp` anywhere; the event log projected onto `kind`,
+`gate`, `passed`, `error`, `diagnostics`, `actual` is P3's. What the package could reach and why it
+does not: (1) a diagnostic's text, on a run with a failing survivor — the subject has none, and text
+is not in the digest anyway; (2) to (6) live in `status`, `review` and `mutant approve`, bodies the
+check never calls, their declarations proved by the tool's own check and every `CliRunner` test —
+the designed boundary of 2026-09-20; `mutants.approve` changes for nobody, and `mutants.classify` is
+not touched. The harness digest moves and is recomputed at the tip. No duration is stated.
+
+**Second proof, one throwaway matrix, fifteen rows**, before-state measured by the advisor at
+`ede9530` in a sandbox (Python 3.12.3, Gauntlet installed from the clone into a venv that carries
+pytest and pytest-bdd) and retaken by the agent on the owner's machine before code moves;
+after-states at the branch tip. The throwaway is the `tiering` project of
+`tests/test_cli_mutants.py` — one outline, two example rows — git-initialised so the porcelain is
+legible, `gauntlet lock` run once so WAITING reads "nothing needs your approval" before,
+`[gates.acceptance]` its only gate, every check `--gates acceptance`. Rows (a) to (h) each start
+from that base; (i) starts from (f)'s end state, (l) from (f)'s, (m) from (i)'s and (n) from (m)'s —
+for those the order is the measurement. Measured at the base: `mutant preview` 4 mutants, 4
+`example`; the check red, `1 spec(s), 2 surviving mutant(s)`, one diagnostic, survivors
+`amount|75000|high` (75000->75001, line 9) and `amount|100|standard` (100->101, line 10);
+`.gauntlet/` = `acceptance-scope.json events.jsonl run.lock`; 1.431 s. Rows (h) to (l) and (o) use a
+second scenario — a plain `Scenario: A round amount is high` / `Given an amount of 60000` / `Then
+the tier is "high"` appended, `gauntlet spec approve features/tiering.feature` after it, as a recipe
+that edits a spec must — measured: preview 6 mutants (4 `example`, 2 `literal`), three survivors,
+the third `Given an amount of 60000|@13` (60000->60001, line 13). (a) the check: before, as
+measured, the remedy naming `gauntlet mutant approve`; after, the same red line and count, the
+remedy naming `gauntlet review`, and `.gauntlet/acceptance-survivors.json` present with one key,
+`spec` equal to the lock's `spec:features/tiering.feature` digest, two survivors carrying `Mutant`'s
+eight fields. (b) bare `gauntlet status`: before, WAITING "nothing needs your approval", `--json`
+`pending` `[]` (measured); after, `2 item(s)`, each `unapproved features/tiering.feature#…` with `->
+gauntlet review`, and two `pending` objects with `namespace` `mutant`. (c) `status --run`: before,
+`✗ acceptance 1 spec(s), 2 surviving mutant(s)` four lines above WAITING "nothing needs your
+approval" (measured — the P6 entry's contradiction); after, the same gate line and the two items.
+(d) the second scenario appended and not re-approved, then `status`: before, one `spec` item
+`modified`; after, the same one item and no mutant item. (e) `review --reviewer h` answering `a`, a
+reason A, then `s`: before, "nothing needs your approval", no walk (measured); after, item 1 of 2
+showing the scenario, `example`, line 9, the row, `75000 -> 75001`; one `mutant:` entry, reason A,
+reviewer h; one `approval.granted` with `namespace` `mutant`; `status` then lists 1. (f) `review`
+again answering `a` with reason B: two entries, A and B, one scenario. (g) `review --yes`: before,
+nothing; after, no `mutant:` entry, the summary naming 2 skipped for want of a reason, exit 0. (h)
+two scenarios, `mutant approve … --reason R`: before, three `approved` lines and three entries
+(measured — the sweep); after, exit 1, one line naming 2 scenarios and the three options, no entry,
+no `approval.granted`. (i) the same with `--all-scenarios`, from (f): after, `approved` for the
+third survivor only, the entries from (e) and (f) byte-identical. (j) `--locator "A round amount is
+high|literal|Given an amount of 60000|@13"`: after, that one entry; and `--locator nonesuch`: exit 1
+naming it, nothing written. (k) `--scenario "Amount decides the tier" --all-scenarios`: exit 1, one
+line, nothing written. (l) `--rewrite --scenario "Amount decides the tier" --reason R2`, from (f):
+both entries `rewritten` with reason R2 and a later `approved_at`, digests unchanged. (m) the check,
+from (i): green, `1 spec(s), 3 reviewed-equivalent`, the record rewritten with the same three
+survivors, `status` "nothing needs your approval", `mutant list` three keys each with its own
+reason. (n) `src/rating.py` broken so the baseline fails, then the check, from (m): before and after
+alike the baseline stage short-circuits (`scenarios failing; mutation not run`); after, the record
+from (m) byte-identical. (o) the log after (i): one `approval.granted` with `namespace` `mutant`,
+`subject` `features/tiering.feature`, `count` 1; before, no line from `mutant approve`.
+
+**Tests that pin it, by commit; twenty-seven named as a floor, plus any the code needs and the ones
+that move.** *Commit 1:* none, and that is the pin. *Commit 2, decision (1):*
+`test_the_gate_writes_every_survivor_to_the_record_with_the_spec_digest`,
+`test_the_record_is_not_rewritten_when_the_mutation_stage_does_not_run`,
+`test_a_spec_that_was_not_measured_is_absent_from_the_record`,
+`test_an_unreadable_record_reads_as_no_record`,
+`test_the_scenario_diagnostic_names_gauntlet_review_and_where_the_full_list_is`; moving:
+`tests/test_acceptance_gate.py`'s assertion at the equivalence route (`"gauntlet mutant approve" in
+message`, line 402 at `ede9530`) turns to `gauntlet review`, and the unbound assertion at line 508
+keeps its negative for both names; P3's `test_every_command_named_in_source_resolves_in_the_cli`
+covers the new name. *Commit 3, decision (2):*
+`test_pending_lists_unreviewed_survivors_from_the_record`,
+`test_pending_classifies_the_record_against_the_current_ledger`,
+`test_pending_hides_survivors_whose_spec_changed_since_the_record`,
+`test_pending_without_a_record_excludes_mutants_as_before`,
+`test_status_run_lists_the_survivors_it_just_counted`,
+`test_a_pending_mutant_serialises_with_its_key_status_and_action`. *Commit 4, decision (3):*
+`test_review_shows_a_mutant_as_its_scenario_line_kind_context_and_substitution`,
+`test_review_shows_a_re_aimed_mutant_as_modified`, `test_review_records_one_reason_per_mutant`,
+`test_two_mutants_in_one_scenario_get_two_reasons`,
+`test_review_yes_skips_mutants_and_says_how_many_need_a_reason`,
+`test_a_mutant_approved_in_review_emits_approval_granted`. *Commit 5, decisions (4) to (6):*
+`test_locator_approves_exactly_the_named_survivors`,
+`test_a_locator_no_survivor_carries_is_refused_and_writes_nothing`,
+`test_approve_leaves_an_existing_approval_byte_identical`,
+`test_rewrite_re_records_an_existing_approval`,
+`test_approve_with_nothing_unreviewed_says_so_and_writes_nothing`,
+`test_approve_code_leaves_existing_code_approvals_untouched`,
+`test_approve_refuses_to_sweep_more_than_one_scenario_without_the_flag`,
+`test_all_scenarios_approves_every_failing_survivor`,
+`test_all_scenarios_with_a_narrower_filter_is_refused`,
+`test_approve_emits_approval_granted_with_the_count`; the count the agent finds of existing tests
+that approve a survivor twice, or read a reason after a second approval, binds — none was found by
+grep at `ede9530`, and a grep is not a read. *Commit 6:* none. Every new test's assertion is read
+for what else its string could match, per the rule of change 3.
 
 #### Renaming a spec orphans its approval and leaves a dangling key
 
@@ -6568,6 +6842,19 @@ at collection"), so the tail is 29 live entries in seven packages, P4 to P10, an
 and `grep -c '^\*\*Status\.\*\* Open' gauntlet-findings.md` prints 30 until P4 closes. P4 opens next
 with an advisor pricing: its entries, the `mutant approve` overwrite loose end, and the code-mutant
 key collision, which the P2 hand-off placed there.)*
+
+*(Annotation, 2026-09-27, later: P4 priced and ratified. Its block is under "The approval ledger has
+no per-mutant reason": seven decisions, four code commits and a documents commit, one fifteen-row
+matrix, twenty-seven test names as a floor. The package does not split, and it takes "`status --run`
+reports "nothing needs your approval" beside the survivors it just counted" from P6, because the
+record that gives `gauntlet review` its mutants gives `status.pending` its survivors; P6 falls to
+three entries. The `mutant approve` overwrite is decision (5), not an entry — it was that entry's
+text already; the `doctor` crash routes to P6; the code-mutant key collision stays a later package.
+So the tail is still 29 live entries in seven packages and six subject runs, and `grep -c
+'^\*\*Status\.\*\* Open' gauntlet-findings.md` prints 30 until P4 closes, 25 after. The prediction
+is the first since P2 that is not "nothing changes": one file,
+`.gauntlet/acceptance-survivors.json`, in a directory that is git-ignored and never hashed; the
+verdict does not move.)*
 
 **The v1 backlog's root-cause-diagnostics item needs a fourth category.** It
 currently distinguishes "tool failed," "tool found nothing," and "nothing to
