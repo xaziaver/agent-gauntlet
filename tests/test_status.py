@@ -1,12 +1,19 @@
 from __future__ import annotations
 
+import dataclasses
+import json
 from pathlib import Path
 
 import pytest
+from typer.testing import CliRunner
 
 from gauntlet import config as config_mod
-from gauntlet import events, locking, registry, specs, status, status_render
+from gauntlet import events, locking, mutants, registry, specs, status, status_render
+from gauntlet.acceptance import survivors
+from gauntlet.acceptance.mutation import KIND_EXAMPLE, Mutant
+from gauntlet.cli import app
 from gauntlet.gates.base import GateResult
+from tests import test_cli_mutants as tiering
 
 CONFIG = """
 [project]
@@ -165,3 +172,158 @@ def test_status_names_gates_that_are_not_enabled(project: Path) -> None:
     current = status.collect(project, _cfg(project))
     assert "mutation" in current.disabled
     assert "mutation" in status_render.render(current)
+
+
+# --- mutants, from the record the acceptance gate writes -------------------------
+
+KEY = "features/rating.feature"
+SEVEN = Mutant("x", 4, 12, "7", "8", KIND_EXAMPLE, "n|7")
+NINE = Mutant("x", 5, 12, "9", "10", KIND_EXAMPLE, "n|9")
+
+
+def _settled(project: Path) -> None:
+    """Config locked and the spec approved: only mutants can be pending."""
+    updated, _ = locking.approve_all(project, _cfg(project).verified_paths)
+    registry.save(updated, locking.lock_path(project))
+    registry.save(specs.approve(project, [project / KEY]), locking.lock_path(project))
+
+
+def _recorded(project: Path, *found: Mutant) -> None:
+    spec = registry.digest((project / KEY).read_bytes())
+    survivors.write(project, {KEY: survivors.Measured(spec=spec, survivors=list(found))})
+
+
+def _mutant_items(project: Path) -> list[tuple[str, str]]:
+    return [
+        (i.subject, i.status)
+        for i in status.pending(project, _cfg(project))
+        if i.namespace == mutants.MUTANT_NAMESPACE
+    ]
+
+
+def test_pending_lists_unreviewed_survivors_from_the_record(project: Path) -> None:
+    _settled(project)
+    _recorded(project, SEVEN, NINE)
+    assert _mutant_items(project) == [
+        ("features/rating.feature#x|example|n|7", "unapproved"),
+        ("features/rating.feature#x|example|n|9", "unapproved"),
+    ]
+    assert [i.namespace for i in status.pending(project, _cfg(project))] == ["mutant"] * 2
+
+
+def test_pending_orders_config_then_spec_then_mutants_in_record_order(project: Path) -> None:
+    _recorded(project, NINE, SEVEN)  # nothing approved: config and spec are pending too
+    items = status.pending(project, _cfg(project))
+    namespaces = [i.namespace for i in items]
+    assert namespaces[-3:] == ["spec", "mutant", "mutant"]
+    assert namespaces[:-3] and set(namespaces[:-3]) == {"config"}
+    assert [i.subject for i in items[-2:]] == [mutants.key_for(KEY, m) for m in (NINE, SEVEN)]
+
+
+def test_pending_classifies_the_record_against_the_current_ledger(project: Path) -> None:
+    """The record is unclassified; the ledger of the moment decides what is pending."""
+    _settled(project)
+    _recorded(project, SEVEN, NINE)
+    lock = locking.lock_path(project)
+    registry.save(mutants.approve(project, KEY, [SEVEN], reason="same outcome"), lock)
+    re_aimed = registry.namespaced(mutants.MUTANT_NAMESPACE, mutants.key_for(KEY, NINE))
+    registry.save(registry.approve(registry.load(lock), re_aimed, b"9->99"), lock)
+    assert _mutant_items(project) == [("features/rating.feature#x|example|n|9", "modified")]
+
+
+def test_pending_hides_survivors_whose_spec_changed_since_the_record(project: Path) -> None:
+    _settled(project)
+    _recorded(project, SEVEN)
+    (project / KEY).write_text(FEATURE + "    And z\n")
+    items = status.pending(project, _cfg(project))
+    assert [(i.namespace, i.subject, i.status) for i in items] == [("spec", KEY, "modified")]
+
+
+def test_pending_hides_survivors_of_a_spec_that_no_longer_exists(project: Path) -> None:
+    _settled(project)
+    _recorded(project, SEVEN)
+    (project / KEY).unlink()
+    assert _mutant_items(project) == []
+
+
+def test_pending_without_a_record_excludes_mutants_as_before(project: Path) -> None:
+    _settled(project)
+    assert not (project / survivors.RECORD).exists()
+    assert status.pending(project, _cfg(project)) == []
+
+
+@pytest.mark.parametrize(
+    "item",
+    [{"scenario": "x"}, {**dataclasses.asdict(SEVEN), "extra": 1}, "not an object"],
+    ids=["missing-fields", "unknown-field", "not-an-object"],
+)
+def test_a_survivor_that_does_not_rebuild_makes_the_record_no_record(
+    project: Path, item: object
+) -> None:
+    """One bad item and the whole record is unread: no partial inbox, and no crash."""
+    _settled(project)
+    _recorded(project, SEVEN)
+    path = project / survivors.RECORD
+    record = json.loads(path.read_text())
+    record[KEY]["survivors"].append(item)
+    path.write_text(json.dumps(record))
+    assert status.pending(project, _cfg(project)) == []
+
+
+def test_a_feature_entry_without_its_fields_makes_the_record_no_record(project: Path) -> None:
+    _settled(project)
+    (project / ".gauntlet").mkdir()
+    (project / survivors.RECORD).write_text(json.dumps({KEY: {"survivors": []}}))
+    assert status.pending(project, _cfg(project)) == []
+
+
+def test_a_pending_mutant_serialises_with_its_key_status_and_action(project: Path) -> None:
+    _settled(project)
+    _recorded(project, SEVEN)
+    payload = status.collect(project, _cfg(project)).to_dict()
+    assert payload["pending"] == [
+        {
+            "namespace": "mutant",
+            "subject": "features/rating.feature#x|example|n|7",
+            "status": "unapproved",
+            "action": "gauntlet review",
+        }
+    ]
+
+
+@pytest.fixture
+def tiering_project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """A real pytest-bdd project whose two outline rows each leave a mutant alive."""
+    (tmp_path / "features").mkdir()
+    (tmp_path / "src").mkdir()
+    (tmp_path / "tests" / "steps").mkdir(parents=True)
+    (tmp_path / "gauntlet.toml").write_text(tiering.CONFIG)
+    (tmp_path / "features" / "tiering.feature").write_text(tiering.FEATURE)
+    (tmp_path / "src" / "rating.py").write_text(tiering.RATING)
+    (tmp_path / "conftest.py").write_text(tiering.CONFTEST)
+    (tmp_path / "tests" / "steps" / "test_tiering.py").write_text(tiering.BINDINGS)
+    updated, _ = locking.approve_all(tmp_path, config_mod.load(tmp_path).verified_paths)
+    registry.save(updated, locking.lock_path(tmp_path))
+    registry.save(
+        specs.approve(tmp_path, [tmp_path / "features" / "tiering.feature"]),
+        locking.lock_path(tmp_path),
+    )
+    monkeypatch.chdir(tmp_path)
+    return tmp_path
+
+
+def test_status_run_lists_the_survivors_it_just_counted(tiering_project: Path) -> None:
+    """No record before the run: the gate writes it, then the inbox reads it."""
+    assert not (tiering_project / survivors.RECORD).exists()
+    result = CliRunner().invoke(app, ["status", "--run"])
+    assert result.exit_code == 0
+    out = result.output
+    assert "✗ acceptance   1 spec(s), 2 surviving mutant(s)" in out
+    assert "nothing needs your approval" not in out
+    assert "WAITING   2 item(s) need your approval" in out
+    waiting = out[out.index("WAITING") :]
+    for row in ("75000|high", "100|standard"):
+        line = f"unapproved  features/tiering.feature#Amount decides the tier|example|amount|{row}"
+        assert line in waiting
+    assert waiting.count("-> gauntlet review") == 2
+    assert out.index("✗ acceptance") < out.index("WAITING")
