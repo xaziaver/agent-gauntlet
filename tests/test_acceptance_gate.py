@@ -14,13 +14,14 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from typing import Any
 
 import pytest
 from typer.testing import CliRunner
 
 from gauntlet import locking, registry, specs
 from gauntlet import mutants as mutants_mod
-from gauntlet.acceptance import gherkin, mutation, report
+from gauntlet.acceptance import gherkin, mutation, report, survivors
 from gauntlet.adapters.base import RunResult
 from gauntlet.cli import app
 from gauntlet.gates import acceptance
@@ -399,7 +400,7 @@ def test_decorative_scenarios_are_caught_by_mutation(project: Path) -> None:
     assert "surviving mutant" in str(result.actual)
     message = result.diagnostics[0].message
     assert "->" in message  # names the actual mutation
-    assert "gauntlet mutant approve" in message  # offers the equivalence route
+    assert "gauntlet review" in message  # offers the equivalence route
 
 
 def test_mutation_restores_the_feature_file(project: Path) -> None:
@@ -506,6 +507,7 @@ def test_the_unbound_diagnostic_names_the_binding_and_does_not_offer_mutant_appr
     assert "`scenarios(...)`" in message
     assert "do not approve its mutants" in message
     assert "gauntlet mutant approve" not in message
+    assert "gauntlet review" not in message
 
 
 def test_a_spec_bound_by_a_computed_path_is_probed_once_and_then_mutated_as_before(
@@ -610,6 +612,142 @@ def test_the_scope_record_names_each_feature_s_modules(
             "features/semiannual.feature": ["tests/steps/test_semiannual.py"],
         },
     }
+
+
+SURVIVOR_FIELDS = {"scenario", "line", "column", "original", "mutated", "kind", "context", "offset"}
+
+
+def _record(root: Path) -> dict[str, Any]:
+    loaded: dict[str, Any] = json.loads((root / survivors.RECORD).read_text())
+    return loaded
+
+
+def _spec_digest(root: Path, key: str) -> str:
+    entry = registry.load(locking.lock_path(root)).entries[f"spec:{key}"]
+    return entry.digest
+
+
+def test_the_gate_writes_every_survivor_to_the_record_with_the_spec_digest(
+    two_module_project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Rating's scenarios read nothing, so all six of its mutants survive, in engine
+    order; semiannual's are all killed, so it is recorded with none."""
+    _record_runs(two_module_project, monkeypatch, reads=frozenset({"semiannual.feature"}))
+    acceptance.run(_ctx(two_module_project), ALL_MUTANTS)
+    record = _record(two_module_project)
+    assert sorted(record) == [RATING_KEY, "features/semiannual.feature"]
+    for key in record:
+        assert record[key]["spec"] == _spec_digest(two_module_project, key)
+        assert record[key]["spec"].startswith("sha256:")
+    assert record["features/semiannual.feature"]["survivors"] == []
+    listed = record[RATING_KEY]["survivors"]
+    assert all(set(item) == SURVIVOR_FIELDS for item in listed)
+    engine = mutation.mutants(gherkin.parse(FEATURE, RATING_KEY))
+    assert len(engine) == 6
+    assert [mutation.Mutant(**item) for item in listed] == engine
+
+
+def test_the_record_holds_approved_survivors_unclassified(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Every survivor is judged equivalent and the gate passes; the record still lists
+    all of them, because classification is the reader's act against its own ledger."""
+    _approve_every_mutant(project)
+    _record_runs(project, monkeypatch, "rating.feature")
+    result = acceptance.run(_ctx(project), ALL_MUTANTS)
+    assert result.passed is True
+    assert result.actual == "1 spec(s), 6 reviewed-equivalent"
+    assert len(_record(project)[RATING_KEY]["survivors"]) == 6
+
+
+def _stage_not_run(root: Path, monkeypatch: pytest.MonkeyPatch, why: str) -> dict[str, Any]:
+    """A config under which the gate stops before its mutation stage, for one reason."""
+    if why == "unapproved":
+        (root / "features" / "rating.feature").write_text(FEATURE + "\n")
+    if why == "baseline":
+        monkeypatch.setattr(
+            acceptance, "baseline", lambda *_: RunResult(passed=False, output="FAILED x")
+        )
+    return {**ALL_MUTANTS, "mutate_examples": why != "disabled"}
+
+
+@pytest.mark.parametrize(
+    ("why", "actual"),
+    [
+        ("unapproved", "1 unapproved or modified spec(s); mutation not run"),
+        ("baseline", "1 spec(s), scenarios failing; mutation not run"),
+        ("disabled", "1 spec(s) passing"),
+    ],
+)
+def test_the_record_is_not_rewritten_when_the_mutation_stage_does_not_run(
+    project: Path, monkeypatch: pytest.MonkeyPatch, why: str, actual: str
+) -> None:
+    _approve(project)
+    _record_runs(project, monkeypatch, "rating.feature")
+    acceptance.run(_ctx(project), ALL_MUTANTS)
+    before = (project / survivors.RECORD).read_bytes()
+    assert len(_record(project)[RATING_KEY]["survivors"]) == 6
+    _record_runs(project, monkeypatch, "rating.feature", reads=READS_RATING)  # would kill all
+    config = _stage_not_run(project, monkeypatch, why)
+    result = acceptance.run(_ctx(project), config)
+    assert result.actual == actual
+    assert (project / survivors.RECORD).read_bytes() == before
+
+
+def test_a_spec_that_was_not_measured_is_absent_from_the_record(
+    orphan_project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _record_runs(
+        orphan_project, monkeypatch, "rating.feature", "orphan.feature", reads=READS_RATING
+    )
+    result = acceptance.run(_ctx(orphan_project), CONFIG)
+    assert result.actual == "2 spec(s), 1 spec(s) not measured"
+    assert _record(orphan_project) == {
+        RATING_KEY: {"spec": _spec_digest(orphan_project, RATING_KEY), "survivors": []}
+    }
+
+
+@pytest.mark.parametrize(
+    "content", [None, b"{not json", b"\xff\xfe", b"[]", b"", b'"a string"'], ids=repr
+)
+def test_an_unreadable_record_reads_as_no_record(tmp_path: Path, content: bytes | None) -> None:
+    """The file's contract, pinned before anything reads it for a decision: absent,
+    not JSON, not UTF-8, or not a JSON object are all no record, never an error."""
+    if content is not None:
+        (tmp_path / ".gauntlet").mkdir()
+        (tmp_path / survivors.RECORD).write_bytes(content)
+    assert survivors.read(tmp_path) is None
+
+
+def test_a_written_record_reads_back_as_written(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _approve(project)
+    _record_runs(project, monkeypatch, "rating.feature")
+    acceptance.run(_ctx(project), ALL_MUTANTS)
+    assert survivors.read(project) == _record(project)
+    assert (project / survivors.RECORD).read_text().endswith("}\n")
+    assert not list((project / ".gauntlet").glob("*.tmp"))
+
+
+def _in_one_scenario(count: int) -> list[mutation.Mutant]:
+    return [
+        mutation.Mutant("Terms", 10 + n, 8, str(n), str(n + 1), mutation.KIND_EXAMPLE, f"m|{n}")
+        for n in range(count)
+    ]
+
+
+def test_the_scenario_diagnostic_names_gauntlet_review_and_where_the_full_list_is() -> None:
+    [capped] = report.by_scenario(RATING_KEY, _in_one_scenario(8), [])
+    assert capped.message.endswith("have a human review them with `gauntlet review`.")
+    assert "(+2 more; every survivor is in .gauntlet/acceptance-survivors.json)" in capped.message
+    assert "mutant approve" not in capped.message
+    assert capped.message.count("line ") == report.MAX_LISTED == 6
+    [whole] = report.by_scenario(RATING_KEY, _in_one_scenario(6), [])
+    assert whole.message.endswith("have a human review them with `gauntlet review`.")
+    assert "more" not in whole.message
+    assert "acceptance-survivors.json" not in whole.message
+    assert "mutant approve" not in whole.message
 
 
 class _Killer:
