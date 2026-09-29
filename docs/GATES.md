@@ -508,7 +508,7 @@ line naming the gate and the signal, and ends with the signal's status, while a 
 SIGKILL leaves its backup, which the gate's next run restores from before anything else and says
 so in `actual` — the backup directory is empty after every completed run (item 5, 2026-09-16).
 
-*Classification and reporting:* survivors are classified against the lock under `spec:<path>`
+*Classification and reporting:* survivors are classified against the lock under `mutant:` keys
 exactly as code mutants are (equivalent, unresolved, stale). A stale approval is diagnosed by
 cause (package P3, 2026-09-26): *relocated* — a missing key whose digest an unreviewed survivor at
 another locator carries, the judgment moved with a spec edit — and *superseded* — a missing key no

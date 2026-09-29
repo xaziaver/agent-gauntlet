@@ -394,9 +394,10 @@ created will fail in confusing ways. `rm -rf .venv __pycache__` and rebuild.
 
 ## The event log
 
-Gates answer "what is the state now." A dashboard also needs "what is happening." Every command
-appends to `.gauntlet/events.jsonl`: runs starting and finishing, each gate's result, approvals
-granted, **approvals needed**, agent blocks, loop iterations, escalations.
+Gates answer "what is the state now." A dashboard also needs "what is happening." The commands
+that run gates or record an approval append to `.gauntlet/events.jsonl`: runs starting and
+finishing, each gate's result, approvals granted, **approvals needed**, agent blocks, loop
+iterations, escalations.
 
 ```bash
 gauntlet events --limit 20
