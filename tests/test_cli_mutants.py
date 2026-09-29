@@ -201,7 +201,7 @@ def test_scenario_filter_narrows_the_approval(project: Path) -> None:
         ],
     )
     assert result.exit_code == EXIT_OK
-    assert "no surviving mutants" in _text(result)
+    assert "no unreviewed survivors to approve" in _text(result)
     assert not _mutant_keys(project)
 
 
@@ -267,6 +267,7 @@ def test_approve_refuses_when_the_baseline_suite_fails(project: Path) -> None:
     assert result.exit_code == EXIT_CONFIG_ERROR
     assert REFUSAL in _text(result)
     assert "no surviving mutants" not in _text(result)
+    assert "no unreviewed survivors" not in _text(result)
     assert _bytes(project) == before
 
 
@@ -327,7 +328,7 @@ def test_approve_code_with_nothing_surviving_is_a_no_op(
     monkeypatch.setattr(cli_mutants, "survivors_for", lambda *a, **k: [])
     result = runner.invoke(app, ["mutant", "approve-code", "--reason", "x"])
     assert result.exit_code == EXIT_OK
-    assert "no surviving mutants" in _text(result)
+    assert "no unreviewed survivors to approve" in _text(result)
 
 
 def test_a_mutmut_failure_exits_one(project: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -799,3 +800,233 @@ def test_migrate_refuses_an_unreadable_lock_in_one_line(migration_project: Path)
         assert message in result.stderr
         assert "Traceback" not in result.stderr
         assert lock.read_text(encoding="utf-8") == text
+
+
+# --- one scenario at a time, one locator, no overwrite (P4 decisions (4) to (6)) -------
+
+SECOND = """
+  Scenario: A round amount is high
+    Given an amount of 60000
+    Then the tier is "high"
+"""
+OUTLINE = "Amount decides the tier"
+ROUND = "A round amount is high"
+LITERAL = f"{ROUND}|literal|Given an amount of 60000|@13"
+HIGH_ROW = f"{OUTLINE}|example|amount|75000|high"
+LOW_ROW = f"{OUTLINE}|example|amount|100|standard"
+TIERING_KEY = "features/tiering.feature"
+
+
+@pytest.fixture
+def two_scenarios(project: Path) -> Path:
+    """The outline plus a plain scenario, re-approved: three survivors in two scenarios."""
+    spec = project / "features" / "tiering.feature"
+    spec.write_text(FEATURE + SECOND)
+    registry.save(specs.approve(project, [spec]), locking.lock_path(project))
+    return project
+
+
+def _approve(*args: str) -> Any:
+    return runner.invoke(app, ["mutant", "approve", TIERING_KEY, *args])
+
+
+def _raw_mutant_entries(project: Path) -> dict[str, str]:
+    """Each mutant entry as the bytes the lock holds for it, so a rewrite of any field shows."""
+    entries = json.loads(locking.lock_path(project).read_text())["entries"]
+    return {
+        key: json.dumps(entry, sort_keys=True)
+        for key, entry in entries.items()
+        if key.startswith("mutant:")
+    }
+
+
+def _key(locator: str) -> str:
+    return f"mutant:{TIERING_KEY}#{locator}"
+
+
+def _granted(project: Path) -> list[dict[str, Any]]:
+    log = project / ".gauntlet" / "events.jsonl"
+    lines = log.read_text().splitlines() if log.exists() else []
+    return [e for e in map(json.loads, lines) if e["kind"] == "approval.granted"]
+
+
+def test_locator_approves_exactly_the_named_survivors(two_scenarios: Path) -> None:
+    """Repeatable, and a named locator narrows enough that two scenarios need no flag."""
+    result = _approve("--reason", "R", "--locator", LITERAL, "--locator", HIGH_ROW)
+    assert result.exit_code == EXIT_OK, _text(result)
+    assert _mutant_keys(two_scenarios) == {_key(LITERAL), _key(HIGH_ROW)}
+    assert result.stdout.splitlines() == [
+        f"approved  line 9: 75000 -> 75001 (scenario: {OUTLINE})",
+        f"approved  line 13: 60000 -> 60001 (scenario: {ROUND})",
+    ]
+
+
+@pytest.mark.parametrize(
+    "narrowing",
+    [["--locator", "nonesuch"], ["--scenario", OUTLINE, "--locator", LITERAL]],
+    ids=["no-such-locator", "filtered-out-by-scenario"],
+)
+def test_a_locator_no_survivor_carries_is_refused_and_writes_nothing(
+    two_scenarios: Path, narrowing: list[str]
+) -> None:
+    before = _bytes(two_scenarios)
+    result = _approve("--reason", "R", "--locator", HIGH_ROW, *narrowing)
+    assert result.exit_code == EXIT_CONFIG_ERROR
+    named = narrowing[-1]
+    said = _one_config_error_line(result)
+    assert f"at locator {named!r}; nothing written" in said
+    assert TIERING_KEY in said
+    assert result.stdout == ""
+    assert _bytes(two_scenarios) == before
+    assert _granted(two_scenarios) == []
+
+
+def test_approve_leaves_an_existing_approval_byte_identical(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The second call writes the one new survivor beside the two judged ones; their
+    reason, reviewer and date are the bytes the first call wrote. The clock moves."""
+    monkeypatch.setattr(registry, "_now", lambda: "2026-01-01T00:00:00+00:00")
+    assert _approve("--reason", "A", "--reviewer", "h").exit_code == EXIT_OK
+    first = _raw_mutant_entries(project)
+    assert set(first) == {_key(HIGH_ROW), _key(LOW_ROW)}
+    spec = project / "features" / "tiering.feature"
+    spec.write_text(FEATURE + SECOND)
+    registry.save(specs.approve(project, [spec]), locking.lock_path(project))
+    monkeypatch.setattr(registry, "_now", lambda: "2026-02-02T00:00:00+00:00")
+    result = _approve("--reason", "B")
+    assert result.exit_code == EXIT_OK, _text(result)
+    assert result.stdout.splitlines() == [f"approved  line 13: 60000 -> 60001 (scenario: {ROUND})"]
+    after = _raw_mutant_entries(project)
+    assert {k: after[k] for k in first} == first
+    assert json.loads(after[_key(LITERAL)])["reason"] == "B"
+
+
+def test_rewrite_re_records_an_existing_approval(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(registry, "_now", lambda: "2026-01-01T00:00:00+00:00")
+    _approve("--reason", "A", "--reviewer", "h")
+    before = registry.load(locking.lock_path(project)).entries
+    monkeypatch.setattr(registry, "_now", lambda: "2026-02-02T00:00:00+00:00")
+    result = _approve("--reason", "R2", "--rewrite", "--scenario", OUTLINE)
+    assert result.exit_code == EXIT_OK, _text(result)
+    assert result.stdout.splitlines() == [
+        f"rewritten  line 9: 75000 -> 75001 (scenario: {OUTLINE})",
+        f"rewritten  line 10: 100 -> 101 (scenario: {OUTLINE})",
+    ]
+    after = registry.load(locking.lock_path(project)).entries
+    assert set(after) == set(before)
+    for key in (_key(HIGH_ROW), _key(LOW_ROW)):
+        assert (after[key].reason, after[key].reviewer) == ("R2", "")
+        assert after[key].approved_at == "2026-02-02T00:00:00+00:00"
+        assert after[key].digest == before[key].digest
+
+
+def test_rewrite_with_no_survivor_in_scope_says_so(project: Path) -> None:
+    result = _approve("--reason", "R", "--rewrite", "--scenario", "No such scenario")
+    assert result.exit_code == EXIT_OK
+    assert result.stdout == "no surviving mutants to record\n"
+
+
+def test_approve_with_nothing_unreviewed_says_so_and_writes_nothing(project: Path) -> None:
+    _approve("--reason", "A")
+    before = _bytes(project)
+    result = _approve("--reason", "B")
+    assert result.exit_code == EXIT_OK
+    assert result.stdout == "no unreviewed survivors to approve\n"
+    assert _bytes(project) == before
+    assert len(_granted(project)) == 1
+
+
+CODE_MUTANT_2 = CodeMutant(
+    name="m.x_f__mutmut_3",
+    module="pkg.rating",
+    function="tier",
+    removed="return a > b",
+    added="return a != b",
+)
+
+
+def test_approve_code_leaves_existing_code_approvals_untouched(
+    project: Path, fake_code_survivors: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(registry, "_now", lambda: "2026-01-01T00:00:00+00:00")
+    runner.invoke(app, ["mutant", "approve-code", "--reason", "a", "--reviewer", "h"])
+    first = _raw_mutant_entries(project)
+    assert len(first) == 1
+    monkeypatch.setattr(cli_mutants, "survivors_for", lambda *a, **k: [CODE_MUTANT, CODE_MUTANT_2])
+    monkeypatch.setattr(registry, "_now", lambda: "2026-02-02T00:00:00+00:00")
+    result = runner.invoke(app, ["mutant", "approve-code", "--reason", "b"])
+    assert result.exit_code == EXIT_OK
+    assert result.stdout.splitlines() == [f"approved  {CODE_MUTANT_2.description}"]
+    after = _raw_mutant_entries(project)
+    assert {k: after[k] for k in first} == first
+    [new] = set(after) - set(first)
+    assert json.loads(after[new])["reason"] == "b"
+    rewritten = runner.invoke(app, ["mutant", "approve-code", "--reason", "c", "--rewrite"])
+    assert rewritten.stdout.count("rewritten  ") == 2
+
+
+def test_approve_refuses_to_sweep_more_than_one_scenario_without_the_flag(
+    two_scenarios: Path,
+) -> None:
+    before = _bytes(two_scenarios)
+    result = _approve("--reason", "R")
+    assert result.exit_code == EXIT_CONFIG_ERROR
+    said = _one_config_error_line(result)
+    assert f"2 scenarios hold survivors to approve ({OUTLINE!r}, {ROUND!r})" in said
+    for way in ("with --scenario", "with --locator", "pass --all-scenarios"):
+        assert way in said
+    assert _bytes(two_scenarios) == before
+    assert _granted(two_scenarios) == []
+
+
+def test_one_scenario_of_new_survivors_needs_no_flag_beside_approved_ones(
+    two_scenarios: Path,
+) -> None:
+    """Counted after classification: the approved outline does not make this a sweep."""
+    _approve("--reason", "A", "--scenario", OUTLINE)
+    result = _approve("--reason", "B")
+    assert result.exit_code == EXIT_OK, _text(result)
+    assert result.stdout.splitlines() == [f"approved  line 13: 60000 -> 60001 (scenario: {ROUND})"]
+
+
+def test_all_scenarios_approves_every_failing_survivor(two_scenarios: Path) -> None:
+    result = _approve("--reason", "R", "--all-scenarios")
+    assert result.exit_code == EXIT_OK, _text(result)
+    assert result.stdout.count("approved  ") == 3
+    assert _mutant_keys(two_scenarios) == {_key(HIGH_ROW), _key(LOW_ROW), _key(LITERAL)}
+
+
+@pytest.mark.parametrize(
+    "narrowing", [["--scenario", OUTLINE], ["--locator", LITERAL]], ids=["scenario", "locator"]
+)
+def test_all_scenarios_with_a_narrower_filter_is_refused(
+    two_scenarios: Path, monkeypatch: pytest.MonkeyPatch, narrowing: list[str]
+) -> None:
+    """Refused before the mutation run: nothing is measured, nothing written."""
+
+    def never(*_: object) -> list[Any]:
+        raise AssertionError("the mutation run began")
+
+    monkeypatch.setattr(acceptance, "survivors_for", never)
+    before = _bytes(two_scenarios)
+    result = _approve("--reason", "R", "--all-scenarios", *narrowing)
+    assert result.exit_code == EXIT_CONFIG_ERROR
+    assert "--all-scenarios cannot narrow" in _one_config_error_line(result)
+    assert _bytes(two_scenarios) == before
+
+
+def test_approve_emits_approval_granted_with_the_count(
+    project: Path, fake_code_survivors: None
+) -> None:
+    """One line per approving call, with how many entries it wrote; prune adds none."""
+    _approve("--reason", "A")
+    runner.invoke(app, ["mutant", "approve-code", "--reason", "b"])
+    runner.invoke(app, ["mutant", "prune", TIERING_KEY])
+    runner.invoke(app, ["mutant", "prune-code"])
+    assert [(e["namespace"], e["subject"], e["count"]) for e in _granted(project)] == [
+        ("mutant", TIERING_KEY, 2),
+        ("mutant", SUBJECT, 1),
+    ]

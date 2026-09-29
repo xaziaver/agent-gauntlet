@@ -8,7 +8,7 @@ from typing import Any, NoReturn, TypeVar
 import typer
 
 from gauntlet import config as config_mod
-from gauntlet import locking, registry, runner, specs
+from gauntlet import events, locking, mutant_scope, registry, runner, specs
 from gauntlet import mutants as mutants_mod
 from gauntlet.acceptance import gherkin, mutation
 from gauntlet.acceptance.mutation import Mutant
@@ -18,6 +18,9 @@ from gauntlet.gates import acceptance, base
 from gauntlet.gates.mutation import SUBJECT, MutmutError, survivors_for
 
 mutant_app = typer.Typer(no_args_is_help=True, help="Review surviving mutants.")
+
+NOTHING_UNREVIEWED = "no unreviewed survivors to approve"
+REWRITE_HELP = "Also re-record approved survivors in scope, with this reason and today's date"
 
 M = TypeVar("M", bound=mutants_mod.MutantLike)
 
@@ -29,16 +32,29 @@ def _classify(
 
 
 def _record(
-    root: Path, subject_key: str, survivors: list[M], reason: str, reviewer: str
+    root: Path,
+    subject_key: str,
+    chosen: tuple[list[M], list[M]],
+    rewrite: bool,
+    reason: str,
+    reviewer: str,
 ) -> NoReturn:
-    """The approval ceremony, shared by acceptance and code mutants."""
-    if not survivors:
-        typer.echo("no surviving mutants to approve")
+    """The approval ceremony, shared by acceptance and code mutants: write what
+    `mutants.to_record` chose, log it, and say which were re-recorded."""
+    written, rewritten = chosen
+    if not written:
+        typer.echo("no surviving mutants to record" if rewrite else NOTHING_UNREVIEWED)
         raise typer.Exit(code=EXIT_OK)
-    updated = mutants_mod.approve(root, subject_key, survivors, reason=reason, reviewer=reviewer)
+    updated = mutants_mod.approve(root, subject_key, written, reason=reason, reviewer=reviewer)
     registry.save(updated, locking.lock_path(root))
-    for mutant in survivors:
-        typer.echo(f"approved  {mutant.description}")
+    events.Log(root).emit(
+        events.APPROVAL_GRANTED,
+        subject=subject_key,
+        namespace=mutants_mod.MUTANT_NAMESPACE,
+        count=len(written),
+    )
+    for mutant in written:
+        typer.echo(f"{'rewritten' if mutant in rewritten else 'approved'}  {mutant.description}")
     raise typer.Exit(code=EXIT_OK)
 
 
@@ -79,22 +95,40 @@ def _require_green_baseline(ctx: base.GateContext, config: dict[str, Any], steps
 
 
 def _current_survivors(
-    root: Path, cfg: config_mod.Config, feature: Path, scenario: str
+    root: Path, cfg: config_mod.Config, feature: Path, scenario: str, locators: list[str]
 ) -> list[Mutant]:
-    """Re-run the mutation loop for one feature, through the gate's own helpers."""
+    """Re-run the mutation loop for one feature, through the gate's own helpers, and
+    keep the survivors the scope names."""
     config = _acceptance_config(cfg)
     ctx = runner.build_context(root, cfg, cfg.enabled_gates, changed=False)
     steps = root / str(config.get("steps", "tests/steps"))
     _require_green_baseline(ctx, config, steps)
     try:
         survivors = acceptance.survivors_for(ctx, config, feature, steps)
+        return mutant_scope.in_scope(survivors, scenario, locators)
     except base.Interrupted as exc:
         exc.die()  # the gate's finally has already restored the spec
     except acceptance.NotMeasuredError as exc:
         fail(str(exc))  # the gate's sentence, and nothing written
-    if scenario:
-        return [m for m in survivors if m.scenario == scenario]
-    return survivors
+    except mutant_scope.ScopeError as exc:
+        fail(f"no current survivor of {feature} at locator {str(exc)!r}; nothing written")
+
+
+def _unnarrowed(scenario: str, locator: list[str], all_scenarios: bool) -> bool:
+    """Refuse --all-scenarios beside a narrower filter; True when no flag names the scope."""
+    if all_scenarios and (scenario or locator):
+        fail("--all-scenarios cannot narrow: drop it, or drop --scenario and --locator")
+    return not (scenario or locator or all_scenarios)
+
+
+def _refuse_a_sweep(written: list[Mutant]) -> None:
+    """More than one scenario's survivors under one reason is the sweep to refuse."""
+    if scenarios := mutant_scope.swept(written):
+        named = ", ".join(repr(s) for s in scenarios)
+        fail(
+            f"{len(scenarios)} scenarios hold survivors to approve ({named}): name one "
+            f"with --scenario, one mutant with --locator, or pass --all-scenarios"
+        )
 
 
 def _current_code_survivors(root: Path, cfg: config_mod.Config) -> list[CodeMutant]:
@@ -113,29 +147,39 @@ def mutant_approve(
     reason: str = typer.Option(..., "--reason", help="Why these cannot change behavior"),
     reviewer: str = typer.Option("", "--reviewer", help="Who judged them"),
     scenario: str = typer.Option("", help="Only survivors from this scenario"),
+    locator: list[str] = typer.Option([], "--locator", help="Only the survivor at this locator"),
+    all_scenarios: bool = typer.Option(False, "--all-scenarios", help="Every scenario at once"),
+    rewrite: bool = typer.Option(False, "--rewrite", help=REWRITE_HELP),
 ) -> None:
     """Record that the current acceptance survivors are equivalent mutants.
 
     This is a judgment about the domain, not a way to silence a gate: an
     equivalent mutant is one the specification cannot distinguish. The reason is
-    required because it is what a future reviewer needs.
+    required because it is what a future reviewer needs. Only unreviewed survivors
+    are written, and one scenario at a time unless --all-scenarios says otherwise.
     """
+    unnarrowed = _unnarrowed(scenario, locator, all_scenarios)
     root, cfg = resolve_config()
     key = _feature_key(root, feature)
-    # A ledger the tool cannot read is refused here, before the mutation run, not after it.
-    load_registry(locking.lock_path(root))
-    _record(root, key, _current_survivors(root, cfg, feature, scenario), reason, reviewer)
+    approved = load_registry(locking.lock_path(root))  # refused before the mutation run
+    in_scope = _current_survivors(root, cfg, feature, scenario, locator)
+    chosen = mutants_mod.to_record(approved, key, in_scope, rewrite)
+    if unnarrowed:
+        _refuse_a_sweep(chosen[0])
+    _record(root, key, chosen, rewrite, reason, reviewer)
 
 
 @mutant_app.command("approve-code")
 def mutant_approve_code(
     reason: str = typer.Option(..., "--reason", help="Why these cannot change behavior"),
     reviewer: str = typer.Option("", "--reviewer", help="Who judged them"),
+    rewrite: bool = typer.Option(False, "--rewrite", help=REWRITE_HELP),
 ) -> None:
-    """Record that the current surviving code mutants are equivalent."""
+    """Record that the current unreviewed code mutants are equivalent."""
     root, cfg = resolve_config()
-    load_registry(locking.lock_path(root))  # refused before the mutmut run, not after it
-    _record(root, SUBJECT, _current_code_survivors(root, cfg), reason, reviewer)
+    approved = load_registry(locking.lock_path(root))  # refused before the mutmut run
+    chosen = mutants_mod.to_record(approved, SUBJECT, _current_code_survivors(root, cfg), rewrite)
+    _record(root, SUBJECT, chosen, rewrite, reason, reviewer)
 
 
 @mutant_app.command("prune")
@@ -153,7 +197,7 @@ def mutant_prune(
     root, cfg = resolve_config()
     key = _feature_key(root, feature)
     approved = load_registry(locking.lock_path(root))  # read once, before the mutation run
-    survivors = _current_survivors(root, cfg, feature, "")
+    survivors = _current_survivors(root, cfg, feature, "", [])
     _prune_stale(root, approved, _classify(approved, key, survivors).stale)
 
 
