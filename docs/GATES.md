@@ -526,6 +526,17 @@ part after the first present only when nonzero; a green summary omits the killed
 or 2 fails, `actual` ends `; mutation not run`, so the summary says
 which stage never ran rather than leaving it to inference (item 6, 2026-09-17).
 
+*The survivor record, and the remedy:* each mutation stage, after every spec is classified, rewrites
+`.gauntlet/acceptance-survivors.json` whole and atomically: per feature key, `spec` — the digest of
+the spec's bytes, the value its `spec:` approval holds — and `survivors`, every survivor measured,
+in engine order and unclassified, each as the eight fields of a `Mutant`. A spec that was not
+measured is absent from it; when stage 1 or 2 fails, or `mutate_examples = false`, the stage does not
+run and the record is left as it was. `gauntlet status` and `gauntlet review` read it and classify
+it against the ledger at that moment. The scenario diagnostic's remedy is to assert on the values
+or have a human review them with `gauntlet review`, and a list capped at six ends `(+N more; every
+survivor is in .gauntlet/acceptance-survivors.json)`; it named `gauntlet mutant approve`, the batch
+path, before (package P4, 2026-09-29).
+
 *Config:* `features` (default `features/`), `steps` (default `tests/steps`), `require_approved`
 (default true), `mutate_examples` (default true), `mutation_sample` (default 0 = all), `timeout`
 per suite run (default 600 s).
