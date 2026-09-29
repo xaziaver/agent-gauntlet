@@ -53,3 +53,26 @@ def read(root: Path) -> dict[str, Any] | None:
     except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return None
     return loaded if isinstance(loaded, dict) else None
+
+
+def _describes_the_spec(root: Path, key: str, entry: dict[str, Any]) -> bool:
+    """The record was measured against the spec as it is now on disk."""
+    path = root / key
+    return path.is_file() and registry.digest(path.read_bytes()) == entry["spec"]
+
+
+def current(root: Path) -> dict[str, list[Mutant]]:
+    """Each feature's recorded survivors, where the record still describes its spec.
+
+    A feature whose spec moved yields nothing: its `spec` item is pending, and is
+    the reason. A record that does not rebuild is no record, as one that does not parse.
+    """
+    record = read(root) or {}
+    try:
+        return {
+            key: [Mutant(**item) for item in entry["survivors"]]
+            for key, entry in record.items()
+            if _describes_the_spec(root, key, entry)
+        }
+    except (TypeError, KeyError):
+        return {}

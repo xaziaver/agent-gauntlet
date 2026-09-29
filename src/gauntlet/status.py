@@ -16,7 +16,6 @@ from typing import Any
 from gauntlet import config as config_mod
 from gauntlet import events, locking, mutants, registry, specs
 from gauntlet.acceptance import survivors
-from gauntlet.acceptance.mutation import Mutant
 from gauntlet.gates.base import GateResult
 
 MAX_RECENT = 8
@@ -101,32 +100,9 @@ def _spec_pending(root: Path, cfg: config_mod.Config, approved: registry.Registr
     return _findings_to_pending(specs.SPEC_NAMESPACE, specs.verify(root, found, approved))
 
 
-def _describes_the_spec(root: Path, key: str, entry: dict[str, Any]) -> bool:
-    """The record was measured against the spec as it is now on disk."""
-    path = root / key
-    return path.is_file() and registry.digest(path.read_bytes()) == entry["spec"]
-
-
-def _recorded(root: Path) -> dict[str, list[Mutant]]:
-    """Each feature's recorded survivors, where the record still describes its spec.
-
-    A feature whose spec moved yields nothing: its `spec` item is pending, and is
-    the reason. A record that does not rebuild is no record, as one that does not parse.
-    """
-    record = survivors.read(root) or {}
-    try:
-        return {
-            key: [Mutant(**item) for item in entry["survivors"]]
-            for key, entry in record.items()
-            if _describes_the_spec(root, key, entry)
-        }
-    except (TypeError, KeyError):
-        return {}
-
-
 def _mutant_pending(root: Path, approved: registry.Registry) -> list[Pending]:
     items: list[Pending] = []
-    for key, found in _recorded(root).items():
+    for key, found in survivors.current(root).items():
         verdict = mutants.classify(approved, key, found)
         failing, re_aimed = set(verdict.failing), set(verdict.changed)
         items.extend(

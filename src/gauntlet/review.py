@@ -16,11 +16,17 @@ from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 
-from gauntlet import locking, registry, specs
+from gauntlet import locking, mutants, registry, specs
+from gauntlet.acceptance import survivors
+from gauntlet.acceptance.mutation import Mutant
 from gauntlet.status import Pending
 
 CONTEXT_LINES = 3
 MAX_DIFF_LINES = 40
+
+
+class SurvivorGoneError(Exception):
+    """A pending mutant is no longer in the record: it changed after the inbox was read."""
 
 
 class Answer(Enum):
@@ -36,6 +42,7 @@ class Item:
     pending: Pending
     body: str
     needs_reason: bool
+    mutant: Mutant | None = None  # the survivor to approve, for a mutant item
 
     @property
     def title(self) -> str:
@@ -94,8 +101,39 @@ def _preview(root: Path, path: str) -> str:
     )
 
 
+def _survivor(root: Path, key: str) -> Mutant:
+    """The recorded survivor whose ledger key is `key`, found by building each key."""
+    for feature, found in survivors.current(root).items():
+        for mutant in found:
+            if mutants.key_for(feature, mutant) == key:
+                return mutant
+    raise SurvivorGoneError(
+        f"{key} is no longer in {survivors.RECORD.as_posix()}: it changed after the inbox was read"
+    )
+
+
+def _mutant_body(mutant: Mutant, re_aimed: bool) -> str:
+    """What a judge of equivalence needs: where it is, what it was, what it became."""
+    lines = [
+        f"scenario:  {mutant.scenario}",
+        f"kind:      {mutant.kind}, line {mutant.line}",
+        f"context:   {mutant.context}",
+        f"mutation:  {mutant.original} -> {mutant.mutated}",
+    ]
+    if re_aimed:
+        lines.append(
+            f"approved at this locator for a different substitution; the judgment "
+            f"was not about `{mutant.signature}`"
+        )
+    return "\n".join(lines)
+
+
 def build_item(root: Path, item: Pending) -> Item:
     """Attach the context a human needs to judge one pending approval."""
+    if item.namespace == mutants.MUTANT_NAMESPACE:
+        mutant = _survivor(root, item.subject)
+        re_aimed = item.status == registry.Status.MODIFIED.value
+        return Item(item, _mutant_body(mutant, re_aimed), needs_reason=True, mutant=mutant)
     if item.status == registry.Status.MODIFIED.value:
         return Item(pending=item, body=diff_against_head(root, item.subject), needs_reason=True)
     if item.status == registry.Status.MISSING.value:
@@ -109,6 +147,9 @@ def build_item(root: Path, item: Pending) -> Item:
 
 def apply(root: Path, item: Item, reason: str, reviewer: str) -> registry.Registry:
     """Record the decision. Returns the updated registry; the caller saves it."""
+    if item.mutant is not None:  # one key, one reason, one approved_at
+        feature = mutants.subject_of(item.pending.subject)
+        return mutants.approve(root, feature, [item.mutant], reason, reviewer)
     if item.pending.namespace == specs.SPEC_NAMESPACE:
         return specs.approve(root, [root / item.pending.subject], reason, reviewer)
     return locking.approve_paths(root, [item.pending.subject], reason, reviewer)
