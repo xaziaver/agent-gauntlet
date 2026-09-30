@@ -437,7 +437,10 @@ into a contract.
 1. **Approval.** Every spec is in the lock with its current SHA-256 (`specs.verify`). An
    unapproved or modified spec fails the gate before anything runs, with the remedy
    `gauntlet spec approve <spec>`, the spec filled in (package P3, 2026-09-26; the diagnostics
-   named `gauntlet lock`, the protect gate's command, before).
+   named `gauntlet lock`, the protect gate's command, before). A spec that was approved and no
+   longer exists fails the stage the same way; `gauntlet spec rename <old> <new>` carries its
+   approvals after a moved file and `gauntlet spec unapprove <old>` withdraws them (package P5,
+   2026-09-30); the diagnostic itself names neither until P6.
 2. **Baseline.** `pytest <steps> -q --no-header -p no:cacheprovider` under the project interpreter
    passes. A failing scenario fails the gate here, with the first 800 characters of pytest's output.
 3. **Mutation.** Every mutant of a specification value must make the suite fail. A surviving mutant
