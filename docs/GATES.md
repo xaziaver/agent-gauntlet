@@ -508,7 +508,7 @@ line naming the gate and the signal, and ends with the signal's status, while a 
 SIGKILL leaves its backup, which the gate's next run restores from before anything else and says
 so in `actual` — the backup directory is empty after every completed run (item 5, 2026-09-16).
 
-*Classification and reporting:* survivors are classified against the lock under `spec:<path>`
+*Classification and reporting:* survivors are classified against the lock under `mutant:` keys
 exactly as code mutants are (equivalent, unresolved, stale). A stale approval is diagnosed by
 cause (package P3, 2026-09-26): *relocated* — a missing key whose digest an unreviewed survivor at
 another locator carries, the judgment moved with a spec edit — and *superseded* — a missing key no
@@ -525,6 +525,17 @@ the diagnostic budget and the hook's character cap for no signal. `actual` reads
 part after the first present only when nonzero; a green summary omits the killed count. When stage 1
 or 2 fails, `actual` ends `; mutation not run`, so the summary says
 which stage never ran rather than leaving it to inference (item 6, 2026-09-17).
+
+*The survivor record, and the remedy:* each mutation stage, after every spec is classified, rewrites
+`.gauntlet/acceptance-survivors.json` whole and atomically: per feature key, `spec` — the digest of
+the spec's bytes, the value its `spec:` approval holds — and `survivors`, every survivor measured,
+in engine order and unclassified, each as the eight fields of a `Mutant`. A spec that was not
+measured is absent from it; when stage 1 or 2 fails, or `mutate_examples = false`, the stage does not
+run and the record is left as it was. `gauntlet status` and `gauntlet review` read it and classify
+it against the ledger at that moment. The scenario diagnostic's remedy is to assert on the values
+or have a human review them with `gauntlet review`, and a list capped at six ends `(+N more; every
+survivor is in .gauntlet/acceptance-survivors.json)`; it named `gauntlet mutant approve`, the batch
+path, before (package P4, 2026-09-29).
 
 *Config:* `features` (default `features/`), `steps` (default `tests/steps`), `require_approved`
 (default true), `mutate_examples` (default true), `mutation_sample` (default 0 = all), `timeout`

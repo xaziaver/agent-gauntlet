@@ -14,7 +14,8 @@ from pathlib import Path
 from typing import Any
 
 from gauntlet import config as config_mod
-from gauntlet import events, locking, registry, specs
+from gauntlet import events, locking, mutants, registry, specs
+from gauntlet.acceptance import survivors
 from gauntlet.gates.base import GateResult
 
 MAX_RECENT = 8
@@ -99,14 +100,38 @@ def _spec_pending(root: Path, cfg: config_mod.Config, approved: registry.Registr
     return _findings_to_pending(specs.SPEC_NAMESPACE, specs.verify(root, found, approved))
 
 
+def _mutant_pending(root: Path, approved: registry.Registry) -> list[Pending]:
+    items: list[Pending] = []
+    for key, found in survivors.current(root).items():
+        verdict = mutants.classify(approved, key, found)
+        failing, re_aimed = set(verdict.failing), set(verdict.changed)
+        items.extend(
+            Pending(
+                namespace=mutants.MUTANT_NAMESPACE,
+                subject=mutants.key_for(key, m),
+                status=(
+                    registry.Status.MODIFIED if m in re_aimed else registry.Status.UNAPPROVED
+                ).value,
+            )
+            for m in found
+            if m in failing
+        )
+    return items
+
+
 def pending(root: Path, cfg: config_mod.Config) -> list[Pending]:
     """Approvals waiting on a human, without running any gate.
 
-    Mutants are excluded on purpose: knowing whether one survives requires
-    actually running the mutation, which is not a cheap status query.
+    Mutants come from the last mutation run's record, classified against the
+    ledger now. Without a record they are excluded: knowing whether one survives
+    requires a run, and only the last run has already paid for the answer.
     """
     approved = registry.load(locking.lock_path(root))
-    return [*_config_pending(root, cfg, approved), *_spec_pending(root, cfg, approved)]
+    return [
+        *_config_pending(root, cfg, approved),
+        *_spec_pending(root, cfg, approved),
+        *_mutant_pending(root, approved),
+    ]
 
 
 def collect(root: Path, cfg: config_mod.Config, gates: list[GateResult] | None = None) -> Status:

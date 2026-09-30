@@ -16,6 +16,7 @@ from typing import Any
 from gauntlet import locking, registry, specs
 from gauntlet import mutants as mutants_mod
 from gauntlet.acceptance import binding, gherkin, mutation, report, strands
+from gauntlet.acceptance import survivors as survivors_mod
 from gauntlet.acceptance.mutation import Mutant
 from gauntlet.adapters import python as python_adapter
 from gauntlet.adapters.base import RunResult
@@ -105,6 +106,7 @@ def _classify_feature(
         len(verdict.equivalent),
         verdict.stale,
         relocated=verdict.relocated,
+        measured={key: survivors_mod.measured(path, survivors)},
     )
 
 
@@ -117,7 +119,9 @@ def _mutation_outcome(
 ) -> report.MutationOutcome:
     outcomes = [_classify_feature(ctx, config, path, steps, approved) for path in features]
     _record_scope(ctx, config, features, steps)
-    return report.merged(outcomes)
+    merged = report.merged(outcomes)
+    survivors_mod.write(ctx.project_root, merged.measured)
+    return merged
 
 
 def _record_scope(

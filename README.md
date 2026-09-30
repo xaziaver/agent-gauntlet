@@ -118,6 +118,13 @@ Approving something you haven't looked at is the rubber stamp the whole ledger e
 review shows a diff for anything modified and requires a reason before recording it. Skip and quit
 are always available; nothing is written until you say yes.
 
+A surviving acceptance mutant waits here too, once a check has recorded it. `gauntlet review` shows
+each one as its scenario, its kind and line, the `Examples` row with its header or the step line,
+and the substitution (`75000 -> 75001`), and asks for a reason for that mutant alone: two survivors
+in one scenario get two reasons. `--yes` approves everything else and skips every mutant, saying how
+many it skipped, because an empty reason on an equivalent mutant is the rubber stamp this command
+exists to prevent.
+
 ## The gates
 
 | Gate | Fails when | Blind to |
@@ -141,14 +148,14 @@ Each gate is opt-in: no `[gates.x]` table, no gate.
 | | |
 |---|---|
 | `gauntlet status` | Gates, pending approvals, recent activity. `--run` `--json` |
-| `gauntlet review` | Walk pending approvals one at a time, with the diff on screen |
+| `gauntlet review` | Walk pending approvals one at a time, with the diff or the mutant on screen; `--yes` approves all but mutants |
 | `gauntlet check` | Run the gates. `--gates a,b` `--changed` `--fail-fast` `--json` `--record PATH` |
 | `gauntlet verdict export RUN PATH` | Write a run's verdict record from the event log (`--log FILE` reads any copy); the same shape `check --record` writes from a live run |
 | `gauntlet init` | Scaffold config + integration. `--agent claude-code\|generic` `--dry-run` |
 | `gauntlet doctor` | Is every enabled gate's tooling actually present here? |
 | `gauntlet lock` / `verify` | Approve configuration / check it hasn't drifted |
 | `gauntlet spec approve` / `list` | Approve acceptance specifications |
-| `gauntlet mutant approve[-code]` / `list` / `prune[-code]` | Classify surviving mutants |
+| `gauntlet mutant approve[-code]` / `list` / `prune[-code]` | Classify surviving mutants in a batch. `approve` writes only unreviewed survivors, one scenario at a time: `--scenario`, `--locator` (repeatable) for one mutant, or `--all-scenarios`; `--rewrite` re-records approved ones |
 | `gauntlet mutant migrate` | Rewrite a schema-1 ledger to schema 2. Run once, by a human, after upgrading; every other command refuses a schema-1 ledger in one line until it has run |
 | `gauntlet mutant preview <feature>` | Price a spec edit before making it: every mutant the file would generate, one `locator<TAB>signature` line each on stdout, the count by kind on stderr. Reads the file and nothing else — no project, no approval, no ledger — so it works on a candidate copy anywhere; `diff` two listings to see which approvals an edit strands. Background steps yield no mutants, so a radius read from it is a floor. Exits 1 on a file it cannot read |
 | `gauntlet events` | Recent activity: runs, gate results, approvals, escalations |
@@ -316,6 +323,10 @@ means the scenario passes regardless of the value it claims to test.
 Mutants are applied as targeted edits at parsed positions, never by re-rendering the file: your
 specification is the human's artifact, not Gauntlet's to reformat. The original is always restored.
 
+Every survivor the last mutation stage measured is written to `.gauntlet/acceptance-survivors.json`,
+beside the `coverage.json` the tests gate writes. `gauntlet status` and `gauntlet review` read the
+waiting ones from it, so the gate's capped diagnostic is never the only list a reviewer has.
+
 ## Equivalent mutants
 
 Some mutants can't be killed by any test. If your rules say amounts above 50,000 are "high", then
@@ -334,6 +345,15 @@ gauntlet mutant approve-code \
 Thereafter they're reported in a separate reviewed-equivalent bucket and count as killed. If the code
 or the tests change so that the mutation *would* now discriminate, the approval lapses automatically
 and it comes back for review.
+
+`gauntlet mutant approve <feature> --reason ...` is the batch path for acceptance survivors, and it
+writes only what nobody has judged: an approval already in the ledger is left exactly as it was,
+unless `--rewrite` asks for it, which re-records every survivor in scope with that call's reason,
+date and reviewer (`approve-code` takes `--rewrite` too). It works one scenario at a time: without
+`--scenario` or `--locator` it refuses survivors that span more than one scenario until
+`--all-scenarios` asks for the sweep by name, and `--locator` — repeatable, the locator as
+`gauntlet mutant preview` prints it — names one mutant. For one mutant and one reason at a time,
+`gauntlet review` is the finer tool.
 
 ## Agent integration
 
@@ -374,9 +394,10 @@ created will fail in confusing ways. `rm -rf .venv __pycache__` and rebuild.
 
 ## The event log
 
-Gates answer "what is the state now." A dashboard also needs "what is happening." Every command
-appends to `.gauntlet/events.jsonl`: runs starting and finishing, each gate's result, approvals
-granted, **approvals needed**, agent blocks, loop iterations, escalations.
+Gates answer "what is the state now." A dashboard also needs "what is happening." The commands
+that run gates or record an approval append to `.gauntlet/events.jsonl`: runs starting and
+finishing, each gate's result, approvals granted, **approvals needed**, agent blocks, loop
+iterations, escalations.
 
 ```bash
 gauntlet events --limit 20

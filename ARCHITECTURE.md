@@ -99,6 +99,14 @@ Flat, stable, boring. Agents parse it. Diagnostics are sorted worst-first and ca
 `max_diagnostics_per_gate`, with `diagnostics_truncated` reporting what was hidden — because Claude
 Code truncates hook output at 10,000 characters and an honest cap beats a silent one.
 
+### `status --json`
+
+`pending` lists what waits on a human, each item `{namespace, subject, status, action}`: `config`
+items (`gauntlet lock`), `spec` items (`gauntlet spec approve <spec>`), and `mutant` items, whose
+`subject` is the bare ledger key (`features/x.feature#<locator>`), `status` `unapproved` or
+`modified`, and `action` `gauntlet review`. A consumer that knew two namespaces must accept the
+third (package P4, 2026-09-29).
+
 ### The event log
 
 Append-only JSONL at `.gauntlet/events.jsonl`. Envelope fields (`v`, `at`, `run`, `kind`) are
@@ -414,6 +422,29 @@ deliberate and worth the cost — those tests have caught things no unit test co
   swallowed the error would hide it from both. `registry.load` raises `RegistryError`; `protect`,
   `acceptance` and `mutation` catch it into `error`, and every command that reads the lock catches
   it into its one line and exit 1 (package P2, 2026-09-23).
+- **The survivor record is written unclassified and classified when it is read.**
+  `.gauntlet/acceptance-survivors.json` holds every survivor the last mutation stage measured,
+  approved or not, with the digest of the spec it was measured against; `status` and `review`
+  classify it against the ledger of the moment. An approval given after the run clears its item
+  without another run, where a record written classified would be stale at the next approval
+  (package P4, 2026-09-29).
+- **A record the tool cannot parse or rebuild is no record.** Not UTF-8, not JSON, not an object,
+  or an item that does not rebuild into a `Mutant`: the inbox lists no mutants, as before the record
+  existed, rather than failing `status` or listing part of the list. The next mutation stage
+  rewrites it whole (package P4, 2026-09-29).
+- **A feature whose spec moved since the record yields no mutant items.** Its `spec` item is pending
+  as `modified` and is the reason: survivors measured against other text say nothing about this
+  text, and a judgment on them would be about a spec that is no longer there (package P4,
+  2026-09-29).
+- **`review --yes` approves everything except mutants.** `--yes` on a changed threshold is a choice
+  the human made knowingly about a diff; an equivalent mutant approved with an empty reason is the
+  rubber stamp the ledger exists to prevent. The closing line counts what it skipped (package P4,
+  2026-09-29).
+- **`mutant approve` writes only failing survivors unless `--rewrite`.** Unreviewed and re-aimed
+  ones; an approval already in the ledger is left byte-identical, reason, reviewer and date alike,
+  because re-recording every survivor in scope overwrote judgments nobody had re-made. `--rewrite`
+  is the one sanctioned way to change a reason, since the lock is off-limits to hand edits
+  (package P4, 2026-09-29).
 
 ---
 

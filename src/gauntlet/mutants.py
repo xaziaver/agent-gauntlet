@@ -177,6 +177,21 @@ def approve(
     return current
 
 
+def to_record(
+    approved: registry.Registry, subject_key: str, survivors: list[M], rewrite: bool
+) -> tuple[list[M], list[M]]:
+    """What an approval writes, in survivor order, and which of it re-records a judgment.
+
+    The failing survivors — never judged, or judged for another substitution — and,
+    only under `rewrite`, the equivalent ones too. An approval outside that set is
+    not touched, so a second approval never overwrites a first one's reason or date.
+    """
+    verdict = classify(approved, subject_key, survivors)
+    rewritten = verdict.equivalent if rewrite else []
+    chosen = [*verdict.failing, *rewritten]
+    return [m for m in survivors if m in chosen], rewritten
+
+
 def _is_literal_key(key: str) -> bool:
     """An entry whose locator names the literal kind.
 

@@ -12,6 +12,7 @@ from pathlib import Path
 from gauntlet import config as config_mod
 from gauntlet import mutants as mutants_mod
 from gauntlet import registry
+from gauntlet.acceptance import survivors
 from gauntlet.acceptance.mutation import Mutant
 from gauntlet.gates.base import Diagnostic
 
@@ -26,6 +27,8 @@ class MutationOutcome:
     not_measured: int = 0  # specs whose mutants would have measured nothing
     # The stale keys whose judgment moved, each with the survivors carrying its digest.
     relocated: dict[str, list[Mutant]] = field(default_factory=dict)
+    # Every measured feature's survivors, unclassified, for the record the gate writes.
+    measured: dict[str, survivors.Measured] = field(default_factory=dict)
 
 
 def merged(outcomes: list[MutationOutcome]) -> MutationOutcome:
@@ -38,6 +41,7 @@ def merged(outcomes: list[MutationOutcome]) -> MutationOutcome:
             total.stale + outcome.stale,
             total.not_measured + outcome.not_measured,
             {**total.relocated, **outcome.relocated},
+            {**total.measured, **outcome.measured},
         )
     return total
 
@@ -85,7 +89,8 @@ def _value(m: Mutant, re_aimed: frozenset[Mutant]) -> str:
 def _values(items: list[Mutant], re_aimed: frozenset[Mutant]) -> str:
     listed = ", ".join(_value(m, re_aimed) for m in items[:MAX_LISTED])
     extra = len(items) - MAX_LISTED
-    return listed + (f" (+{extra} more)" if extra > 0 else "")
+    where = f"every survivor is in {survivors.RECORD.as_posix()}"
+    return listed + (f" (+{extra} more; {where})" if extra > 0 else "")
 
 
 def _scenario_diagnostic(
@@ -103,7 +108,7 @@ def _scenario_diagnostic(
             f"The scenario still passes with these values changed, so it is not "
             f"checking them. Assert on them, or — if the specification maps both "
             f"values to the same outcome — have a human review them with "
-            f"`gauntlet mutant approve`."
+            f"`gauntlet review`."
         ),
     )
 
