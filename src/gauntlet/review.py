@@ -48,6 +48,11 @@ class Item:
     def title(self) -> str:
         return f"[{self.pending.namespace}] {self.pending.subject} — {self.pending.status}"
 
+    @property
+    def stale(self) -> bool:
+        """The subject no longer exists: approving removes its approval, and grants nothing."""
+        return self.pending.status == registry.Status.MISSING.value
+
 
 def _git_show(root: Path, path: str) -> str | None:
     """The committed version of a file, if this is a git repo and it is tracked."""
@@ -128,6 +133,30 @@ def _mutant_body(mutant: Mutant, re_aimed: bool) -> str:
     return "\n".join(lines)
 
 
+def _missing_body(root: Path, item: Pending) -> str:
+    """What approving a vanished subject does, and for a spec, the fork a rename is."""
+    body = (
+        f"{item.subject} was approved but no longer exists. Approving here removes "
+        f"the stale approval"
+    )
+    if item.namespace != specs.SPEC_NAMESPACE:
+        return f"{body}."
+    count = len(specs.mutant_keys(registry.load(locking.lock_path(root)), item.subject))
+    also = f" and its {count} mutant approval(s)" if count else ""
+    return (
+        f"{body}{also}. If the spec was renamed, `gauntlet spec rename {item.subject} <new>` "
+        f"carries them instead: skip this item."
+    )
+
+
+def _remove(root: Path, item: Pending) -> registry.Registry:
+    """A vanished spec goes as `spec unapprove` takes it, with its mutant approvals."""
+    if item.namespace == specs.SPEC_NAMESPACE:
+        return specs.unapprove(root, [root / item.subject])[0]
+    current = registry.load(locking.lock_path(root))
+    return registry.revoke(current, registry.namespaced(locking.CONFIG_NAMESPACE, item.subject))
+
+
 def build_item(root: Path, item: Pending) -> Item:
     """Attach the context a human needs to judge one pending approval."""
     if item.namespace == mutants.MUTANT_NAMESPACE:
@@ -137,11 +166,7 @@ def build_item(root: Path, item: Pending) -> Item:
     if item.status == registry.Status.MODIFIED.value:
         return Item(pending=item, body=diff_against_head(root, item.subject), needs_reason=True)
     if item.status == registry.Status.MISSING.value:
-        body = (
-            f"{item.subject} was approved but no longer exists. Approving here removes "
-            f"the stale approval."
-        )
-        return Item(pending=item, body=body, needs_reason=False)
+        return Item(pending=item, body=_missing_body(root, item), needs_reason=False)
     return Item(pending=item, body=_preview(root, item.subject), needs_reason=False)
 
 
@@ -150,6 +175,8 @@ def apply(root: Path, item: Item, reason: str, reviewer: str) -> registry.Regist
     if item.mutant is not None:  # one key, one reason, one approved_at
         feature = mutants.subject_of(item.pending.subject)
         return mutants.approve(root, feature, [item.mutant], reason, reviewer)
+    if item.stale:
+        return _remove(root, item.pending)
     if item.pending.namespace == specs.SPEC_NAMESPACE:
         return specs.approve(root, [root / item.pending.subject], reason, reviewer)
     return locking.approve_paths(root, [item.pending.subject], reason, reviewer)

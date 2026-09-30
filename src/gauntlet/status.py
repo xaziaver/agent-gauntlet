@@ -26,6 +26,8 @@ ACTION_FOR = {
     specs.SPEC_NAMESPACE: "gauntlet spec approve {subject}",
 }
 DEFAULT_ACTION = "gauntlet review"
+# A spec that no longer exists cannot be approved; its approval can only be withdrawn.
+MISSING_SPEC_ACTION = "gauntlet spec unapprove {subject}"
 
 
 @dataclass(frozen=True)
@@ -38,6 +40,9 @@ class Pending:
 
     @property
     def action(self) -> str:
+        missing = self.status == registry.Status.MISSING.value
+        if self.namespace == specs.SPEC_NAMESPACE and missing:
+            return MISSING_SPEC_ACTION.format(subject=self.subject)
         template = ACTION_FOR.get(self.namespace, DEFAULT_ACTION)
         return template.format(subject=self.subject)
 
