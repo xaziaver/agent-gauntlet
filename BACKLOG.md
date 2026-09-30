@@ -133,6 +133,43 @@ Every session reads `CLAUDE.md` and this file. Then, per item:
 
 ## Status as of this handoff
 
+**2026-09-30, G3 item 7 package P4 applied (approve one mutant at a time).** On
+`v1/item-7-p4-one-at-a-time` from `ede9530`, merged at `50c5d9d`: the human findings commit
+`9b01c15` (one block — seven decisions, one prediction, a fifteen-row matrix, 27 test names — five
+annotations and one Note annotation; script-applied, 7 anchors, 287/0), `76eca3e` (the acceptance
+gate writes every survivor it measured to `.gauntlet/acceptance-survivors.json`, unclassified, with
+the spec's digest; the scenario diagnostic's remedy names `gauntlet review` and, when capped, the
+file; `acceptance/survivors.py` new), `ff40e43` (`status.pending` reads the record and classifies it
+against the ledger now — `unapproved` and `modified` mutant items with the action `gauntlet review`,
+a feature whose spec moved yielding nothing; this was P6's "`status --run` reports nothing needs
+your approval" entry, taken into P4 at the pricing), `89c3062` (`gauntlet review` walks mutants from
+the record with scenario, kind, line, context and substitution on screen, one required reason each;
+`--yes` skips them and says how many; the reader moved to `survivors.current`), `7dcf700` (`mutant
+approve` writes only failing survivors, `--rewrite` re-records, `--locator` names one, a sweep
+across scenarios is refused until `--all-scenarios`; `approval.granted` with a count from both
+approve commands; `mutant_scope.py` new, `cli_mutants.py` at 300 of 300), `903e7cd` and `13c923e`
+(README, ARCHITECTURE with a `status --json` contract subsection, GATES.md, the `events.py`
+docstring naming the nine of twenty-two commands that emit), and the close `3136a96`. The package
+did not split; it took one entry from P6, and the `mutant approve` overwrite carried as a loose end
+since P2 was already this entry's text, so decision (5), not an entry. The regression subject: run
+`20260930T151922-443153` at `13c923e` in the item-1 clone at `be87d38` with its migrated lock
+reproduced the tag's verdict `9c7aececf56dc4f5…`, eleven tuples identical to P3's, the lock
+byte-identical after, the stripped event log differing in nothing, and the one named difference —
+the survivor record — checked from the clone by script: sixteen keys and seventy-three survivors
+exactly the lock's; harness `7ad2fef492e78e5b` over 56. 50 tests added, three moved (703 → 753
+collected; 707 test functions), suite 104–117 s across the own runs (68 s before `7dcf700`, whose
+scope tests run the real tiering mutation), coverage 98.08 / 95.2. Three amendments to the block:
+two ratified (row (f) from (e); the record-reading rows from (a)), one not (decision (5)'s two
+messages), so `7dcf700` carries the block's messages and three tests moved. The agent stopped
+correctly twice on the run prompt — the clone's leftover `mutants/`, which a completed run leaves
+and the adapter removes before the next, and an install from a plain directory where P3's
+`direct_url.json` recorded a commit; the run installed from `git+file:///…@13c923e`. Found and not
+in this package: `status --run` runs the gates without the run lock `check` takes (its own entry);
+`lock`'s `approval.granted` `count` counts skipped paths (its own entry); a `cp -a` copy's stale
+`__pycache__` makes every mutant survive silently (item 5, annotated); `cli_mutants.py` at its
+ceiling, the 104–117 s suite, and `review.py`'s copy of the re-aimed sentence (loose ends in the
+hand-off). Acceptance wall time 1039.099 s against 997.848 s, not investigated.
+
 **2026-09-27, G3 item 7 package P3 applied (remedies and messages that name the wrong thing).** On
 `v1/item-7-p3-remedies` from `cfbebbf`, merged at `e6ac033`: the human findings commit `1774cf3`
 (one block — six decisions, one prediction, a fifteen-row matrix in five parts, 23 test names —
@@ -442,7 +479,15 @@ xargs -0 sha256sum | sha256sum` at that commit: `gauntlet` is installed with `uv
 
 **This repository's own baseline.** Nine gates configured: protect, static, size, complexity, tests,
 coverage, crap, duplication, acceptance; no `[gates.boundary]` or `[gates.mutation]`.
-The hand `gauntlet check` at the tip of item 7 package P2, run `20260923T225550-479480` at
+The hand `gauntlet check` at the tip of item 7 package P4, run `20260930T181749-469456` at
+`3136a96`, stamped 2026-09-30T18:17:49Z to 18:19:34Z, agent-quoted: protect 3/3 paths unchanged;
+static 0 findings; size worst function 25; complexity 6; tests 753/753 passing in 104.359 s;
+coverage line 98.08, branch 95.2 against floors of 95, 90 and per-file 80; crap 8.21; duplication 0;
+acceptance "no feature files" (vacuous). Diagnostics 0 and error null on all nine; `run.finished`
+tree `a61a9a10427c9d52…` over 102 files; the harness `7ad2fef492e78e5b…` over 56, recomputed by the
+advisor from a clone. Before item 7 package P4, at the tip of package P3 (`6466055`), the suite was
+703 tests at 60.8–73.9 s, coverage 98.01 / 95.03 over 99 files, harness `9665f4ba4e4fd37f…` over 54.
+Before item 7 package P3, the hand check at the tip of package P2, run `20260923T225550-479480` at
 `27a0fca`, stamped 2026-09-23T22:55:50Z to 22:56:44Z, agent-quoted and read by the advisor from the
 paste: protect 3/3 paths unchanged; static 0 findings; size worst function 25; complexity 6; tests
 671/671 passing in 52.102 s; coverage line 97.84, branch 94.63 against floors of 95, 90 and per-file
@@ -469,24 +514,28 @@ s at 96.87 / 92.41 over 95 files. Before item 3 (run
 item 2 (run `20260913T222626-2654730`) the suite was 511 tests in 50.161 s at 96.6 / 91.89. Before item 1 (run
 `20260913T093143-2601684`, after G2d) the suite was 498 tests in 36.328 s at 96.54 / 91.75; the two
 item-1 tests that run a real pytest-bdd project account for about 9 s of the difference. Stop hook
-budget 600 s; a full own-run is about 57 s by the timestamps. The suite is `.venv/bin/pytest tests
--q -p no:cacheprovider`; the `pytest` on PATH is not the venv's and collects nothing. Branch
-coverage has 4.33 points of headroom over its floor: a G3 change that adds an untested branch goes
+budget 600 s; a full own-run is about 105 s by the timestamps since P4 (57 s before item 7).
+The suite is `.venv/bin/pytest tests -q -p no:cacheprovider`; the `pytest` on PATH is not the
+venv's and collects nothing. Branch coverage has 5.2 points of headroom over its floor: a G3
+change that adds an untested branch goes
 red here before it reaches the subject. Since item 2 the Stop hook skips whenever the hand `gauntlet check` was green on the same
 tree: a turn end that ran no gate is a `run.reused` line in the log naming that run, and only
 the log tells it from a crash.
 `cli.py` is at 248 of 300 lines since item 6 moved `init` and `guard` to `cli_setup.py`, with
-`check` and `stop_check` at 24 of 25; `gates/acceptance.py` is 266 since P3 made `baseline` public
-(P1 moved its reporting half to `acceptance/report.py`, 188 since P3's stale-by-cause diagnostics),
-with `_surviving` at 23; `adapters/python.py` 255 since P3 with `resolve` at 25 of 25;
-`gates/mutation.py` 241; `gates/tests.py` 178 since P3's headline collapse; `loop.py` 151 with
-`drive` at 24; `gates/base.py` 230 since P3 with `run_cmd` at 25 of 25 since item 7 change 2;
+`check` and `stop_check` at 24 of 25; `gates/acceptance.py` is 270 since P4 with `_surviving` at 23
+(P1 moved its reporting half to `acceptance/report.py`, 193 since P4's remedy);
+`acceptance/survivors.py` 78 (new in P4) with `current` at 15; `adapters/python.py` 255 since P3
+with `resolve` at 25 of 25; `gates/mutation.py` 241; `gates/tests.py` 178 since P3; `loop.py` 151
+with `drive` at 24; `gates/base.py` 230 since P3 with `run_cmd` at 25 of 25 since item 7 change 2;
 `acceptance/mutation.py` 262 since P2 with `_column_mutants` at 25 of 25; `registry.py` 292 and
-`tree.py` 249; `mutants.py` 258 since P3 with `migrate` at 24; `cli_mutants.py` 256 since P3 with
-`mutant_migrate` at 24; `cli_status.py` 49; `doctor.py` 264 since P3; `stop.py` 112 since P3;
+`tree.py` 249; `mutants.py` 273 since P4 with `migrate` at 24; `mutant_scope.py` 41 (new in P4);
+`cli_mutants.py` 300 of 300 since P4 with `mutant_approve` and `_record` at 25 of 25 and
+`mutant_migrate` at 24 — the next package that touches it moves a command group out first, as a
+named refactor commit; `status.py` 145 since P4 with `_mutant_pending` at 17; `review.py` 155 and
+`cli_review.py` 103 since P4; `cli_status.py` 49; `doctor.py` 264 since P3; `stop.py` 112 since P3;
 `acceptance/strands.py` 71, `runner.py` 146, `verdict.py` 210, `cli_verdict.py` 54, `cli_support.py`
-62. The three functions at the ceiling each force an extraction before the next change to them; the
-four at 24 are one line from it.
+62, `events.py` 127. The five functions at the ceiling each force an extraction before the next
+change to them; the five at 24 are one line from it.
 
 **The inventory of 2026-09-12**, read-only, agent-produced, from which this file was written.
 Three source-line citations in the findings resolve at `a0ef78d` (`cli.py:151` and `cli.py:151-152`
@@ -589,6 +638,16 @@ survivors. On a message-heavy codebase this is noise needing suppression pattern
 ## 5. A copied project directory is silently broken
 
 *(2026-09-12: holds; nothing in `doctor.py` checks `__pycache__` paths.)*
+
+*(2026-09-30: a second, silent form, measured by the agent with `marshal` on P4's throwaway. A
+project copied with `cp -a` keeps `__pycache__` whose `.pyc` `co_filename` names the original tree;
+pytest-bdd resolves `scenarios("../../features/x.feature")` from that path, so the copy's mutated
+feature is never read and every mutant survives — the two the spec kills included — with no error at
+all. Two interim rows were retaken beside their corrupted takes with caches stripped; every chained
+copy in the tip retake was stripped first. Tool-side, the acceptance adapter could run the suite
+under `PYTHONPYCACHEPREFIX` pointing at scratch, or the `doctor` check above could look for a
+`co_filename` outside the project; neither is scheduled. The agent's notes date the first `marshal`
+check to P2's matrix, 2026-09-22.)*
 
 **Severity: low, but expensive when it happens.** Virtualenvs and `__pycache__` embed absolute paths,
 so a copied directory fails with import errors naming the *original* path. Cost about twenty minutes

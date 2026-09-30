@@ -69,8 +69,11 @@ emits run boundaries, but the run stays `check`, item 1's precedent; a change
 whose payoff is a second invocation gets both invocations defined in the
 prediction, as item 2's was. Gauntlet is installed into that clone's uv venv
 (Python 3.14) with `uv pip install --reinstall-package agent-gauntlet
---python .venv/bin/python ~/Code/agent-gauntlet`, run from the clone — the
-source path is the one the clone's `direct_url.json` records, and without it
+--python .venv/bin/python git+file:///home/xaziaver/Code/agent-gauntlet@<tip>`,
+run from the clone — the commit form, so the clone's `direct_url.json` records
+the commit as P3's and P4's do (a plain directory records `dir_info` and nothing
+else; the agent stopped on it once) — the source path is the one the clone's
+`direct_url.json` records, and without it
 the command exits 2 (measured 2026-09-19) — the venv has no pip, and a bare `pip` there installs nothing and
 barely says so — and the report records `git -C <agent-gauntlet> rev-parse
 HEAD` and an empty `git status --porcelain` here, taken immediately before the
@@ -550,6 +553,25 @@ the crash became its own entry, which is the right default; say the rule in the 
 amendment. A commit message stating sizes estimated before measuring — `6e48069` says 253 → 262
 where 264 was measured; the prompt now says a message states no figure the agent has not measured,
 and that is the standing rule.
+
+From package P4 (2026-09-27 to 30). Stating the clone holds no `mutants/` — the adapter removes it
+before each mutmut run, so a completed run leaves mutmut's working copy behind, git-ignored and
+outside the plain porcelain; "cold" names the state before mutmut starts, never the state after, and
+the run prompt said the opposite twice. Naming a plain directory as the install source — P3's
+`direct_url.json` recorded a commit, so P3 had installed from `git+file`; the protocol line above
+now says so. Sending a command untested — `pytest -q … --collect-only -q | tail -1` is `-q -q` and
+prints a blank line; every command in a prompt is run in the sandbox first where the sandbox can run
+it. Naming the file a recipe lives in without grepping for it — the harness recipe is in
+`verdict.harness()`'s docstring and ARCHITECTURE, not CLAUDE.md. Writing a matrix chain that ignores
+what a row reads — five rows read the record and cannot start from a base that has none, and row
+(f)'s after-state needed (e)'s entry; a row's start state is the state its inputs require, checked
+row by row before the block is committed. Citing a precedent by its shape and not its figure —
+`lock`'s `approval.granted` `count` is the configured paths, skipped ones included, so "as `lock`
+emits its count" was not the precedent decision (6) meant; read the emit site before citing it.
+Copying a throwaway with `cp -a` from a row that ran pytest — the stale `__pycache__` makes every
+mutant survive silently; every chained copy is cache-stripped before its first command, and a
+suspect take is kept and retaken beside itself. And, the sandbox being reset between turns once, an
+advisor's notes live in the outputs directory from the first turn, not the working directory.
 
 
 ## Areas where I will need you most

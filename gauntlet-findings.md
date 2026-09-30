@@ -4686,6 +4686,53 @@ mutation gate's error text, P6's.
 **Status.** Open. Found 2026-09-25 from the throwaway, recorded 2026-09-27 at package P3's save
 point.
 
+#### `status --run` runs the gates without the run lock `check` takes
+
+**What happened.** `cli_status._run_now` calls `runner.run_gates` directly; `gates/base.py`'s run
+lock — the `flock` on `.gauntlet/run.lock` whose own docstring says two overlapping runs read each
+other's half-written artifacts and report failures that are not real, "which is worse than no gate"
+— is taken on `check`'s path in `cli.py` only. Measured on P4's throwaway, row (c), 2026-09-28:
+after `gauntlet status --run` the `.gauntlet/` listing is `acceptance-scope.json events.jsonl`, no
+`run.lock`; after `gauntlet check` it holds one. A `status --run` started while a `check` runs, or
+the reverse, shares `junit.xml`, `coverage.json`, the scope and survivor records and `events.jsonl`
+with it.
+
+**Why it matters.** `status --run` was added so a human could see the state without a full hand
+`check`, and since P4 it writes the survivor record the inbox reads. The lock exists because the
+artifacts under `.gauntlet/` are shared; a second entry point that skips it reopens the hole the
+lock closed, and the failure mode is the one the docstring names — a red gate nobody can reproduce.
+
+**What would address it.** `_run_now` takes the same lock (`base.run_lock` or whatever `check`
+uses), and a `RunInProgressError` prints the same one line `check` prints. One test: with the lock
+held, `status --run` refuses and writes nothing under `.gauntlet/`. Small; outside the verdict path.
+
+**Routes to:** BACKLOG.md, v1, small; package P6 (what the human sees).
+
+**Status.** Open. Found 2026-09-28 from the throwaway (row (c), unasked), recorded 2026-09-30 at
+package P4's save point.
+
+#### `lock`'s `approval.granted` count counts skipped paths
+
+**What happened.** `cli_approvals.py:27` emits `approval.granted` with `subject` `config` and
+`count=len(cfg.verified_paths)` — the configured paths, not the entries written. On P4's throwaway
+`gauntlet lock` printed `approved gauntlet.toml` and two `skipped … (does not exist)` lines and
+logged `count: 3`. Measured 2026-09-28. Since P4, `mutant approve` and `approve-code` log `count` as
+the entries written, and `review` logs one line per entry; `lock` is the odd one.
+
+**Why it matters.** The event log is the dashboard's source ("what is happening"), and `count` is
+the field a consumer would sum. Three where one was written is a wrong number in the one place that
+is supposed to carry numbers, and the P4 block cited `lock`'s line as the precedent for a count of
+entries written — a reader of the log would make the same mistake.
+
+**What would address it.** `count` becomes the number of entries `lock` wrote, and `skipped` a
+second field if the skipped count is wanted at all. One test on the throwaway's shape: one existing
+path, two missing, `count` 1. Small; outside the verdict path.
+
+**Routes to:** BACKLOG.md, v1, small; package P6.
+
+**Status.** Open. Found 2026-09-28 by the agent reading the emit site against the block, recorded
+2026-09-30 at package P4's save point.
+
 #### The approval ledger is written non-atomically, and it is the one artifact no gate can rebuild
 
 **What happened.** `registry.save` ends in `path.write_text(...)` — no temp file, no atomic
@@ -5613,6 +5660,10 @@ names the original tree's path, pytest-bdd resolves `scenarios("../../features/�
 copy's mutated feature is never read — every mutant "survives", the two the spec kills included; two
 interim rows were retaken beside their corrupted takes with caches stripped, and the tip retake
 stripped every chained copy. Recorded as its own entry at the save point.
+
+*(Correction, 2026-09-30, at the save point: not its own entry. The agent's notes date the `marshal`
+measurement to P2's matrix, 2026-09-22, and BACKLOG item 5 already records the defect in its loud
+form; the silent form P4 met is annotated there.)*
 
 Proof, first shape. Regression run `20260930T151922-443153`: `gauntlet check --record
 ~/gauntlet-review/item7-p4-verdict.json` in the item-1 clone at `be87d38` with its migrated lock
@@ -6976,6 +7027,18 @@ So the tail is still 29 live entries in seven packages and six subject runs, and
 is the first since P2 that is not "nothing changes": one file,
 `.gauntlet/acceptance-survivors.json`, in a directory that is git-ignored and never hashed; the
 verdict does not move.)*
+
+*(Annotation, 2026-09-30: P4 closed at `3136a96`, merged at `50c5d9d`; five entries Applied, the
+`status --run` entry among them by the pricing's re-price from P6. The prediction held on both
+proofs — run `20260930T151922-443153` reproduced `9c7aececf56dc4f5…` with eleven tuples identical to
+P3's and the one named difference, the survivor record, checked from the clone against the lock's
+sixteen `spec:` and seventy-three `mutant:` entries; all fifteen matrix rows read as predicted at
+`13c923e` after three amendments, two ratified. Two entries recorded at this save point ("`status
+--run` runs the gates without the run lock" and "`lock`'s `approval.granted` count counts skipped
+paths"), so the tail is 27 live entries in six packages, P5 to P10, and five subject runs, and `grep
+-c '^\*\*Status\.\*\* Open' gauntlet-findings.md` prints 27 until P5 closes. P5 opens next with an
+advisor pricing: spec un-approve and rename, no subject run, the `cli_mutants.py` ceiling in front
+of it.)*
 
 **The v1 backlog's root-cause-diagnostics item needs a fourth category.** It
 currently distinguishes "tool failed," "tool found nothing," and "nothing to
