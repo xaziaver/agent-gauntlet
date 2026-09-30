@@ -2898,7 +2898,10 @@ nobody had actually reviewed.
 
 **Routes to:** BACKLOG.md, v1.
 
-**Status.** Open.
+**Status.** Applied, 2026-09-30, as G3 item 7 package P4 on `v1/item-7-p4-one-at-a-time`: `7dcf700`
+— with neither `--scenario` nor `--locator`, survivors about to be written in more than one scenario
+are refused in one line until `--all-scenarios` is passed; the narrow invocation is the one that
+needs no thought.
 
 *(Annotation, 2026-09-27, from pricing package P4 against `ede9530`: decision (5) of the P4 block
 under "The approval ledger has no per-mutant reason" — with neither `--scenario` nor `--locator`,
@@ -3718,7 +3721,9 @@ permission to walk away from a red gate that is waiting on exactly them.
 **Routes to.** `BACKLOG.md`, v1, beside the two remedy entries above — same family: the
 human-facing surface contradicting the state it reports.
 
-**Status.** Open.
+**Status.** Applied, 2026-09-30, as G3 item 7 package P4 on `v1/item-7-p4-one-at-a-time`: `ff40e43`
+— `status.pending` reads the survivor record and classifies it against the ledger now, on `--run`
+and bare alike; the run writes the record before `collect` reads it.
 
 *(Annotation, 2026-09-27, from pricing package P4 against `ede9530`: taken into package P4 from P6,
 decision (2) of the P4 block under "The approval ledger has no per-mutant reason". `gauntlet review`
@@ -5097,7 +5102,10 @@ restructured to work around a tool constraint rather than because the structure 
 
 **Routes to.** `BACKLOG.md`.
 
-**Status.** Open.
+**Status.** Applied, 2026-09-30, as G3 item 7 package P4 on `v1/item-7-p4-one-at-a-time`: `7dcf700`
+— `mutant approve --locator` names one survivor by its ledger key, and `gauntlet review` (`89c3062`)
+is the finer scope, one mutant and one reason at a time; the payload does not move, so the
+dependency-locator field keeps its room.
 
 *(Annotation, 2026-09-27, from pricing package P4 against `ede9530`: decision (4) of the P4 block
 under "The approval ledger has no per-mutant reason" — `mutant approve` gains repeatable
@@ -5230,7 +5238,10 @@ re-deriving the mutant algorithm by hand.
 
 **Routes to:** BACKLOG.md, v1, blocking v2. An approval inbox physically cannot render a scenario with more than six survivors while --json truncates identically to the terminal.
 
-**Status.** Open.
+**Status.** Applied, 2026-09-30, as G3 item 7 package P4 on `v1/item-7-p4-one-at-a-time`: `76eca3e`
+— the acceptance gate writes every survivor it measured to `.gauntlet/acceptance-survivors.json`,
+unclassified, with the spec's digest; the capped diagnostic names the file and `gauntlet review`;
+the complete list reaches the contract through `gauntlet status --json` (`ff40e43`).
 
 *(Annotation, 2026-09-27, from pricing package P4 against `ede9530`: decision (1) of the P4 block
 under "The approval ledger has no per-mutant reason" — the gate writes every survivor it measured to
@@ -5294,7 +5305,10 @@ one scenario, so `--scenario` could not isolate the five that were new.
 
 **Routes to:** BACKLOG.md, v1, blocking v2. An inbox showing why each individual mutant was approved requires a per-locator reason to exist.
 
-**Status.** Open.
+**Status.** Applied, 2026-09-30, as G3 item 7 package P4 on `v1/item-7-p4-one-at-a-time`: `89c3062`
+(`gauntlet review` walks the survivor record, one reason per mutant, `--yes` skips them) and
+`7dcf700` (`mutant approve` writes only what is unreviewed, `--rewrite` re-records, the act logged).
+The package's "Change, applied" text is after the block below.
 
 *(Annotation, 2026-09-20, from the full read of every open entry against `c958ebb`: one design with
 two other entries. Extending `gauntlet review`'s per-item walker to the mutant namespace, as
@@ -5547,6 +5561,113 @@ covers the new name. *Commit 3, decision (2):*
 that approve a survivor twice, or read a reason after a second approval, binds — none was found by
 grep at `ede9530`, and a grep is not a read. *Commit 6:* none. Every new test's assertion is read
 for what else its string could match, per the rule of change 3.
+
+**Package P4 — change, applied 2026-09-30 (advisor-recommended, human-ratified).** On
+`v1/item-7-p4-one-at-a-time` from `ede9530`: `9b01c15` (this block, five annotations, one Note
+annotation; script-applied, 7 anchors, 287/0, `690de0a29e1b2eb1` → `a48f4cb0ae9baf1b`), then
+`76eca3e` (decision (1): `acceptance/survivors.py` new, 55 lines, `Measured` and `write`;
+`MutationOutcome.measured` carried through `report.merged`; the digest taken after the spec is
+restored; `read` returning None for a missing, non-UTF-8, non-JSON or non-object record; the remedy
+"have a human review them with `gauntlet review`" and the marker "(+N more; every survivor is in
+.gauntlet/acceptance-survivors.json)"; seven tests, two assertions moved in
+`tests/test_acceptance_gate.py`; 703 → 717 collected), `ff40e43` (decision (2): `status.pending`
+gains its third source, `_mutant_pending` 17 lines, the digest guard against the file on disk,
+`Mutant(**item)` under `TypeError` and `KeyError`, `unapproved` and `modified` from the registry's
+own values, record order; ten tests, none moved; 729), `89c3062` (decision (3): the reader moved to
+`survivors.current`; `review`'s mutant item — scenario, kind and line, context, `original ->
+mutated`, the re-aimed sentence — with `needs_reason`, `apply` through `mutants.approve` for one
+key, `SurvivorGoneError` under `fail`'s prefix, `--yes` skipping mutants and counting them in the
+closing line, its help text "…, except mutants"; nine tests plus `tests/test_survivors.py`; 739),
+`7dcf700` (decisions (4) to (6): `mutant_scope.py` new, 41 lines — `in_scope`, `by_locator`,
+`swept`, pure; `mutants.to_record` writing `failing` plus, under `--rewrite`, `equivalent`;
+`--locator`, `--all-scenarios`, `--rewrite` on `mutant approve`, `--rewrite` on `approve-code`; the
+three refusals; `approval.granted` with `count` after `registry.save`; twelve tests, three moved at
+`tests/test_cli_mutants.py` :204, :331 and :270 for the block's messages; `cli_mutants.py` 300 of
+300; 753), `903e7cd` (decision (7): README, ARCHITECTURE with a `status --json` subsection and five
+"deliberate" bullets, `docs/GATES.md`, and `events.py`'s docstring naming the nine of twenty-two
+commands that emit; script-applied, 9 anchors) and `13c923e` (README's "every command appends" and
+GATES.md's `spec:<path>` made true). Every commit green on the tool's own gates, 753/753 at the tip,
+branch coverage 95.2 over 90, no function over 25, complexity 6; the harness `7ad2fef492e78e5b…`
+over 56 from `903e7cd` on (`acceptance/survivors.py` and `mutant_scope.py` added to P3's 54).
+
+Corrected along the way. Three amendments were proposed against the block: row (f) starts from (e),
+not base (the agent, before code moved); the record-reading rows (b), (d), (e), (f) and (g) start
+from (a)'s end state, since base has no record (the advisor, at the interim row (a)); and decision
+(5)'s single nothing-to-write message replaced by two so that no existing test moves (the agent).
+The first and third were ratified by the retake prompt that carried them; the second was not
+ratified in time, so `7dcf700` carries the block's messages and the three tests moved, named in its
+message. Four of the block's descriptions of existing code were loose and are corrected here:
+`lock`'s `approval.granted` `count` is `len(cfg.verified_paths)`, skipped paths included, so
+decision (6)'s "as `lock` emits its count" is not the precedent it cites (`cli_approvals.py:27`);
+the default action lives in `Pending.action` through `DEFAULT_ACTION`, not in `ACTION_FOR`
+(`status.py:39-40`); `gauntlet spec approve` emits nothing either; the harness recipe lives in
+`verdict.harness()`'s docstring and ARCHITECTURE, not CLAUDE.md. `--rewrite` re-records the reviewer
+from the call and drops one not passed — ruled as the meaning of "re-record", and the README says
+it. Two prompt errors stopped the agent correctly: the run prompt said the clone holds no
+`mutants/`, when the adapter removes it before each mutmut run and a completed run leaves it (`!!
+mutants/`, ignored, outside the plain porcelain); and ADVISOR.md's install line names a plain
+directory where P3's `direct_url.json` recorded a commit — the run installed from
+`git+file:///…@13c923e` and the protocol line is corrected at the save point. The throwaway taught
+one more thing, measured by the agent with `marshal`: `cp -a` carries `__pycache__` whose `.pyc`
+names the original tree's path, pytest-bdd resolves `scenarios("../../features/…")` from it, and a
+copy's mutated feature is never read — every mutant "survives", the two the spec kills included; two
+interim rows were retaken beside their corrupted takes with caches stripped, and the tip retake
+stripped every chained copy. Recorded as its own entry at the save point.
+
+Proof, first shape. Regression run `20260930T151922-443153`: `gauntlet check --record
+~/gauntlet-review/item7-p4-verdict.json` in the item-1 clone at `be87d38` with its migrated lock
+`3749d099bb77c55d`, `.gauntlet/` and `mutants/` removed first, the P3 log copied out as
+`claimgate-item1-events-before-p4.jsonl` (14 lines, `08bc7f9f2f0e8678…`), Gauntlet at `13c923e`
+installed into the clone's venv from `git+file` (`direct_url.json` records the commit;
+`verdict.harness()` `7ad2fef492e78e5b…` over 56, equal to the tip), wall 1068.92 s, exit 0. Every
+clause of the prediction held: `verdict_sha256`
+`9c7aececf56dc4f5214bfc4a07cd729f347086039dc7ba9193c6edfa3d01ca42`, the tag's, P1's, P2's and P3's;
+eleven `gate.finished` lines with the tag's `gate`, `passed`, `error`, `diagnostics` and `actual`,
+the acceptance line `16 spec(s), 73 reviewed-equivalent` with 0 diagnostics, tests `966/966
+passing`, mutation `score 100.0%, 757 killed`; `run.finished` `b203ab90…` over 127; the lock
+byte-identical after the run; `git status --porcelain` exactly ` M gauntlet.lock.json`; `.gauntlet/`
+exactly the eight — `acceptance-scope.json acceptance-survivors.json coverage.json events.jsonl
+jscpd junit.xml last-green.json run.lock` — after the check and those plus `stop-attempts.json`
+after the skip `20260930T153733-460795`; no `*.tmp`; the one named difference checked from the clone
+by `item7-p4-record-check.py` (`100a2eb348d37c06…`), eight lines all True: sixteen feature keys
+equal to the lock's `spec:` keys, each `spec` digest equal to its lock entry's, seventy-three
+survivors each with `Mutant`'s eight fields, no two sharing a key, their keys exactly the lock's
+seventy-three `mutant:` keys and each signature digest equal to its entry's; the log, stripped of
+`at`, `duration`, `run` and id fields, byte-identical to P3's (14 lines each, `0802782bb8a06e91…`) —
+all agent-measured and quoted, the record `d3128a752c887e70…`. Durations, outside the proof:
+acceptance 1039.099 s against P3's 997.848 s, mutation 21.294 s against 18.46 s. ClaimGate's
+committed lock stays version 1.
+
+Proof, second shape — the tiering throwaway, fifteen rows, before-states by the agent at `9b01c15`
+on Python 3.12.13 (matching the advisor's sandbox figures at `ede9530` wherever the block states
+one) and after-states at `13c923e`, every row as predicted, no departures, the chain as amended. (a)
+the check: the same red line and count, the remedy naming `gauntlet review`, the record present with
+one key, `spec` equal to the lock's digest, two survivors with the eight fields. (b) bare `status`:
+`2 item(s) need your approval`, two `unapproved` mutant items with `-> gauntlet review`, two
+`pending` objects with `namespace` `mutant`, where before WAITING read "nothing needs your approval"
+and `pending` was `[]`. (c) `status --run`: the gate line and the same two items, where before the
+gate's 2 survivors sat four lines above "nothing needs your approval". (d) the spec edited and not
+re-approved: one `spec` item `modified`, no mutant item. (e) `review` answering `a`, A, `s`: item 1
+of 2 showing scenario, `example, line 9`, `amount|75000|high`, `75000 -> 75001`; one entry, reason
+A, reviewer h; one `approval.granted` with `namespace` `mutant`; `status` lists 1 — where before
+`review` said "nothing needs your approval". (f) `review` again with B: two entries, A/h and B/h,
+one scenario. (g) `review --yes`: `approved 0 of 2 item(s). 2 mutant(s) skipped: each needs its own
+reason, and `gauntlet review` without --yes asks for it`, no entry. (h) two scenarios, unscoped
+`approve`: exit 1, "2 scenarios hold survivors to approve ('Amount decides the tier', 'A round
+amount is high'): name one with --scenario, one mutant with --locator, or pass --all-scenarios", no
+entry, no event — where before it swept all three. (i) `--all-scenarios` from (f): `approved` for
+the third survivor only, (e)'s and (f)'s entries byte-identical. (j) `--locator` naming the literal:
+that one entry; `--locator nonesuch`: exit 1, "no current survivor of features/tiering.feature at
+locator 'nonesuch'; nothing written", the lock's digest unchanged. (k) `--scenario` with
+`--all-scenarios`: exit 1, "--all-scenarios cannot narrow: drop it, or drop --scenario and
+--locator", nothing written. (l) `--rewrite --scenario … --reason R2` from (f): both entries
+`rewritten`, reason R2, later `approved_at`, digests unchanged, reviewer dropped. (m) the check from
+(i): green, `1 spec(s), 3 reviewed-equivalent`, the record rewritten with the same three survivors,
+`status` empty, `mutant list` three keys each with its own reason. (n) the baseline broken, from
+(m): `scenarios failing; mutation not run`, the record byte-identical to (m)'s. (o) (i)'s log: one
+`approval.granted` from `mutant approve`, `namespace` `mutant`, `subject`
+`features/tiering.feature`, `count` 1. Before the package, rows (i) to (l) were usage errors on
+options that did not exist, and (o) held no line.
 
 #### Renaming a spec orphans its approval and leaves a dangling key
 
