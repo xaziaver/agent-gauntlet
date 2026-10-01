@@ -102,7 +102,9 @@ Code truncates hook output at 10,000 characters and an honest cap beats a silent
 ### `status --json`
 
 `pending` lists what waits on a human, each item `{namespace, subject, status, action}`: `config`
-items (`gauntlet lock`), `spec` items (`gauntlet spec approve <spec>`), and `mutant` items, whose
+items (`gauntlet lock`), `spec` items (`gauntlet spec approve <spec>` when `unapproved` or
+`modified`, `gauntlet spec unapprove <spec>` when `missing`; package P5, 2026-09-30), and
+`mutant` items, whose
 `subject` is the bare ledger key (`features/x.feature#<locator>`), `status` `unapproved` or
 `modified`, and `action` `gauntlet review`. A consumer that knew two namespaces must accept the
 third (package P4, 2026-09-29).
@@ -436,15 +438,21 @@ deliberate and worth the cost — those tests have caught things no unit test co
   as `modified` and is the reason: survivors measured against other text say nothing about this
   text, and a judgment on them would be about a spec that is no longer there (package P4,
   2026-09-29).
-- **`review --yes` approves everything except mutants.** `--yes` on a changed threshold is a choice
-  the human made knowingly about a diff; an equivalent mutant approved with an empty reason is the
-  rubber stamp the ledger exists to prevent. The closing line counts what it skipped (package P4,
-  2026-09-29).
+- **`review --yes` approves everything except mutants and stale approvals.** `--yes` on a changed
+  threshold is a choice the human made knowingly about a diff; an equivalent mutant approved with
+  an empty reason is the rubber stamp the ledger exists to prevent. The closing line counts what
+  it skipped (package P4, 2026-09-29). A `--yes` after a `git mv` would otherwise delete every
+  judgment the old path held (package P5, 2026-09-30).
 - **`mutant approve` writes only failing survivors unless `--rewrite`.** Unreviewed and re-aimed
   ones; an approval already in the ledger is left byte-identical, reason, reviewer and date alike,
   because re-recording every survivor in scope overwrote judgments nobody had re-made. `--rewrite`
   is the one sanctioned way to change a reason, since the lock is off-limits to hand edits
   (package P4, 2026-09-29).
+- **Un-approving a spec that still exists keeps its mutant approvals; un-approving one that does
+  not removes them.** They are judgments about mutants of the content, keyed by locator and
+  digested by substitution, and count again when the spec is re-approved unchanged. Once the
+  spec is gone nothing can reach them, and the human saying so is the moment they are dead
+  (package P5, 2026-09-30).
 
 ---
 

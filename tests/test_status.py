@@ -327,3 +327,22 @@ def test_status_run_lists_the_survivors_it_just_counted(tiering_project: Path) -
         assert line in waiting
     assert waiting.count("-> gauntlet review") == 2
     assert out.index("✗ acceptance") < out.index("WAITING")
+
+
+def test_a_missing_spec_names_the_unapprove_command(project: Path) -> None:
+    """A missing config path still names `gauntlet lock`, which clears it; an
+    unapproved spec still names `gauntlet spec approve`."""
+    gone = project / "features" / "gone.feature"
+    (project / "pyproject.toml").write_text('[project]\nname = "x"\n')
+    updated, _ = locking.approve_all(project, _cfg(project).verified_paths)
+    registry.save(updated, locking.lock_path(project))
+    gone.write_text(FEATURE)
+    registry.save(specs.approve(project, [gone]), locking.lock_path(project))
+    gone.unlink()
+    (project / "pyproject.toml").unlink()
+    items = [(i.subject, i.status, i.action) for i in status.pending(project, _cfg(project))]
+    assert items == [
+        ("pyproject.toml", "missing", "gauntlet lock"),
+        ("features/gone.feature", "missing", "gauntlet spec unapprove features/gone.feature"),
+        ("features/rating.feature", "unapproved", "gauntlet spec approve features/rating.feature"),
+    ]

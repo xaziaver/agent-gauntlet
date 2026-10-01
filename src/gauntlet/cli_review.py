@@ -35,6 +35,8 @@ def _ask() -> review.Answer:
 
 def _record(root: Path, item: review.Item, reason: str, reviewer: str) -> None:
     registry.save(review.apply(root, item, reason, reviewer), locking.lock_path(root))
+    if item.stale:  # a removal is not a grant
+        return
     events.Log(root).emit(
         events.APPROVAL_GRANTED,
         subject=item.pending.subject,
@@ -44,9 +46,11 @@ def _record(root: Path, item: review.Item, reason: str, reviewer: str) -> None:
 
 def _decide(item: review.Item, yes: bool) -> tuple[review.Answer, str]:
     """The answer and its reason. --yes takes every item without asking, except a
-    mutant: an empty reason on one is the rubber stamp the ledger exists to prevent."""
+    mutant: an empty reason on one is the rubber stamp the ledger exists to prevent;
+    and a stale approval: after a `git mv` removing it deletes every judgment it held."""
     if yes:
-        return (review.Answer.SKIP if item.mutant is not None else review.Answer.APPROVE), ""
+        withheld = item.mutant is not None or item.stale
+        return (review.Answer.SKIP if withheld else review.Answer.APPROVE), ""
     answer = _ask()
     if answer is not review.Answer.APPROVE:
         return answer, ""
@@ -56,9 +60,10 @@ def _decide(item: review.Item, yes: bool) -> tuple[review.Answer, str]:
     return answer, typer.prompt("reason (required)")
 
 
-def _walk(root: Path, items: list[review.Item], yes: bool, reviewer: str) -> tuple[int, int]:
-    """How many were approved, and how many mutants --yes skipped for want of a reason."""
-    approved = withheld = 0
+def _walk(root: Path, items: list[review.Item], yes: bool, reviewer: str) -> tuple[int, int, int]:
+    """How many were approved, how many mutants --yes skipped for want of a reason,
+    and how many stale approvals it skipped rather than remove."""
+    approved = withheld = stale = 0
     for index, item in enumerate(items, start=1):
         _show(item, index, len(items))
         answer, reason = _decide(item, yes)
@@ -67,26 +72,35 @@ def _walk(root: Path, items: list[review.Item], yes: bool, reviewer: str) -> tup
         if answer is review.Answer.APPROVE:
             _record(root, item, reason, reviewer)
             approved += 1
-        elif yes:
-            withheld += 1
-    return approved, withheld
+        elif yes:  # --yes skipped it: a stale approval, or a mutant wanting a reason
+            stale += int(item.stale)
+            withheld += int(not item.stale)
+    return approved, withheld, stale
 
 
-def _closing(approved: int, total: int, withheld: int) -> str:
+def _closing(approved: int, total: int, withheld: int, stale: int) -> str:
     line = f"\napproved {approved} of {total} item(s)"
-    if not withheld:
-        return line
-    return (
-        f"{line}. {withheld} mutant(s) skipped: each needs its own reason, and "
-        f"`gauntlet review` without --yes asks for it."
-    )
+    if withheld:
+        line = (
+            f"{line}. {withheld} mutant(s) skipped: each needs its own reason, and "
+            f"`gauntlet review` without --yes asks for it."
+        )
+    if stale:
+        joint = " " if withheld else ". "
+        line += (
+            f"{joint}{stale} stale approval(s) skipped: removing one is a judgment "
+            f"--yes does not make"
+        )
+    return line
 
 
 @review_app.callback(invoke_without_command=True)
 def review_command(
     reviewer: str = typer.Option("", help="Recorded alongside each approval"),
     yes: bool = typer.Option(
-        False, "--yes", help="Approve everything without prompting, except mutants"
+        False,
+        "--yes",
+        help="Approve everything without prompting, except mutants and stale approvals",
     ),
 ) -> None:
     """Review what is waiting on you, one item at a time."""
@@ -98,6 +112,6 @@ def review_command(
     if not items:
         typer.echo("nothing needs your approval")
         raise typer.Exit(code=EXIT_OK)
-    approved, withheld = _walk(root, items, yes, reviewer)
-    typer.echo(_closing(approved, len(items), withheld))
+    approved, withheld, stale = _walk(root, items, yes, reviewer)
+    typer.echo(_closing(approved, len(items), withheld, stale))
     raise typer.Exit(code=EXIT_OK)

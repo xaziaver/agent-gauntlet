@@ -121,9 +121,9 @@ are always available; nothing is written until you say yes.
 A surviving acceptance mutant waits here too, once a check has recorded it. `gauntlet review` shows
 each one as its scenario, its kind and line, the `Examples` row with its header or the step line,
 and the substitution (`75000 -> 75001`), and asks for a reason for that mutant alone: two survivors
-in one scenario get two reasons. `--yes` approves everything else and skips every mutant, saying how
-many it skipped, because an empty reason on an equivalent mutant is the rubber stamp this command
-exists to prevent.
+in one scenario get two reasons. `--yes` approves everything else and skips every mutant and every
+stale approval, saying how many it skipped, because an empty reason on an equivalent mutant is the
+rubber stamp this command exists to prevent.
 
 ## The gates
 
@@ -148,13 +148,13 @@ Each gate is opt-in: no `[gates.x]` table, no gate.
 | | |
 |---|---|
 | `gauntlet status` | Gates, pending approvals, recent activity. `--run` `--json` |
-| `gauntlet review` | Walk pending approvals one at a time, with the diff or the mutant on screen; `--yes` approves all but mutants |
+| `gauntlet review` | Walk pending approvals one at a time, with the diff or the mutant on screen; `--yes` approves all but mutants and stale approvals |
 | `gauntlet check` | Run the gates. `--gates a,b` `--changed` `--fail-fast` `--json` `--record PATH` |
 | `gauntlet verdict export RUN PATH` | Write a run's verdict record from the event log (`--log FILE` reads any copy); the same shape `check --record` writes from a live run |
 | `gauntlet init` | Scaffold config + integration. `--agent claude-code\|generic` `--dry-run` |
 | `gauntlet doctor` | Is every enabled gate's tooling actually present here? |
 | `gauntlet lock` / `verify` | Approve configuration / check it hasn't drifted |
-| `gauntlet spec approve` / `list` | Approve acceptance specifications |
+| `gauntlet spec approve` / `list` / `unapprove` / `rename` | Approve acceptance specifications; `unapprove` withdraws an approval and takes a vanished spec's mutant approvals with it; `rename` carries every approval after a moved file (`git mv` first) |
 | `gauntlet mutant approve[-code]` / `list` / `prune[-code]` | Classify surviving mutants in a batch. `approve` writes only unreviewed survivors, one scenario at a time: `--scenario`, `--locator` (repeatable) for one mutant, or `--all-scenarios`; `--rewrite` re-records approved ones |
 | `gauntlet mutant migrate` | Rewrite a schema-1 ledger to schema 2. Run once, by a human, after upgrading; every other command refuses a schema-1 ledger in one line until it has run |
 | `gauntlet mutant preview <feature>` | Price a spec edit before making it: every mutant the file would generate, one `locator<TAB>signature` line each on stdout, the count by kind on stderr. Reads the file and nothing else — no project, no approval, no ledger — so it works on a candidate copy anywhere; `diff` two listings to see which approvals an edit strands. Background steps yield no mutants, so a radius read from it is a floor. Exits 1 on a file it cannot read |

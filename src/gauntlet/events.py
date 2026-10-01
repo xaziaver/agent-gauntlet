@@ -3,12 +3,12 @@
 The gates already answer "what is the state now". A dashboard also needs "what
 is happening" — so the commands that run gates or record an approval emit a line
 here, and any live view becomes a tail-and-render rather than a special path into
-internals. Nine of the twenty-two commands do: `check`, `stop-check` and `loop`
+internals. Nine of the twenty-four commands do: `check`, `stop-check` and `loop`
 log their runs and gate results; `status --run` logs its gate results; `guard`
 logs an edit it blocked; `lock`, `review`, `mutant approve` and `mutant
-approve-code` log what they approved. The other thirteen write nothing, `spec
-approve`, `mutant prune`, `mutant prune-code` and `mutant migrate` among them,
-although those change the ledger.
+approve-code` log what they approved. The other fifteen write nothing, `spec
+approve`, `spec unapprove`, `spec rename`, `mutant prune`, `mutant prune-code`
+and `mutant migrate` among them, although those change the ledger.
 
 Two rules. Writing an event must never fail the caller: a broken log is a lost
 line, not a broken gate. And the file is bounded, because an always-on agent

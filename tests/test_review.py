@@ -329,3 +329,140 @@ def test_a_pending_mutant_missing_from_the_record_fails_in_one_line(
     assert gone in result.stderr
     assert result.stderr.count("\n") == 1
     assert result.stdout == ""
+
+
+# --- stale approvals: a subject that was approved and no longer exists ------------
+
+GONE = "features/gone.feature"
+
+
+def _gone_spec(project: Path, *mutant_rows: str) -> list[str]:
+    """Config locked, `rating` and `gone` approved with mutant approvals, then `gone`
+    deleted: its `spec:` item is the only thing waiting. Returns the mutant keys."""
+    (project / "pyproject.toml").write_text('[project]\nname = "x"\n')
+    updated, _ = locking.approve_all(project, _cfg(project).verified_paths)
+    registry.save(updated, locking.lock_path(project))
+    (project / GONE).write_text(FEATURE)
+    approved = specs.approve(project, [project / "features" / "rating.feature", project / GONE])
+    keys = [f"mutant:{GONE}#x|example|amount|{row}" for row in mutant_rows]
+    kept = "mutant:features/rating.feature#x|example|amount|1"
+    for key in [*keys, kept]:
+        approved = registry.approve(approved, key, key.encode(), reason="equivalent")
+    registry.save(approved, locking.lock_path(project))
+    (project / GONE).unlink()
+    return keys
+
+
+def _granted(project: Path) -> list[str]:
+    log = project / ".gauntlet" / "events.jsonl"
+    lines = log.read_text().splitlines() if log.exists() else []
+    return [e["subject"] for e in map(json.loads, lines) if e["kind"] == "approval.granted"]
+
+
+def test_approving_a_missing_spec_in_review_removes_its_approval_and_its_mutants(
+    project: Path,
+) -> None:
+    removed = _gone_spec(project, "1", "2")
+    before = _keys(project)
+    result = runner.invoke(app, ["review"], input="a\n")
+    assert result.exit_code == EXIT_OK
+    assert "Traceback" not in result.output
+    assert before - _keys(project) == {f"spec:{GONE}", *removed}
+    assert _keys(project) <= before
+    assert "mutant:features/rating.feature#x|example|amount|1" in _keys(project)
+    assert status.pending(project, _cfg(project)) == []
+
+
+def test_approving_a_missing_config_path_in_review_removes_its_approval(project: Path) -> None:
+    _gone_spec(project)
+    registry.save(
+        specs.approve(project, [project / "features" / "rating.feature"]),
+        locking.lock_path(project),
+    )
+    registry.save(
+        registry.revoke(registry.load(locking.lock_path(project)), f"spec:{GONE}"),
+        locking.lock_path(project),
+    )
+    (project / "pyproject.toml").unlink()
+    [item] = _items(project)
+    assert item.body == (
+        "pyproject.toml was approved but no longer exists. Approving here removes "
+        "the stale approval."
+    )
+    before = _keys(project)
+    result = runner.invoke(app, ["review"], input="a\n")
+    assert result.exit_code == EXIT_OK
+    assert before - _keys(project) == {"config:pyproject.toml"}
+    assert _keys(project) <= before
+    assert status.pending(project, _cfg(project)) == []
+
+
+def test_a_missing_spec_item_names_its_mutant_count_and_the_rename_command(
+    project: Path,
+) -> None:
+    _gone_spec(project, "1", "2")
+    [item] = _items(project)
+    assert item.pending.status == "missing"
+    assert item.needs_reason is False
+    assert item.body == (
+        f"{GONE} was approved but no longer exists. Approving here removes the stale "
+        f"approval and its 2 mutant approval(s). If the spec was renamed, "
+        f"`gauntlet spec rename {GONE} <new>` carries them instead: skip this item."
+    )
+
+
+def test_a_missing_spec_item_without_mutant_approvals_names_no_count(project: Path) -> None:
+    _gone_spec(project)
+    [item] = _items(project)
+    assert item.body == (
+        f"{GONE} was approved but no longer exists. Approving here removes the stale "
+        f"approval. If the spec was renamed, `gauntlet spec rename {GONE} <new>` carries "
+        f"them instead: skip this item."
+    )
+
+
+def test_removing_a_stale_approval_in_review_emits_no_approval_granted(project: Path) -> None:
+    _gone_spec(project, "1")
+    (project / "pyproject.toml").unlink()
+    assert [i.pending.status for i in _items(project)] == ["missing", "missing"]
+    result = runner.invoke(app, ["review"], input="a\na\n")
+    assert result.exit_code == EXIT_OK
+    assert result.output.rstrip().endswith("approved 2 of 2 item(s)")
+    assert _granted(project) == []
+
+
+def test_review_yes_skips_a_missing_subject_and_says_so(project: Path) -> None:
+    """--yes still approves what it can: the new spec beside the missing one."""
+    held = _gone_spec(project, "1", "2")
+    (project / "features" / "new.feature").write_text(FEATURE)
+    before = _keys(project)
+    result = runner.invoke(app, ["review", "--yes"])
+    assert result.exit_code == EXIT_OK
+    assert "carries them instead: skip this item." in result.output
+    assert result.output.rstrip().endswith(
+        "approved 1 of 2 item(s). 1 stale approval(s) skipped: removing one is a judgment "
+        "--yes does not make"
+    )
+    assert _keys(project) == before | {"spec:features/new.feature"}
+    assert {f"spec:{GONE}", *held} <= _keys(project)
+    assert _granted(project) == ["features/new.feature"]
+
+
+def test_review_yes_names_skipped_mutants_and_stale_approvals_in_one_line(
+    project: Path,
+) -> None:
+    (project / GONE).write_text(FEATURE)
+    registry.save(specs.approve(project, [project / GONE]), locking.lock_path(project))
+    (project / GONE).unlink()
+    spec = project / TIERING
+    spec.write_text(OUTLINE)
+    survivors.write(project, {TIERING: survivors.measured(spec, _survivors())})
+    waiting = status.pending(project, _cfg(project))
+    result = runner.invoke(app, ["review", "--yes"])
+    assert result.exit_code == EXIT_OK
+    assert result.output.rstrip().endswith(
+        f"approved {len(waiting) - 3} of {len(waiting)} item(s). 2 mutant(s) skipped: each "
+        f"needs its own reason, and `gauntlet review` without --yes asks for it. 1 stale "
+        f"approval(s) skipped: removing one is a judgment --yes does not make"
+    )
+    assert f"spec:{GONE}" in _keys(project)
