@@ -5746,7 +5746,13 @@ refuses to treat the renamed spec as approved, which is correct.
 
 **Routes to:** BACKLOG.md, v1, blocking v2. Also the one finding here that became genuinely blocking: an approval inbox with no un-approve path inherits the same dead end. Confirmed absent from Gauntlet's README "Known issues" and BACKLOG.md — new, not a rediscovery.
 
-**Status.** Open.
+**Status.** Applied, 2026-09-30, as G3 item 7 package P5 on `v1/item-7-p5-spec-unapprove-rename`:
+`009fad4` (`gauntlet spec unapprove` and `gauntlet spec rename`, decisions (1), (2) and (6) of the
+block below), `f821615` (`gauntlet review` removes the stale approval its missing item promised,
+`--yes` skips it, `gauntlet status` names `spec unapprove` for a missing spec; decisions (3) to
+(5) and amendment (3a)), `9df527d` (documents). "A rename operation that moves approval keys" is
+`spec rename`; "a warning when a lock key references a path that is not present" was already the
+gate's and `status`'s MISSING state, and `status` now names the command that clears it.
 
 **Note on this entry.** Originally written from inference before the gate had been run, asserting
 that a dangling key was "silent lock-file rot" that "nothing would have told us." The gate output
@@ -6049,6 +6055,93 @@ lock`, an unapproved spec still `gauntlet spec approve`. P3's
 new test's assertion is read for what else its string could match, per the rule of change 3; a
 test that asserts on a refusal asserts the exit code, the `config error:` prefix, the path named
 and the ledger unchanged, not the sentence. *Commit 4:* none.
+
+**Package P5 — change, applied 2026-09-30 (advisor-recommended, human-ratified).** On
+`v1/item-7-p5-spec-unapprove-rename` from `bf3e4ad`: `db4f5a9` (this block, the entry's correcting
+annotation and one Note annotation; script-applied, 2 anchors, 275/0, `a540c540015fa864` →
+`2f477ea377f942f7`), then `009fad4` (decisions (1), (2), (6): `specs.py` gains `SpecError`,
+`Unapproved`, `Renamed`, `mutant_keys`, `unapprove`, `rename` and three private helpers the
+complexity gate asked for — `_withdraw`, `_has_approvals`, `_refuse_rename` — 65 → 166 lines,
+`rename` the largest at 20, deletion count 0; `cli_specs.py` gains the two commands, the path-to-key
+helper `_keys` that turns `ValueError` into `<path> is outside the project` for `approve` too, and
+`_fate` for `unapprove`'s suffix, 38 → 93; seventeen tests, 753 → 776 collected), `f821615`
+(decisions (3) to (5) and amendment (3a): `review.Item.stale`, `_missing_body` with the count and
+the rename fork, `_remove` through `specs.unapprove` for a spec and `registry.revoke` for a config
+path, `cli_review._record` emitting nothing for a removal, `--yes` skipping a stale approval and the
+closing line counting it, the help text "…, except mutants and stale approvals",
+`status.MISSING_SPEC_ACTION` checked in front of `ACTION_FOR`; `review.py` 155 → 182,
+`cli_review.py` 103 → 117, `status.py` 145 → 150; eight tests, 784 collected) and `9df527d`
+(decision (8): README's `spec` row and both `--yes` sentences, ARCHITECTURE's `status --json` clause
+and two "deliberate" bullets, GATES.md's stage-1 sentence, `events.py`'s docstring at nine of
+twenty-four commands with fifteen writing nothing — one hunk, `@@ -3,12 +3,12 @@`, wholly inside the
+docstring; script-applied, 8 anchors). Every commit green on the tool's own gates, 784/784 at the
+tip in 125.283 s, branch coverage 95.56 over 90, line 98.24, no function over 25, complexity 6, crap
+8.21; the harness `bef94f252a191ccd…` over 56 at `9df527d`, recomputed by the advisor from a clone.
+
+Amended and ruled along the way. One amendment, (3a), proposed by the advisor before commit 3 and
+ratified with its prompt: under the block as written a `review --yes` after a `git mv` would have
+deleted the old path's `spec:` key and every mutant approval under it without the fork sentence ever
+being seen — 28 judgments on the subject's `validation.feature` — so a `missing` item is shown and
+skipped under `--yes` as a mutant is, and the closing line says `K stale approval(s) skipped:
+removing one is a judgment --yes does not make`. Twenty-two judgments beyond the block, all
+ratified: the three `specs.py` helpers and `_fate`; `unapprove` removing duplicate paths before
+acting; `rename` printing its count at 0 and working over mutant-only keys, `_has_approvals` being
+the reading of "no approval names"; moved entries carrying a stale in-memory `Entry.key`, on
+`mutants.migrate`'s precedent and with no reader of it under `src/`; the `as mutants_mod` import
+idiom, so ruff's sorting would not merge an existing line; one extra test in commit 2 and two in
+commit 3; the outside-the-project test asserting the phrase, because only the sentence tells that
+refusal from `no such spec`; `Item.stale`, `_walk` tallying by `int(item.stale)` after an `elif`
+reached complexity 7, the closing line's joint (a space after the mutant sentence's period, `. `
+when the stale sentence stands alone); `MISSING_SPEC_ACTION` beside an unchanged `ACTION_FOR`;
+`_missing_body` and `_remove`; README's `--yes` paragraph rewrapped over its three lines (5/5, words
+unchanged); the `spec` row's first cell listing all four commands; the new "deliberate" bullet
+placed last and the GATES sentence continuing stage 1's list item; the command count taken by
+walking the Typer tree (24, `review` counted as its callback). Found and not in this package:
+`status._spec_pending` returns `[]` when `specs.discover` finds no feature file, so a project whose
+only spec was deleted shows no `missing` item in `status` or `review`, and the acceptance gate
+passes vacuously as "no feature files" with the dangling `spec:` key and its mutant keys unread —
+`spec list` alone shows it (advisor-measured at `9df527d`; its own entry at the save point, P6);
+`tests/test_cli.py:422` is 104 characters, E501 under `ruff check tests` and invisible to the static
+gate, which covers `src/` only (a loose end); the four removal paths emit nothing and an
+`approval.revoked` kind is P6's candidate; the gate's MISSING diagnostic and `mutant prune`'s
+missing-file message name the new commands in P6, as decision (7) says.
+
+Proof, second shape, no subject run. The three pins from the block, at `9df527d`: `git diff
+--numstat bf3e4ad HEAD -- src/gauntlet/specs.py` reads `101 0`; the grep for `specs.unapprove`,
+`specs.rename`, `specs.mutant_keys` and `specs.SpecError` under `src/gauntlet` finds six hits in two
+files, `cli_specs.py` and `review.py`; `events.py`'s diff is the one docstring hunk above. The
+verdict cannot move and the harness did: the next verdict-path change's regression session
+recomputes it from its own tip. The tiering throwaway, fifteen rows, before-states by the agent at
+`db4f5a9` on the owner's machine (matching the advisor's sandbox figures at `bf3e4ad`, Python
+3.11.15, wherever the block states one) and after-states at `9df527d`, every row as predicted, no
+departures: (a) the missing item's action `gauntlet spec unapprove features/tiering.feature`, the
+unapproved item's unchanged, `spec list` unchanged; (b) `spec approve` of the vanished path still
+exit 1 `no such spec`; (c) `moved  features/tiering.feature -> features/tiers.feature (2 mutant
+approval(s) moved with it)`, every payload carried, `pending` `[]`, `spec list` `approved
+features/tiers.feature`, the record byte-identical to the base's; (d) the binding moved and the
+check green, `1 spec(s), 2 reviewed-equivalent`, the record re-keyed — where before the rename it
+was `2 unapproved or modified spec(s); mutation not run`; (e) `unapproved  features/tiering.feature
+(2 mutant approval(s) kept)`, the spec item `unapproved`, no mutant item; (f) re-approved, `pending`
+`[]`; (g) the file removed first: `(2 mutant approval(s) removed with it: the spec no longer
+exists)`, the two `config:` keys alone, `spec list` silent; (h) `features/other.feature is not
+approved; nothing written`, exit 1; (i) `no such spec: features/tiers.feature`; (j)
+"features/tiering.feature still exists; a rename moves approvals after a file that has moved. To
+approve a copy, run `gauntlet spec approve features/tiers.feature`"; (k) `features/tiers.feature
+already has approvals; nothing written`; (l) `review` answering `a` then `q`: exit 0, the body
+ending "and its 2 mutant approval(s). If the spec was renamed, `gauntlet spec rename
+features/tiering.feature <new>` carries them instead: skip this item.", `approved 1 of 2 item(s)`,
+the two `config:` keys alone, no new log line — where before it was a `FileNotFoundError` traceback;
+(m) a missing `pyproject.toml` answered `a`: the key gone, no new log line, `pending` `[]` — where
+before the key stayed and `approval.granted` was emitted; (n) a copy outside the project: `approve`
+and `unapprove` each exit 1 `… is outside the project` — where before `approve` was a `ValueError`
+traceback; (o) a rename onto edited content: the `moved` line, then "features/tiers.feature differs
+from the approved content: `gauntlet spec approve features/tiers.feature` re-approves it", the spec
+item `modified`. Row (p), the prompt's own expectation for (3a) and not the block's: `review --yes`
+after the `git mv` exits 0, shows the missing item and skips it, approves the new path, closes
+`approved 1 of 2 item(s). 1 stale approval(s) skipped: removing one is a judgment --yes does not
+make`, the lock the base's five keys plus `spec:features/tiers.feature`, one `approval.granted` for
+it — where before it was the same traceback as (l). Rows (c) and (e) to (k) and (n) were measured by
+the advisor at `009fad4` too.
 
 ### v3 — substrate
 
