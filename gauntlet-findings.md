@@ -4733,6 +4733,37 @@ path, two missing, `count` 1. Small; outside the verdict path.
 **Status.** Open. Found 2026-09-28 by the agent reading the emit site against the block, recorded
 2026-09-30 at package P4's save point.
 
+#### A project whose last spec is deleted hides its dangling approval from `status` and `review`, and the acceptance gate passes vacuously
+
+**What happened.** `status._spec_pending` returns `[]` when `specs.discover` finds no feature file
+(`status.py:100-105` at `9df527d`), before it verifies the ledger's `spec:` keys; and the acceptance
+gate's `run` returns "no feature files", `vacuous`, before it loads the ledger
+(`gates/acceptance.py:262-267`). So a project whose only spec is deleted — or whose `features/`
+directory is moved — keeps its `spec:` key and every `mutant:` key under it, and nothing says so:
+`status --json` lists no pending item, `review` says "nothing needs your approval", and the gate is
+green. Only `spec list` shows `missing`. Found by the agent writing P5's review tests, which keep a
+second spec present for this reason; measured by the advisor at `9df527d` on the tiering throwaway
+with its one spec removed.
+
+**Why it matters.** With two specs the deletion of one is a red gate and a pending item; with one
+it is silence. The vacuous pass is by design for a project that never had specs, and `vacuous`
+marks it — but a ledger holding `spec:` keys is proof the project had them, and a green that hides
+a dangling approval is the "silent lock-file rot" the rename entry was first wrongly accused of,
+reached by another door. P5's `spec unapprove` clears it once the human knows; nothing tells them.
+
+**What would address it.** Two halves. `_spec_pending` verifies the ledger's `spec:` keys even when
+discovery finds nothing — `specs.verify` over an empty path list already reports every approved key
+MISSING, so the early return is the only change, and `review` and `status` get the item free. And
+the gate's no-feature-files branch reads the ledger first: `spec:` keys with no files is the
+approval stage's MISSING state and fails there with the P5 remedy; a ledger with no `spec:` keys
+stays the vacuous pass. The gate half is on the verdict path: on the subject sixteen specs exist, so
+the branch is never entered and the verdict cannot move, but the proof is a subject run.
+
+**Routes to:** BACKLOG.md, v1; package P6, which has a subject run.
+
+**Status.** Open. Found 2026-09-30 by the agent at P5's commit 3, measured by the advisor at
+`9df527d`, recorded 2026-10-01 at package P5's save point.
+
 #### The approval ledger is written non-atomically, and it is the one artifact no gate can rebuild
 
 **What happened.** `registry.save` ends in `path.write_text(...)` — no temp file, no atomic
@@ -7050,6 +7081,14 @@ not drift that escapes it. The corrected inference — "the key resolves, so the
 governs the new substitution" — is the natural reading of the key shape alone, which is why this
 addition exists.
 
+*(Annotation, 2026-10-01: applied mechanically by package P5. `gauntlet spec rename <old> <new>`
+moves `spec:<old>` and every `mutant:<old>#<locator>` key to `<new>` by `entries.pop` with no
+payload touched — digest, reason, reviewer and date travel because none of them names the key —
+and `spec unapprove` keeps an existing spec's mutant approvals for the same reason: they are
+judgments about the content, and they count again when the spec is re-approved unchanged (matrix
+rows (c), (e) and (f) at `9df527d`). The property this entry records is now what two commands rely
+on.)*
+
 ### `mutant approve` records what currently survives, not what was reported
 
 **What happened.** Read from `cli_mutants.py` on 2026-08-30, then observed: `mutant approve` does not
@@ -7069,6 +7108,18 @@ latency on a command a human runs interactively. A refactor that "fixes" that la
 survivors from the last gate run's artifacts would look like a pure optimization, pass every test,
 and quietly convert the approval ceremony from a judgment about the present into a signature on a
 cache. Recorded so the slowness is understood as load-bearing before anyone speeds it up.
+
+### `review --yes` grants approvals and never removes one
+
+Since package P5 (amendment (3a), 2026-09-30) `cli_review._decide` under `--yes` skips a `missing`
+item as it skips a mutant, and the closing line counts it: `K stale approval(s) skipped: removing
+one is a judgment --yes does not make`. The reason is the ledger's shape — a `git mv` leaves the
+old path's `spec:` key and every `mutant:` key under it reading MISSING, and `review.apply` on that
+item is `specs.unapprove`, which removes them all; `--yes` would have done that to the 28 judgments
+on the subject's `validation.feature` with no human reading the fork sentence. A `--yes` that
+removes anything turns a bulk approval into a bulk deletion. Pinned by
+`test_review_yes_skips_a_missing_subject_and_says_so` (`tests/test_review.py`). Recorded 2026-10-01
+at package P5's save point.
 
 ### An approved equivalent mutant is a regression test for its own justification
 
@@ -7407,6 +7458,19 @@ five subject runs, and `grep -c '^\*\*Status\.\*\* Open' gauntlet-findings.md` p
 closes, 26 after. Named for P6 at this pricing: an `approval.revoked` event kind for the four
 removal paths, and the gate's MISSING diagnostic and `mutant prune`'s missing-file message naming
 the new commands.)*
+
+*(Annotation, 2026-10-01: P5 closed at `69bd209`, merged at `9e4120e`; one entry Applied, the
+third v2 blocker. The second shape held on both pins — `specs.py` additive, 101/0, and six
+call-site hits in two files — and all fifteen matrix rows and the amendment's row (p) read as
+predicted at `9df527d`. One amendment, (3a), ratified before commit 3: `review --yes` skips a stale
+approval rather than removing it, recorded under *Properties to preserve*. One entry recorded at
+this save point ("A project whose last spec is deleted hides its dangling approval from `status`
+and `review`, and the acceptance gate passes vacuously"), routed to P6, so the tail is 26 live
+entries in five packages, P6 to P10, and five subject runs, and `grep -c '^\*\*Status\.\*\* Open'
+gauntlet-findings.md` prints 27 until P6 closes — the 26 and the v3 entry; the 2026-09-30
+annotation's "27 live entries" counted the v3 entry among them. P6 opens next with an advisor
+pricing: its three entries, the two P4 save-point entries, the `doctor` crash, and the candidates
+the P5 block's decisions (5) and (7) name.)*
 
 **The v1 backlog's root-cause-diagnostics item needs a fourth category.** It
 currently distinguishes "tool failed," "tool found nothing," and "nothing to

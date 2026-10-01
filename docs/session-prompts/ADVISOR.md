@@ -573,6 +573,24 @@ mutant survive silently; every chained copy is cache-stripped before its first c
 suspect take is kept and retaken beside itself. And, the sandbox being reset between turns once, an
 advisor's notes live in the outputs directory from the first turn, not the working directory.
 
+From package P5 (2026-09-30 to 10-01). Ratifying a block without walking every prompt-skipping flag
+through every new branch — decision (3) made `review.apply` remove a missing spec's approval and its
+mutant approvals, and `--yes` would have taken that branch with no human reading the fork sentence;
+caught by the advisor re-reading `_decide` after commit 2 and amended as (3a) before commit 3. A
+removal reachable from a flag that skips the prompt is a bulk deletion, and the walk belongs to the
+pricing, not the review. Reading a before-state row for what it was written to show and not for
+what it shows — row (g)'s before-state printed `pending []` beside a `spec list` line reading
+`missing`, the deleted-last-spec defect in plain sight, and the block recorded only the `spec list`
+line; the agent found it writing tests two commits later. Every figure a row prints is read, the
+ones the row was not written to test first. Writing a row's prompt answers from one probe's inbox
+order — `status.pending` sorts spec findings by key, so the missing item was first in the tiering
+throwaway and second in the rating probe; measure the order in the fixture the row runs in. Quoting
+a message that itself contains a backticked command inside backticks — markdown cannot nest them,
+and five spans of P5's block were rewritten with quotation marks before it was measured; check for
+them before the digest is taken. And the command count in `events.py`'s docstring is taken by
+walking the Typer tree, never by arithmetic on the last count — "22 plus two" and the walk agreed
+this time, which is not a reason to skip the walk.
+
 
 ## Areas where I will need you most
 

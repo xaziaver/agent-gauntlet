@@ -46,9 +46,9 @@ Everything above the block is hand-written and survives `init`; edit only there.
 - The suite is `.venv/bin/pytest tests -q -p no:cacheprovider`. The `pytest` on PATH is not
   the venv's and collects nothing.
 - The Stop hook budget is 600 s (`.claude/settings.json`) against a full own-run of about two
-  minutes by the event timestamps (104–117 s since package P4). Branch coverage has five points
-  of headroom over its floor; a change that adds an untested branch goes red here before it
-  reaches the subject. The current
+  minutes by the event timestamps (99–125 s since packages P4 and P5). Branch coverage has
+  five points of headroom over its floor; a change that adds an untested branch goes red
+  here before it reaches the subject. The current
   figures are in `BACKLOG.md`'s own-baseline paragraph, and that paragraph wins over this one.
 - ClaimGate is frozen at the annotated tag `prototype-1` (`be87d38`) and is never modified
   by this project: no spec, approval, test, source or configuration change, and no run of

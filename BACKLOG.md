@@ -133,6 +133,31 @@ Every session reads `CLAUDE.md` and this file. Then, per item:
 
 ## Status as of this handoff
 
+**2026-09-30, G3 item 7 package P5 applied (spec un-approve and rename).** On
+`v1/item-7-p5-spec-unapprove-rename` from `bf3e4ad`, merged at `9e4120e`: the human findings commit
+`db4f5a9` (one block — eight decisions, a fifteen-row matrix, 21 test names — the entry's correcting
+annotation and one Note annotation; script-applied, 2 anchors, 275/0), `009fad4` (`gauntlet spec
+unapprove` withdraws an approval, keeping an existing spec's mutant approvals and removing a
+vanished spec's; `gauntlet spec rename` carries every approval after a moved file, payloads
+untouched, four refusals; a spec path outside the project is a `config error:`; `specs.py` additive,
+65 → 166), `f821615` (`gauntlet review` removes the stale approval its missing item has promised
+since `998cea1` — a spec through `specs.unapprove`, a config path through `registry.revoke`, no
+`approval.granted` for a removal; `--yes` skips a stale approval and says so, amendment (3a),
+ratified before the commit; `status` names `gauntlet spec unapprove <spec>` for a missing spec),
+`9df527d` (README, ARCHITECTURE, GATES.md, the `events.py` docstring at nine of twenty-four
+commands), and the close `69bd209`, committed 2026-09-30 local and 2026-10-01 UTC. The package did
+not split and grew by nothing. Second shape, no subject run: `specs.py` pinned additive by a zero
+deletion count and six call-site hits in two files, the rest by the designed boundary of
+2026-09-20; fifteen matrix rows and the amendment's row (p) as predicted at `9df527d`, before-states
+by the agent at `db4f5a9`. 25 named tests added (753 → 784 collected), suite 99–125 s across the
+own runs, coverage 98.24 / 95.56; harness `bef94f252a191ccd` over 56. Twenty-two judgments beyond
+the block, all ratified and recorded in the applied paragraph. Found and not in this package: a
+project whose last spec is deleted hides the dangling approval from `status` and `review` and the
+acceptance gate passes vacuously (its own entry, P6); `tests/test_cli.py:422` is 104 characters,
+E501 under `ruff check tests` and invisible to the static gate, which covers `src/` (loose end); an
+`approval.revoked` event kind, the gate's MISSING diagnostic and `mutant prune`'s missing-file
+message naming the new commands (P6, from the block's decisions (5) and (7)).
+
 **2026-09-30, G3 item 7 package P4 applied (approve one mutant at a time).** On
 `v1/item-7-p4-one-at-a-time` from `ede9530`, merged at `50c5d9d`: the human findings commit
 `9b01c15` (one block — seven decisions, one prediction, a fifteen-row matrix, 27 test names — five
@@ -479,13 +504,17 @@ xargs -0 sha256sum | sha256sum` at that commit: `gauntlet` is installed with `uv
 
 **This repository's own baseline.** Nine gates configured: protect, static, size, complexity, tests,
 coverage, crap, duplication, acceptance; no `[gates.boundary]` or `[gates.mutation]`.
-The hand `gauntlet check` at the tip of item 7 package P4, run `20260930T181749-469456` at
-`3136a96`, stamped 2026-09-30T18:17:49Z to 18:19:34Z, agent-quoted: protect 3/3 paths unchanged;
-static 0 findings; size worst function 25; complexity 6; tests 753/753 passing in 104.359 s;
-coverage line 98.08, branch 95.2 against floors of 95, 90 and per-file 80; crap 8.21; duplication 0;
-acceptance "no feature files" (vacuous). Diagnostics 0 and error null on all nine; `run.finished`
-tree `a61a9a10427c9d52…` over 102 files; the harness `7ad2fef492e78e5b…` over 56, recomputed by the
-advisor from a clone. Before item 7 package P4, at the tip of package P3 (`6466055`), the suite was
+The hand `gauntlet check` at the tip of item 7 package P5, run `20261001T004606-497098` on the
+tree of `9df527d` — the close `69bd209` changed only `gauntlet-findings.md`, outside the hashed tree
+— stamped 2026-10-01T00:46:06Z to 00:47:46Z, agent-quoted and read by the advisor from the paste:
+protect 3/3 paths unchanged; static 0 findings; size worst function 25; complexity 6; tests 784/784
+passing in 99.361 s; coverage line 98.24, branch 95.56 against floors of 95, 90 and per-file 80;
+crap 8.21; duplication 0; acceptance "no feature files" (vacuous). Diagnostics 0 and error null on
+all nine; `run.finished` tree `93974ea6f44a67d8…` over 102 files; the harness `bef94f252a191ccd…`
+over 56, recomputed by the advisor from a clone. Before item 7 package P5, at the tip of package P4
+(`3136a96`, run `20260930T181749-469456`), the suite was 753 tests at 104–117 s, coverage 98.08 /
+95.2 over 102 files, tree `a61a9a10427c9d52…`, harness `7ad2fef492e78e5b…` over 56. Before item 7
+package P4, at the tip of package P3 (`6466055`), the suite was
 703 tests at 60.8–73.9 s, coverage 98.01 / 95.03 over 99 files, harness `9665f4ba4e4fd37f…` over 54.
 Before item 7 package P3, the hand check at the tip of package P2, run `20260923T225550-479480` at
 `27a0fca`, stamped 2026-09-23T22:55:50Z to 22:56:44Z, agent-quoted and read by the advisor from the
@@ -514,7 +543,7 @@ s at 96.87 / 92.41 over 95 files. Before item 3 (run
 item 2 (run `20260913T222626-2654730`) the suite was 511 tests in 50.161 s at 96.6 / 91.89. Before item 1 (run
 `20260913T093143-2601684`, after G2d) the suite was 498 tests in 36.328 s at 96.54 / 91.75; the two
 item-1 tests that run a real pytest-bdd project account for about 9 s of the difference. Stop hook
-budget 600 s; a full own-run is about 105 s by the timestamps since P4 (57 s before item 7).
+budget 600 s; a full own-run is 99–125 s by the timestamps since P4 and P5 (57 s before item 7).
 The suite is `.venv/bin/pytest tests -q -p no:cacheprovider`; the `pytest` on PATH is not the
 venv's and collects nothing. Branch coverage has 5.2 points of headroom over its floor: a G3
 change that adds an untested branch goes
@@ -531,8 +560,9 @@ with `drive` at 24; `gates/base.py` 230 since P3 with `run_cmd` at 25 of 25 sinc
 `tree.py` 249; `mutants.py` 273 since P4 with `migrate` at 24; `mutant_scope.py` 41 (new in P4);
 `cli_mutants.py` 300 of 300 since P4 with `mutant_approve` and `_record` at 25 of 25 and
 `mutant_migrate` at 24 — the next package that touches it moves a command group out first, as a
-named refactor commit; `status.py` 145 since P4 with `_mutant_pending` at 17; `review.py` 155 and
-`cli_review.py` 103 since P4; `cli_status.py` 49; `doctor.py` 264 since P3; `stop.py` 112 since P3;
+named refactor commit; `status.py` 150 since P5 with `_mutant_pending` at 17; `review.py` 182 and
+`cli_review.py` 117 since P5; `specs.py` 166 since P5 with `rename` at 20; `cli_specs.py` 93 since
+P5; `cli_status.py` 49; `doctor.py` 264 since P3; `stop.py` 112 since P3;
 `acceptance/strands.py` 71, `runner.py` 146, `verdict.py` 210, `cli_verdict.py` 54, `cli_support.py`
 62, `events.py` 127. The five functions at the ceiling each force an extraction before the next
 change to them; the five at 24 are one line from it.
