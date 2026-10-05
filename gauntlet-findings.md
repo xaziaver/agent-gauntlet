@@ -1986,6 +1986,321 @@ one of the five fields `verdict_sha256` reads (`verdict.py:62-66`), so text adde
 in a new `gate.finished` field and in the printed report, which the verdict cannot see. Package P6,
 with the pass-path `systemMessage` and the two `status` entries.)*
 
+**Package P6a — what the gates say. Design decisions, advisor-recommended, human-ratified
+2026-10-01.** One block for the package, per the rule of 2026-09-20; it sits here because this
+entry's 2026-09-20 annotation names the constraint the package is built on — the counts go in a new
+`gate.finished` field and the printed report, never in `actual` — and the other entries point at it.
+**P6 split at this pricing, ratified 2026-10-01.** As routed it held three entries and ten
+candidates, twice P3's count, and could not be held in one block, so by the Note's own rule it
+splits, at the verdict path. P6a is this entry — the killed count, with the pass-path
+`systemMessage` its 2026-09-07 addition asks for — "The mutation gate reports one project-wide total
+with no per-module attribution", "A project whose last spec is deleted hides its dangling approval
+from `status` and `review`, and the acceptance gate passes vacuously" (both halves), the mutation
+gate's spinner cut named under "mutmut's copy omits `features/`", and `registry.describe`'s MISSING
+sentence from P5's decision (7). P6b — "The two ledger figures most quoted in prose are the two no
+status surface reports", "`gauntlet doctor` crashes on a configured interpreter that does not
+exist", "`status --run` runs the gates without the run lock `check` takes", "`lock`'s
+`approval.granted` count counts skipped paths", the `config error:` prefix, `approval.revoked`,
+`mutant prune`'s missing-file message with the `cli_mutants.py` refactor it forces, `review.py`'s
+copied sentence, and `status --json`'s `passed: false` with no gate run, found at this pricing — is
+second shape, no subject run, priced when P6a closes. Subject runs stay five; the packages become
+eleven. Branch `v1/item-7-p6a-what-the-gates-say` from `55bc5a6`; four code commits in this order,
+then the documents commit, one subject run at the tip, one close. Commit 1 is this block. Commit 2
+is decisions (1) to (3), commit 3 decisions (4) and (5), commit 4 decisions (6) and (7), commit 5
+decision (8), commit 6 decision (9). Everything below that describes existing code was read by the
+advisor at `55bc5a6` from a clone; every figure labelled measured was taken there on Python 3.11
+with mutmut 3.7.0, or by the agent's ground report of 2026-10-01
+(`~/gauntlet-review/p6-ground-2026-10-01.md`, 512 lines, sha256 `8ed899e227ac14ec`) on Python 3.14,
+and the agent retakes every throwaway before-state on the owner's machine before code moves.
+
+Five measured facts frame the prediction. `verdict.DIGEST_KEYS` is `gate`, `passed`, `error`,
+`diagnostics`, `actual`; `digest` reads exactly those keys and `from_lines` reads only the six
+`GATE_KEYS`, so a seventh key on a `gate.finished` line is invisible to `verdict_sha256` and absent
+from the committed record by construction. `runner._finished` emits six explicit keyword arguments,
+not a payload dict, so a seventh key is one conditional argument there and one field on
+`base.GateResult`. `report.to_json` is `GateResult.to_dict`, which is `asdict`, so a new field
+enters `check --json` on every gate with no further change. `gates/acceptance.survivors_for` returns
+`[chosen[index] for index in alive]` and discards `len(chosen)`: no killed count exists anywhere at
+`55bc5a6`, and this entry's "the outcome object already distinguishes killed from surviving" is
+false — `report.MutationOutcome` carries diagnostics, equivalent, stale, not_measured, relocated and
+the survivor record, never a total. And mutmut 3.7.0, ClaimGate's at the tag, prints every mutant
+with its status to `mutmut results --all 1` in the ` <name>: <status>` shape `MUTMUT_RESULT_LINE`
+already parses, where `mutmut results` prints the unkilled only and a bare `--all` fails for want of
+a value; the call reads `mutants/*.meta` and writes nothing (every file under `mutants/` unchanged
+in mtime and size across it, measured in the sandbox and in the clone), so "costs nothing to
+compute" in the per-module entry is wrong by one subprocess, and the clone's leftover `mutants/`
+from P4's run already gave the subject's answer: 757 killed over twelve modules, sixteen `.meta`
+files walked, so four walked files hold no mutant.
+
+**(1) `GateResult.counts`, and the log carries it only where a gate produced one.**
+`base.GateResult` gains `counts: dict[str, dict[str, int]] | None = None`: per subject — a spec key
+for acceptance, a dotted module for mutation — `{"killed": K, "total": T}`, where `total` is the
+mutants the gate ran against that subject and `killed` the ones that did not survive, approved
+equivalents and re-aimed survivors counted as surviving, exactly the arithmetic both summaries
+already use for their project-wide figures. `runner._finished` passes `counts=result.counts` only
+when it is not None, so the nine gates that count nothing emit the line they emit today, byte for
+byte, and the two that count gain one key. `actual` is not touched on any gate: the field exists
+because `actual` is digested and this one is not, the constraint of this entry's 2026-09-20
+annotation. `verdict.GATE_KEYS` and `DIGEST_KEYS` are not touched, so the record stays a verdict and
+`verdict export` of an archived run is byte-identical to item 3's. `check --json` carries `counts`
+on every gate through `asdict`, null on nine — the P4 precedent for a new field, recorded in
+ARCHITECTURE under decision (9).
+
+**(2) The acceptance gate counts per spec.** A new public `gates/acceptance.measure(ctx, config,
+path, steps) -> tuple[int, list[Mutant]]` — the mutants run and the survivors — is `survivors_for`'s
+body, and `survivors_for` becomes its second element, docstring kept, so `mutant approve` and
+`prune` (the two callers outside the gate, both through `cli_mutants._current_survivors`) keep the
+function they share with the gate and never disagree with it. `_classify_feature` calls `measure`;
+`report.MutationOutcome` gains `counts: dict[str, dict[str, int]]`, one key per measured feature,
+and `merged` merges it as it merges `measured`; a spec that raised `NotMeasuredError` is absent from
+it, as it is from the survivor record — "not measured" means no count, by the P1 rule.
+`_mutation_result` hands `outcome.counts` to `_result`; the approval and baseline failures,
+`mutate_examples = false` and the vacuous pass carry None. `total` is `len(chosen)`, the sampled set
+when `mutation_sample` is set, because that is what was run; on the subject the sample is 0 and the
+total is the enumeration.
+
+**(3) The printed report says what it counted, on the green path.** `report._render_result` appends,
+after the header line and only when `counts` is not None and the gate passed, one line per subject
+in key order, ` features/x.feature 71/73 killed`, and ` <subject> no mutants` when the total is 0 —
+a spec whose scenarios are all Background, or a module mutmut walked and found nothing in, which is
+the signature this entry and the per-module entry both ask for. On a failing gate the lines are not
+printed: the diagnostics already say per scenario what survived, and P3 paid for the hook's output
+cap; the counts are still in `check --json` and the event. `summary_line`, `status_render` and
+`verdict` are untouched.
+
+**(4) The mutation gate counts per module.** `adapters.python.run_mutmut` runs `mutmut results --all
+1` where it ran `mutmut results`; `parse_results` is unchanged and buckets every status;
+`MutationRun` gains `statuses: dict[str, str]`, name to status, and `survivors` stays the `survived`
+bucket of the same parse. `total` stays `parse_total`'s progress fraction, so `score` and `actual`
+are computed from exactly the figures they are computed from today.
+`gates/mutation._classified_result` builds `counts` from `statuses`: per
+`parse_mutant_name(name)[0]`, `total` the names and `killed` the names whose status is not
+`survived` — the gate's own rule, killed is total less survivors, applied per module; the
+uninspected cap does not touch it. `_judge` carries it to the result; `_nothing_changed`,
+`_no_mutants` and `_tool_failure` carry None. Where mutmut's progress total and its results count
+disagree, `actual` keeps the progress total and `counts` keeps the names, and nothing reconciles
+them: on the subject both are 757 (measured). The set of modules under `source_paths` that mutmut
+never walked is P9's scope report, as the 2026-09-19 ruling placed it; this package reports what
+mutmut counted and names a walked module with no mutant only through the zero in its line.
+`SKIPPED_BUCKETS`, defined in `gates/mutation.py` and used by nothing in `src/` (grep,
+case-sensitive, `SKIPPED_BUCKETS`), is removed in the same commit.
+
+**(5) A tool failure's text is its cause, not its spinner.** `adapters.python.SPINNER_CHARS` and a
+pure `strip_spinner(text)` — every line whose first non-blank character is a braille spinner glyph
+dropped — move the constant out of `status_render`, which imports it; `_no_mutants` returns the last
+800 characters of the stripped text, because mutmut's output ends on its cause — "ERROR
+tests/steps/test_tiering.py - FileNotFoundError: …", "failed to collect stats. runner returned 2" —
+and today's cut keeps 800 characters of "⠋ Generating mutants" with the cause past them (measured,
+matrix row (e)); `gates/mutation._tool_failure` drops its own `[:800]`, since every text reaching it
+is already bounded by the adapter and a second cut after `explain` prepends `ARTIFACT_HINT` would
+drop the tail again. The 800-character bound is unchanged.
+
+**(6) A ledger with `spec:` keys and no spec files is a missing spec, not a vacuous pass.**
+`gates/acceptance._stages` loads the ledger first, as today, then returns the vacuous `no feature
+files` only when there are no feature files *and* the ledger holds no `spec:` key; with keys and no
+files it proceeds, and the approval stage reports every key MISSING with the remedy of decision (7)
+— `1 unapproved or modified spec(s); mutation not run` for one, the summary the two-spec case prints
+today (measured, row (h)); `run` no longer short-circuits before `_stages`. Two consequences, both
+named: an unreadable lock with no feature files is now the red result `_stages` already gives it
+with files, where today the ledger was never read; and with `require_approved = false` dangling keys
+are nobody's business, as a modified spec is today. `status._spec_pending` drops its early return:
+`specs.verify` over an empty list reports every approved key MISSING (`read_subjects` of nothing,
+`verify_namespace` against it — read), so `status` lists the item with P5's `gauntlet spec unapprove
+<spec>` and `review` walks it through the removal P5 built, with nothing else changed in either. The
+deleted-spec entry's two halves are one commit.
+
+**(7) `describe`'s MISSING sentence names the withdrawing command.** `registry.describe` gains
+`withdraw: str = "gauntlet lock"`, and its MISSING text reads "<key> was approved but no longer
+exists. Restore it, or have the human withdraw its approval with `<withdraw>`." — `gauntlet lock`
+for a verified path, which drops a missing path's entry because `locking.approve_all` replaces the
+namespace (measured, row (m): the entry gone and protect green after), and `gauntlet spec unapprove
+<spec>` where `report.approval_diagnostics` calls it, the command P5 built for exactly this. The
+protect gate and `cli_support.emit_findings` keep the default. The UNAPPROVED and MODIFIED texts are
+untouched. `mutant prune`'s "no such feature file" message, the other half of P5's decision (7), is
+P6b's, with the refactor it forces.
+
+**(8) `stop-check` says so when it passes and when it skips.** On a run that passed, `stop_check`
+prints one JSON line, `{"systemMessage": …}`, before exit 0, through a `_pass` helper in `cli.py` so
+`stop_check` stays at 24 lines; `stop.passed_message(results, run_id)` composes it: "gauntlet
+stop-check passed — N gate(s) green", then for each gate with counts "<gate> K/T killed" summed over
+its subjects, then "run <id>", joined by "; " — on the subject it would read "gauntlet stop-check
+passed — 11 gate(s) green; acceptance 1190/1263 killed; mutation 757/757 killed; run <id>". `_reuse`
+prints `{"systemMessage": "<skip line>"}` where it printed the bare skip line, the line's words
+unchanged; the `run.reused` event is untouched. Both, because Claude Code's hook reference says
+`systemMessage` is shown to the user on every hook event, exit 0 included (read 2026-10-01 at
+code.claude.com/docs/en/hooks), and the skip is the common turn end on this repository — a pass
+message beside a silent skip would move the silence, not remove it. The costs, named: the skip's
+stdout is a JSON line, so the protocol sentence "one that skipped prints one line naming the green
+run" becomes "prints one JSON line carrying it" in ADVISOR.md at the save point and wherever
+CLAUDE.md quotes the shape, under decision (9); ClaimGate's wrapper passes `gauntlet stop-check`'s
+stdout through unchanged (read at `be87d38`), so its own skip line is untouched and a full pass
+there now reaches the operator. If the message proves noisy it is one line to remove, and this
+entry's 2026-09-07 and 2026-09-13 additions are the case for it.
+
+**(9) Documents.** README: what `gauntlet check` prints on a green acceptance and mutation gate, and
+that the Stop hook now says so on a pass and a skip. ARCHITECTURE: the `gate.finished` contract
+gains `counts` on the two gates, keyed as decision (1) says, and `check --json` carries it on every
+gate; under "Things that look wrong but are deliberate": the counts live beside `actual` and never
+in it, because `actual` is one of the five digested fields and a count that changes with every spec
+would re-baseline every comparison; and `stop-check`'s stdout is JSON on a pass and a skip.
+`docs/GATES.md` acceptance and mutation: the counts, the green-path lines, `no mutants`, the
+spinner, and the no-files rule of decision (6). `CLAUDE.md` only where it quotes the skip line's
+shape. `events.py`'s docstring is unchanged: no command starts or stops emitting.
+
+**Predicted effect on the regression subject.** Two differences, named, both on `gate.finished`
+lines and neither in the digest. One run at the branch tip, protocol as for every package since item
+3, `.gauntlet/` and `mutants/` removed first, Gauntlet reinstalled by `git+file…@<tip>`, the harness
+recomputed and quoted from the pipeline. After the check, the acceptance line carries a seventh key,
+`counts`, holding sixteen entries, killed/total: `features/carrier_configuration.feature` 71/73,
+`continuous_coverage` 156/156, `coverage_verification` 108/108, `duplicate_evaluation` 46/46,
+`duplicates` 39/57, `idempotency` 44/46, `jurisdiction_date` 20/20, `jurisdiction_selection` 54/55,
+`notice_intake` 56/56, `policy_identification` 54/54, `policy_match` 112/112, `resolution` 131/133,
+`siu_indicators` 32/39, `siu_separation` 51/53, `triage` 79/90, `validation` 137/165 — totals from
+the engine at `55bc5a6` over `git archive prototype-1 features`, 1263 = 808 `example` + 455
+`literal` as at the tag; killed is the total less the lock's approvals per feature, 73 in all, since
+the subject has no failing survivor (advisor-measured 2026-10-01). The mutation line carries
+`counts` with twelve entries, each `killed` equal to `total`:
+`claimgate.domain.carrier_configuration` 93, `carrier_identity` 12, `continuous_coverage` 83,
+`coverage` 96, `duplicates` 56, `jurisdiction` 38, `policy_identification` 72, `policy_match` 41,
+`siu` 68, `term_periods` 73, `triage` 13, `validation` 112 — the agent's ground report, from the
+clone's leftover `mutants/`, which a cold run on the same tree reproduces or the prediction fails.
+The other nine `gate.finished` lines are byte-identical to P4's with ids, times and durations
+dropped. The eleven lines carry the tag's `gate`, `passed`, `error`, `diagnostics` and `actual`:
+`protect` `3/3 paths unchanged`, `static` `0 findings`, `size` `{"worst_function_lines": 25}`,
+`complexity` `6`, `boundary` `18 step file(s), 0 direct import(s)`, `tests` `966/966 passing`,
+`coverage` `{"branch": 100.0, "line": 100.0}`, `crap` `6.0`, `duplication` `0`, `mutation` `score
+100.0%, 757 killed`, `acceptance` `16 spec(s), 73 reviewed-equivalent`, 0 diagnostics and null
+`error` on all eleven. The record's `verdict_sha256` is `9c7aececf56dc4f5…`; its `verdict` list
+holds the six `GATE_KEYS` per gate and no `counts`. The lock after the run is byte-identical to
+`3749d099bb77c55d`; `git status --porcelain` reads exactly ` M gauntlet.lock.json`; `.gauntlet/`
+lists exactly eight entries after the check — `acceptance-scope.json acceptance-survivors.json
+coverage.json events.jsonl jscpd junit.xml last-green.json run.lock` — and those plus
+`stop-attempts.json` after the skip, P4's listing, which the ground report found in the clone as P4
+left it; no `*.tmp` anywhere. The skip, `printf '{}' | gauntlet stop-check --max-attempts 1`, exits
+0, emits one `run.reused`, and prints one line, `{"systemMessage": "gauntlet stop-check skipped:
+gated tree unchanged since green run <the check's id>, <its at>"}` — decision (8)'s shape, where
+every earlier package's skip printed the bare sentence. The run's own stdout, the `check --record`
+report, gains sixteen lines under `acceptance` and twelve under `mutation` by decision (3); the
+record file is unchanged in shape. What the package could reach and why it does not: (1) `actual` on
+two gates, not touched by construction, and the summaries' tests pin the strings; (2)
+`survivors_for`'s callers, which receive the same list; (4) `score`, computed from the same `total`
+and the same `survived` bucket of a superset listing; (5) and (6) only on a run with a tool failure
+or no feature files, which the subject's green tree with sixteen specs never enters; (7) only on a
+MISSING finding, of which the subject has none, and text is not in the digest anyway; (8) only on
+`stop-check`, which the recorded run is not, and on the skip, named above. The harness digest moves
+and is recomputed at the tip. No duration is stated.
+
+**Second proof, one throwaway matrix, thirteen rows**, before-states measured by the advisor at
+`55bc5a6` in a sandbox (Python 3.11.15, mutmut 3.7.0, Gauntlet installed from the clone into a venv
+carrying pytest and pytest-bdd) and retaken by the agent on the owner's machine before code moves;
+after-states at the branch tip. The base is the P5 base of `~/gauntlet-review/p5-throwaway/base` —
+the `tiering` project of `tests/test_cli_mutants.py`, locked, five keys, two survivors approved —
+plus one commit adding a `.gitignore` of one line, `__pycache__/`, which rows (i) and (j) need: the
+tree hash counts untracked-not-ignored files, and the base's pycache moved it from 8 files to 6
+between the base and a stripped copy (ground report, step 2a). Before any row, `git ls-files | grep
+-c __pycache__` prints 0 in the base, or `git rm -r --cached` the offenders first — a tracked
+pycache stripped from disk is a tracked file missing on disk, and the tree hashes null (measured, in
+the advisor's first sandbox base). Every copy is cache-stripped before its first command; every row
+starts from the base unless it says otherwise; a red `check --json` prints to stderr, so every row
+reads it with `2>&1`; a row that edits a spec runs `gauntlet spec approve` on it before its check.
+Measured at the base: `check --gates acceptance` green, `1 spec(s), 2 reviewed-equivalent`, 0
+diagnostics; the engine 4 mutants, 4 `example`; `check --json`'s gate object has the keys `actual
+diagnostics diagnostics_truncated duration error gate passed threshold vacuous`; the `gate.finished`
+line six payload keys. (a) the green check: after, the same `actual` and `passed`, `counts`
+`{"features/tiering.feature": {"killed": 2, "total": 4}}` in `--json` and on the event line, the
+human report with one line ` features/tiering.feature 2/4 killed` under the gate's header, and
+`.gauntlet/acceptance-survivors.json` as before. (b) a third Examples row `| 200 | standard |`
+appended, the spec re-approved, then the check: before, red, `1 spec(s), 1 surviving mutant(s), 2
+reviewed-equivalent`, one diagnostic (`200->201`), the engine 6 mutants; after, the same red,
+`counts` `{"features/tiering.feature": {"killed": 3, "total": 6}}` in `--json`, no count line in the
+human report. (c) an approved spec no module binds — `features/unbound.feature`, one plain scenario
+(`Given an amount of 5`, `Then the tier is "standard"`), `gauntlet spec approve` after it — then the
+check: before, red, `2 spec(s), 1 spec(s) not measured, 2 reviewed-equivalent`, one `not measured`
+diagnostic, the record's keys `features/tiering.feature` alone; after, the same, and `counts` holds
+`features/tiering.feature` alone, 2/4. (d) `[gates.mutation]` enabled, `[tool.mutmut]` with
+`source_paths = ["src/"]`, `pytest_add_cli_args_test_selection = ["tests/unit/"]`, `also_copy =
+["conftest.py", "tests/"]`, and `tests/unit/test_rating.py` asserting `tier(50001) == "high"` and
+`tier(50000) == "standard"`, then `check --gates mutation`: before, green, `score 100.0%, 6 killed`,
+`mutmut results --all 1` six `rating` lines all `killed`; after, the same `actual`, `counts`
+`{"rating": {"killed": 6, "total": 6}}`, one human line ` rating 6/6 killed`. (d2) as (d) with the
+unit test asserting only `tier(75000) == "high"`: before, red, `score 33.33%, 2 killed, 4
+unresolved`, four diagnostics, `results --all 1` two `killed` and four `survived`; after, the same
+`actual` and diagnostics, `counts` `{"rating": {"killed": 2, "total": 6}}`, no human count line. (e)
+`[gates.mutation]` and `[tool.mutmut]` with `source_paths` alone, no selection, then `check --gates
+mutation`: before, red, `error` 949 characters beginning "⠋ Generating mutants", the cause past the
+800-character cut and only `done in 50ms (1 files mutated, 0 ignored, 0 unmodified)` inside it, then
+the fallback note; after, `error` holds no line beginning with a spinner glyph, is at most 800
+characters before the note, and ends on the cause — "ERROR tests/steps/test_tiering.py -
+FileNotFoundError: …", the collection interrupt and "failed to collect stats. runner returned 2",
+then the note. (f) the last spec deleted, `rm features/tiering.feature`: before, `status` WAITING
+"nothing needs your approval", `--json` `pending` `[]`, `spec list` `missing
+features/tiering.feature`, `review --yes` "nothing needs your approval" exit 0, the check green `no
+feature files` vacuous, five keys (ground report, 2b); after, one pending item — `spec`,
+`features/tiering.feature`, `missing`, action `gauntlet spec unapprove features/tiering.feature` —
+in `status` and `--json`, `review` walking it with P5's fork sentence, the check red `1 unapproved
+or modified spec(s); mutation not run` with one `missing` diagnostic whose message ends "withdraw
+its approval with `gauntlet spec unapprove features/tiering.feature`.", `vacuous` false, five keys
+still; then `gauntlet spec unapprove features/tiering.feature` and the check again: green, `no
+feature files`, vacuous, two keys. (g) a project that never had a spec — the base with
+`features/tiering.feature` removed and `gauntlet spec unapprove features/tiering.feature` run first,
+two keys: before and after alike, the check green `no feature files` vacuous, `status` nothing
+pending (measured before). (h) a second spec `features/round.feature` — `Scenario: A round amount is
+high`, `Given an amount of 60000`, `Then the tier is "high"` — bound by `tests/steps/test_round.py`
+(the tiering bindings with its own `scenarios` line), `gauntlet spec approve
+features/round.feature`, committed, then `rm features/round.feature` and the check: before, red, `1
+unapproved or modified spec(s); mutation not run`, one `missing` diagnostic reading
+"features/round.feature was approved but no longer exists. Restore it, or ask the human to remove
+its approval.", `status` one `spec` item `missing` with the P5 action; after, the same summary and
+item, the message ending "withdraw its approval with `gauntlet spec unapprove
+features/round.feature`.". (i) `.gauntlet/` removed, then `printf '{}' | gauntlet stop-check`:
+before, exit 0, stdout and stderr both empty, `run.finished` with `files` 6, `.gauntlet/` holding
+`acceptance-scope.json acceptance-survivors.json events.jsonl last-green.json run.lock
+stop-attempts.json`; after, exit 0, stderr empty, stdout one JSON line whose `systemMessage` reads
+"gauntlet stop-check passed — 1 gate(s) green; acceptance 2/4 killed; run <id>", the same events and
+listing. (j) `stop-check` again on the unchanged tree: before, exit 0, stdout the bare line
+"gauntlet stop-check skipped: gated tree unchanged since green run <id>, <at>", one `run.reused`
+with `files` 6; after, stdout `{"systemMessage": "<that line>"}`, the same event. (k) `check --gates
+acceptance --json` at the base: after, the gate object's keys are the before's plus `counts`; and on
+this repository's own `gauntlet check --json`, every gate shows `"counts": null` — one look, no row
+of its own. (m) `[gates.protect]` enabled, `gauntlet lock`, committed, then `rm pyproject.toml` and
+`check --gates protect`: before, red, `2/3 paths unchanged`, one `missing` diagnostic ending "ask
+the human to remove its approval.", `gauntlet verify` the same sentence at exit 2; after, the same
+summary and the message ending "withdraw its approval with `gauntlet lock`."; then `gauntlet lock`:
+before and after alike, `skipped pyproject.toml (does not exist)` and the entry gone, protect `3/3
+paths unchanged` after — the protect gate counts configured paths, skipped ones included, the figure
+`lock`'s count entry already names, P6b's.
+
+**Tests that pin it, by commit; twenty-one named as a floor, plus any the code needs and the ones
+that move.** *Commit 1:* none, and that is the pin. *Commit 2, decisions (1) to (3):*
+`test_a_gate_result_counts_default_to_none_and_enter_to_dict`,
+`test_the_runner_emits_counts_only_on_a_gate_that_counted`,
+`test_the_acceptance_gate_counts_killed_and_total_per_spec`,
+`test_a_spec_that_was_not_measured_has_no_count`, `test_survivors_for_is_the_survivors_of_measure`,
+`test_the_human_report_lists_counts_on_a_green_gate_only`,
+`test_a_subject_with_no_mutants_prints_no_mutants`; moving: none expected — `summary` is untouched
+and the twenty `spec(s)` assertions hold — and the agent's count binds. *Commit 3, decisions (4) and
+(5):* `test_run_mutmut_asks_for_every_result_and_keeps_the_survived_bucket`,
+`test_the_mutation_gate_counts_killed_and_total_per_module`,
+`test_a_vacuous_mutation_result_carries_no_counts`,
+`test_the_score_is_unchanged_by_the_per_module_counts`,
+`test_strip_spinner_drops_progress_lines_and_keeps_the_cause`,
+`test_a_tool_failure_keeps_the_last_800_characters_of_its_cause`; moving: any test asserting the
+head of a cut error in `tests/test_mutation_gate.py` or `tests/test_python_adapter.py`, and a
+`status_render` test if it names the constant's old home. *Commit 4, decisions (6) and (7):*
+`test_spec_keys_with_no_feature_files_fail_the_approval_stage`,
+`test_no_feature_files_and_no_spec_keys_is_still_vacuous`,
+`test_an_unreadable_lock_with_no_feature_files_is_red`,
+`test_status_lists_a_missing_spec_when_no_feature_file_exists`,
+`test_the_missing_sentence_names_spec_unapprove_for_a_spec`,
+`test_the_missing_sentence_names_lock_for_a_verified_path`; moving: `tests/test_review.py`'s three
+"no longer exists" texts at lines 389, 408 and 418 of `55bc5a6` are `review.py`'s own and do not
+move; a test asserting "ask the human to remove its approval" does, and the agent's grep binds (the
+advisor's found none under `tests/`). *Commit 5, decision (8):*
+`test_a_passing_stop_check_prints_one_system_message_naming_its_counts`,
+`test_a_skipping_stop_check_prints_its_line_as_a_system_message`; moving: `tests/test_cli.py`'s
+assertions on the skip line's stdout. *Commit 6:* none. Every new test's assertion is read for what
+else its string could match, per the rule of change 3.
+
 #### Retry loop burns attempts on non-agent-actionable failures
 
 **What happened.** The Stop hook's retry-capped `gauntlet stop-check` fired repeatedly against an
@@ -7471,6 +7786,24 @@ gauntlet-findings.md` prints 27 until P6 closes — the 26 and the v3 entry; the
 annotation's "27 live entries" counted the v3 entry among them. P6 opens next with an advisor
 pricing: its three entries, the two P4 save-point entries, the `doctor` crash, and the candidates
 the P5 block's decisions (5) and (7) name.)*
+
+*(Annotation, 2026-10-01, later: P6 split, and P6a priced and ratified. As routed, P6 held three
+entries and ten candidates and could not be held in one block, so it splits at the verdict path: P6a
+"what the gates say" — this bullet's first two entries, the deleted-last-spec entry, the mutation
+gate's spinner cut and `describe`'s MISSING sentence; one subject run — and P6b "what the commands
+say" — the ledger census with `status --json`'s `passed: false` on no run, found at this pricing;
+the `doctor` crash; `status --run`'s lock; `lock`'s count; the `config error:` prefix;
+`approval.revoked`; `mutant prune`'s message with the `cli_mutants.py` refactor; `review.py`'s
+copied sentence — second shape, no subject run, priced when P6a closes. Eleven packages, five
+subject runs remaining. P6a's block is under "The acceptance gate's green summary omits the killed
+count, so a newly bound spec's clean result is inferred from absence": nine decisions, four code
+commits and a documents commit, one thirteen-row matrix, twenty-one test names as a floor. Its
+prediction is the first that names a change on `gate.finished` lines: two gain a seventh key,
+`counts`, whose values are stated per spec and per module from the engine and from the clone's
+leftover `mutants/`; the digest and `actual` do not move. Two entries corrected at this pricing: the
+killed count exists nowhere today — `survivors_for` discards the total — and the per-module count
+costs one `mutmut results --all 1`. `grep -c '^\*\*Status\.\*\* Open' gauntlet-findings.md` prints
+27 until P6a closes, 24 after.)*
 
 **The v1 backlog's root-cause-diagnostics item needs a fourth category.** It
 currently distinguishes "tool failed," "tool found nothing," and "nothing to
