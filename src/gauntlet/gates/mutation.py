@@ -32,7 +32,6 @@ SUBJECT = "code"
 
 DEFAULT_MIN_SCORE = 90.0
 SURVIVED = "survived"
-SKIPPED_BUCKETS = ("skipped", "suspicious")
 MAX_SURVIVORS_INSPECTED = 40
 
 SHOW_TIMEOUT = 60
@@ -129,6 +128,8 @@ class _Counts:
     killed: int
     # Survivors past MAX_SURVIVORS_INSPECTED: never described, so never found approved.
     uninspected: int
+    # Per module, every name mutmut listed and those not survived; the cap does not touch it.
+    modules: dict[str, dict[str, int]]
 
     def unresolved(self, verdict: mutants_mod.Classification[CodeMutant]) -> int:
         return len(verdict.failing) + self.uninspected
@@ -167,7 +168,19 @@ def _judge(
         threshold={"min_score": min_score, "require_review": require_review},
         actual=_summary(actual, verdict, counts),
         diagnostics=diagnostics,
+        counts=counts.modules,
     )
+
+
+def _module_counts(statuses: dict[str, str]) -> dict[str, dict[str, int]]:
+    """Killed and total per module: the gate's rule, killed is total less survivors."""
+    counts: dict[str, dict[str, int]] = {}
+    for mutant_name, status in statuses.items():
+        module = python_adapter.parse_mutant_name(mutant_name)[0]
+        count = counts.setdefault(module, {"killed": 0, "total": 0})
+        count["total"] += 1
+        count["killed"] += int(status != SURVIVED)
+    return counts
 
 
 def _classified_result(
@@ -184,6 +197,7 @@ def _classified_result(
     counts = _Counts(
         killed=outcome.total - len(outcome.survivors),
         uninspected=len(outcome.survivors) - len(survivors),
+        modules=_module_counts(outcome.statuses),
     )
     if counts.uninspected:
         # An approval whose mutant sits past the cap matches nothing described; with any
@@ -211,14 +225,16 @@ def _no_mutants(threshold: dict[str, Any], filters: list[str]) -> GateResult:
 
 
 def _tool_failure(ctx: GateContext, threshold: dict[str, Any], error: str) -> GateResult:
-    """mutmut's own failure, with the fallback named after the cut when it applies.
-    A ledger refusal is not reported here: its first token stays the ledger's path."""
+    """mutmut's own failure, with the fallback named after it when it applies. The text
+    is already bounded by the adapter: a second cut here, after `explain` prepends its
+    hint, would drop the cause at the tail. A ledger refusal is not reported here: its
+    first token stays the ledger's path."""
     return GateResult(
         gate=name,
         passed=False,
         threshold=threshold,
         actual=None,
-        error=explain(error)[:800] + interpreter_note(ctx),
+        error=explain(error) + interpreter_note(ctx),
     )
 
 

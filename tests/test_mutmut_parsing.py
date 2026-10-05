@@ -260,3 +260,49 @@ def test_a_cache_rmtree_cannot_remove_is_a_tool_failure_with_the_os_reason(
     assert outcome.error.startswith("could not remove mutants/ before the run: ")
     assert "Permission denied" in outcome.error
     assert seen == []
+
+
+RESULTS_ALL = """\
+    policy.x__is_high__mutmut_1: killed
+    policy.x__is_high__mutmut_2: survived
+    policy.x__is_low__mutmut_1: timeout
+"""
+
+
+def test_run_mutmut_asks_for_every_result_and_keeps_the_survived_bucket(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen: list[list[str]] = []
+
+    def fake(args: list[str], cwd: Path, timeout: int = 600) -> subprocess.CompletedProcess[str]:
+        seen.append(args)
+        return _proc(RUN_OUTPUT) if "run" in args else _proc(RESULTS_ALL)
+
+    monkeypatch.setattr(adapter, "run_cmd", fake)
+    outcome = adapter.run_mutmut(tmp_path, "python", [], 60)
+    assert seen[1][2:] == ["mutmut", "results", "--all", "1"]
+    assert outcome.survivors == ["policy.x__is_high__mutmut_2"]
+    assert outcome.statuses == {
+        "policy.x__is_high__mutmut_1": "killed",
+        "policy.x__is_high__mutmut_2": "survived",
+        "policy.x__is_low__mutmut_1": "timeout",
+    }
+    assert outcome.total == 62  # the progress fraction, not the three listed names
+
+
+def test_strip_spinner_drops_progress_lines_and_keeps_the_cause() -> None:
+    noisy = (
+        "⠋ Generating mutants\n"
+        "  ⠙ Generating mutants\n"
+        "    done in 38ms (1 files mutated, 0 ignored, 0 unmodified)\n"
+        "\n"
+        "⠸ Running stats\n"
+        "ERROR tests/steps/test_tiering.py - FileNotFoundError: x ⠋\n"
+        "failed to collect stats. runner returned 2"
+    )
+    assert adapter.strip_spinner(noisy) == (
+        "    done in 38ms (1 files mutated, 0 ignored, 0 unmodified)\n"
+        "\n"
+        "ERROR tests/steps/test_tiering.py - FileNotFoundError: x ⠋\n"
+        "failed to collect stats. runner returned 2"
+    )

@@ -23,6 +23,8 @@ MUTANT_SUFFIX = re.compile(r"__mutmut_\d+$")
 MUTMUT_PROGRESS = re.compile(r"(?:^|\s)(\d+)/(\d+)(?:\s|$)")
 MUTANTS_DIR = "mutants"  # mutmut's copy of the tree and its results, which it reuses
 NOTHING_MATCHES = "nothing matches"  # mutmut's words when the filters name no mutant
+# A line beginning with one of these is an in-place progress redraw, not a message.
+SPINNER_CHARS = "⠁⠂⠃⠄⠅⠆⠇⠈⠉⠊⠋⠌⠍⠎⠏⠐⠑⠒⠓⠔⠕⠖⠗⠘⠙⠚⠛⠜⠝⠞⠟⠠⠡⠢⠣⠤⠥⠦⠧⠨⠩⠪⠫⠬⠭⠮⠯⠰⠱⠲⠳⠴⠵⠶⠷⠸⠹⠺⠻⠼⠽⠾⠿"
 
 
 @dataclass(frozen=True)
@@ -187,6 +189,7 @@ class MutationRun:
     total: int = 0
     survivors: list[str] = field(default_factory=list)
     error: str = ""
+    statuses: dict[str, str] = field(default_factory=dict)  # every mutant's name -> status
 
 
 def parse_total(payload: str) -> int:
@@ -218,22 +221,40 @@ def _clear_cache(root: Path) -> str | None:
     return None
 
 
+def _spinning(line: str) -> bool:
+    stripped = line.lstrip()
+    return bool(stripped) and stripped[0] in SPINNER_CHARS
+
+
+def strip_spinner(text: str) -> str:
+    """The text without its progress redraws: every line whose first non-blank
+    character is a braille spinner glyph is dropped, every other line kept."""
+    return "\n".join(line for line in text.splitlines() if not _spinning(line))
+
+
 def _no_mutants(proc: subprocess.CompletedProcess[str], filters: list[str]) -> MutationRun:
     """A zero total is a broken configuration - unless filters were given and mutmut said
     they matched nothing, which is a run with nothing to do and is reported as one.
     Recognised by mutmut's words, read before the error is cut to 800 characters; if
-    mutmut rewords them the result is today's tool failure, the closed direction."""
+    mutmut rewords them the result is today's tool failure, the closed direction. The
+    cut keeps the last 800 characters without the spinner: mutmut's output ends on its cause."""
     if filters and NOTHING_MATCHES in proc.stdout + proc.stderr:
         return MutationRun(ok=True, total=0)
-    return MutationRun(ok=False, error=(proc.stderr or proc.stdout).strip()[:800])
+    return MutationRun(ok=False, error=strip_spinner(proc.stderr or proc.stdout).strip()[-800:])
+
+
+def _statuses(buckets: dict[str, list[str]]) -> dict[str, str]:
+    """`parse_results`' buckets turned inside out: every mutant's name to its status."""
+    return {name: status for status, names in buckets.items() for name in names}
 
 
 def run_mutmut(root: Path, python: str, filters: list[str], timeout: int) -> MutationRun:
-    """Run mutmut cold and collect survivors.
+    """Run mutmut cold and collect survivors, and every mutant's status.
 
-    `mutmut results` lists only unkilled mutants, so the killed count is derived
-    from the run total rather than by counting status lines. A cache Gauntlet
-    could not clear is a tool failure, not a number: mutmut is not run.
+    `mutmut results --all 1` lists every mutant with its status; the total stays
+    the run's progress fraction, so the score is computed from the figures it
+    always was. A cache Gauntlet could not clear is a tool failure, not a number:
+    mutmut is not run.
     """
     not_cleared = _clear_cache(root)
     if not_cleared is not None:
@@ -244,9 +265,10 @@ def run_mutmut(root: Path, python: str, filters: list[str], timeout: int) -> Mut
     total = parse_total(proc.stdout + proc.stderr)
     if total == 0:
         return _no_mutants(proc, filters)
-    results = run_cmd([python, "-m", "mutmut", "results"], cwd=root, timeout=timeout)
+    results = run_cmd([python, "-m", "mutmut", "results", "--all", "1"], cwd=root, timeout=timeout)
+    buckets = parse_results(results.stdout)
     return MutationRun(
-        ok=True, total=total, survivors=parse_results(results.stdout).get(SURVIVED, [])
+        ok=True, total=total, survivors=buckets.get(SURVIVED, []), statuses=_statuses(buckets)
     )
 
 

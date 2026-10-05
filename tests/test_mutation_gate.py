@@ -354,3 +354,109 @@ def test_mutation_gate_reports_a_bad_lock_as_a_red_gate(
     finished = [line for line in log if line["kind"] == "run.finished"]
     assert len(finished) == 1
     assert finished[0]["failed"] == ["protect", "mutation", "acceptance"]
+
+
+# --- counts ----------------------------------------------------------------------
+
+STATUSES = {
+    "pkg.a.x_f__mutmut_1": "killed",
+    "pkg.a.x_f__mutmut_2": "survived",
+    "pkg.b.x_g__mutmut_1": "killed",
+    "pkg.b.x_g__mutmut_2": "timeout",
+    "pkg.b.x_h__mutmut_1": "killed",
+}
+
+
+def _mutmut_listing(monkeypatch: pytest.MonkeyPatch, statuses: dict[str, str]) -> None:
+    """Five mutants by the progress fraction, one survivor, `statuses` as the listing."""
+    monkeypatch.setattr(
+        python_adapter,
+        "run_mutmut",
+        lambda *a, **k: MutationRun(
+            ok=True, total=5, survivors=["pkg.a.x_f__mutmut_2"], statuses=statuses
+        ),
+    )
+    monkeypatch.setattr(python_adapter, "show_mutant", lambda *a, **k: ("a > b", "a >= b"))
+
+
+def test_the_mutation_gate_counts_killed_and_total_per_module(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Every status but `survived` is killed, as the score already treats it."""
+    _mutmut_listing(monkeypatch, STATUSES)
+    result = mutation.run(_ctx(project), {"min_score": 0, "scope": "full"})
+    assert result.counts == {
+        "pkg.a": {"killed": 1, "total": 2},
+        "pkg.b": {"killed": 3, "total": 3},
+    }
+
+
+def test_the_score_is_unchanged_by_the_per_module_counts(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`actual` comes from the progress total and the survived bucket, never the listing:
+    a listing that names fewer mutants than the total moves `counts` and nothing else."""
+    results = []
+    for statuses in (STATUSES, {}, {"pkg.a.x_f__mutmut_2": "survived"}):
+        _mutmut_listing(monkeypatch, statuses)
+        results.append(mutation.run(_ctx(project), {"min_score": 90, "scope": "full"}))
+    assert {r.actual for r in results} == {"score 80.0%, 4 killed, 1 unresolved"}
+    assert {r.passed for r in results} == {False}
+    assert [r.counts for r in results][1:] == [{}, {"pkg.a": {"killed": 0, "total": 1}}]
+
+
+def test_the_inspection_cap_does_not_touch_the_counts(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _mutmut_with(monkeypatch, total=160, surviving=150)
+    names = [_survivor(i).name for i in range(150)]
+    listing = dict.fromkeys(names, "survived") | {f"m.x_k__mutmut_{i}": "killed" for i in range(10)}
+    outcome = MutationRun(ok=True, total=160, survivors=names, statuses=listing)
+    monkeypatch.setattr(python_adapter, "run_mutmut", lambda *a, **k: outcome)
+    result = mutation.run(_ctx(project), {"min_score": 90, "scope": "full"})
+    assert "110 not inspected" in str(result.actual)
+    assert result.counts == {"m": {"killed": 10, "total": 160}}
+
+
+def test_a_vacuous_mutation_result_carries_no_counts(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    nothing_changed = mutation.run(_ctx(project, changed=[]), {"scope": "changed"})
+    changed = [project / "src" / "pkg" / "shell" / "io.py"]
+    monkeypatch.setattr(python_adapter, "run_cmd", _mutmut_saying(NOTHING_MATCHES))
+    no_mutants = mutation.run(_ctx(project, changed=changed), {"scope": "changed"})
+    assert (nothing_changed.vacuous, no_mutants.vacuous) == (True, True)
+    assert (nothing_changed.counts, no_mutants.counts) == (None, None)
+
+
+SPUN = "⠋ Generating mutants\n" * 60
+CAUSE = (
+    "ERROR tests/steps/test_tiering.py - FileNotFoundError: [Errno 2] features/tiering.feature\n"
+    "!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!\n"
+    "failed to collect stats. runner returned 2"
+)
+
+
+def test_a_tool_failure_keeps_the_last_800_characters_of_its_cause(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """mutmut's output ends on its cause; the head of it is spinner frames."""
+    done = "    done in 38ms (1 files mutated, 0 ignored, 0 unmodified)\n"
+    middle = done + "x" * 900 + "\n" + "⠸ Running stats\n" * 5  # frames inside the tail too
+    monkeypatch.setattr(python_adapter, "run_cmd", _mutmut_saying(SPUN + middle + CAUSE))
+    result = mutation.run(_ctx(project), {"scope": "full"})
+    error = result.error or ""
+    assert len(error) == 800
+    assert error.endswith(CAUSE)
+    assert not [line for line in error.splitlines() if line.lstrip()[:1] in ("⠋", "⠸")]
+    assert (result.passed, result.actual, result.counts) == (False, None, None)
+
+
+def test_the_artifact_hint_does_not_cut_the_cause_off_the_tail(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`explain` prepends its hint after the adapter's cut; the gate cuts nothing more."""
+    lock_failure = "x" * 900 + "\nFileNotFoundError: [Errno 2] No such file: 'src/.#cli.py'"
+    monkeypatch.setattr(python_adapter, "run_cmd", _mutmut_saying(SPUN + lock_failure))
+    error = mutation.run(_ctx(project), {"scope": "full"}).error or ""
+    assert error == f"{mutation.ARTIFACT_HINT}\n{lock_failure[-800:]}"

@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from typing import Any
 
+from gauntlet.adapters.python import SPINNER_CHARS
 from gauntlet.gates.base import GateResult
 from gauntlet.report import FAIL, PASS, VACUOUS
 from gauntlet.status import Status
 
 BULLET = "  •"
 MAX_DETAIL = 70
-SPINNER_CHARS = "⠁⠂⠃⠄⠅⠆⠇⠈⠉⠊⠋⠌⠍⠎⠏⠐⠑⠒⠓⠔⠕⠖⠗⠘⠙⠚⠛⠜⠝⠞⠟⠠⠡⠢⠣⠤⠥⠦⠧⠨⠩⠪⠫⠬⠭⠮⠯⠰⠱⠲⠳⠴⠵⠶⠷⠸⠹⠺⠻⠼⠽⠾⠿"
 
 
 def _mark(result: GateResult) -> str:
