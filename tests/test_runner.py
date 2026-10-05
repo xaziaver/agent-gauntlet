@@ -61,3 +61,36 @@ def test_a_keyboard_interrupt_in_a_gate_is_logged_as_sigint(
     log = _run(tmp_path, monkeypatch, KeyboardInterrupt())
     assert log[-1]["kind"] == "run.interrupted"
     assert log[-1]["signal"] == "SIGINT"
+
+
+class _Fixed:
+    """A gate that returns the result it was given."""
+
+    def __init__(self, result: base.GateResult) -> None:
+        self.name = result.gate
+        self.result = result
+
+    def run(self, ctx: base.GateContext, config: dict[str, Any]) -> base.GateResult:
+        return self.result
+
+
+def test_the_runner_emits_counts_only_on_a_gate_that_counted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    counted = {"features/a.feature": {"killed": 2, "total": 4}}
+    for result in (
+        base.GateResult(gate="plain", passed=True, threshold=1, actual=1),
+        base.GateResult(gate="counting", passed=True, threshold=1, actual=1, counts=counted),
+    ):
+        monkeypatch.setitem(runner.REGISTRY, result.gate, _Fixed(result))
+    gates: dict[str, Any] = {"plain": {}, "counting": {}}
+    cfg = config_mod.Config("python", tmp_path / "src", tmp_path / "tests", gates, {}, {})
+    ctx = base.GateContext(project_root=tmp_path, src=tmp_path / "src", tests=tmp_path / "tests")
+    runner.run_gates(ctx, cfg, ["plain", "counting"], False, log=events.Log(tmp_path, "r1"))
+    lines = (tmp_path / ".gauntlet" / "events.jsonl").read_text().splitlines()
+    plain, counting = [json.loads(line) for line in lines]
+    envelope = {"v", "at", "run", "kind"}
+    six = {"gate", "passed", "actual", "duration", "diagnostics", "error"}
+    assert set(plain) - envelope == six
+    assert set(counting) - envelope == six | {"counts"}
+    assert counting["counts"] == counted

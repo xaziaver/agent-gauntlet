@@ -120,6 +120,9 @@ class GateResult:
     # Passed because there was nothing to check — not the same as passing. A
     # gate with no input is silent under-enforcement unless it says so.
     vacuous: bool = False
+    # Per subject, {"killed": K, "total": T}, on a gate that counted; None on every other.
+    # Beside `actual`, never in it: `actual` is digested and a count moves with every spec.
+    counts: dict[str, dict[str, int]] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

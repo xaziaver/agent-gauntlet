@@ -110,13 +110,27 @@ def _render_diagnostic(diagnostic: Diagnostic) -> str:
     return f"    {location}  {diagnostic.message}"
 
 
+def _count_line(subject: str, count: dict[str, int]) -> str:
+    if count["total"] == 0:
+        return f"    {subject} no mutants"
+    return f"    {subject} {count['killed']}/{count['total']} killed"
+
+
+def _count_lines(result: GateResult) -> list[str]:
+    """What a green gate counted, one line per subject in key order. A failing gate's
+    diagnostics already say what survived; its counts stay in the JSON and the log."""
+    if result.counts is None or not result.passed:
+        return []
+    return [_count_line(subject, result.counts[subject]) for subject in sorted(result.counts)]
+
+
 def _render_result(result: GateResult, max_diags: int) -> list[str]:
     mark = _mark(result)
     header = (
         f"{mark} {result.gate:<12} threshold={result.threshold} "
         f"actual={result.actual} ({result.duration}s)"
     )
-    lines = [header]
+    lines = [header, *_count_lines(result)]
     if result.error:
         lines.append(f"    ERROR: {result.error}")
     lines.extend(_render_diagnostic(d) for d in result.diagnostics[:max_diags])

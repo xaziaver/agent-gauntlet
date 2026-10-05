@@ -82,6 +82,21 @@ def test_gate_result_to_dict_is_json_ready() -> None:
     assert result.to_dict()["diagnostics"][0]["file"] == "a.py"
 
 
+def test_a_gate_result_counts_default_to_none_and_enter_to_dict() -> None:
+    """`to_dict` is `asdict`, so `check --json` carries the field on every gate."""
+    plain = base.GateResult(gate="size", passed=True, threshold=25, actual=3)
+    counted = base.GateResult(
+        gate="mutation",
+        passed=True,
+        threshold=90,
+        actual=1,
+        counts={"m": {"killed": 1, "total": 2}},
+    )
+    assert plain.counts is None
+    assert plain.to_dict()["counts"] is None
+    assert counted.to_dict()["counts"] == {"m": {"killed": 1, "total": 2}}
+
+
 def test_run_cmd_captures_output_without_raising(tmp_path: Path) -> None:
     proc = base.run_cmd(
         [sys.executable, "-c", "import sys; print('hi'); sys.exit(3)"], cwd=tmp_path

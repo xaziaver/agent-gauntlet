@@ -97,6 +97,8 @@ def _interrupted(
 
 
 def _finished(sink: events.Log, result: base.GateResult) -> None:
+    """A gate that counted nothing emits the six keys it always has, byte for byte."""
+    counted = {} if result.counts is None else {"counts": result.counts}
     sink.emit(
         events.GATE_FINISHED,
         gate=result.gate,
@@ -105,6 +107,7 @@ def _finished(sink: events.Log, result: base.GateResult) -> None:
         duration=result.duration,
         diagnostics=len(result.diagnostics),
         error=result.error,
+        **counted,
     )
 
 

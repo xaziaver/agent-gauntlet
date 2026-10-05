@@ -975,3 +975,91 @@ def test_acceptance_gate_reports_a_bad_lock_as_a_red_gate(
     finished = [line for line in log if line["kind"] == "run.finished"]
     assert len(finished) == 1
     assert finished[0]["failed"] == ["protect", "acceptance"]
+
+
+# --- counts ----------------------------------------------------------------------
+
+SEMI_KEY = "features/semiannual.feature"
+
+
+def test_the_acceptance_gate_counts_killed_and_total_per_spec(
+    two_module_project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """rating's bindings kill all six; semiannual's four survive approved, and an approved
+    equivalent is a survivor in the count, as in the summary's own arithmetic."""
+    every = mutation.mutants(gherkin.parse(SEMIANNUAL, SEMI_KEY))
+    lock = locking.lock_path(two_module_project)
+    registry.save(mutants_mod.approve(two_module_project, SEMI_KEY, every, reason="x"), lock)
+    _record_runs(two_module_project, monkeypatch, reads=READS_RATING)
+    result = acceptance.run(_ctx(two_module_project), ALL_MUTANTS)
+    assert result.passed is True, result.diagnostics
+    assert result.actual == "2 spec(s), 4 reviewed-equivalent"
+    assert result.counts == {
+        RATING_KEY: {"killed": 6, "total": 6},
+        SEMI_KEY: {"killed": 0, "total": 4},
+    }
+
+
+def test_a_sampled_spec_counts_the_mutants_that_ran(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`mutation_sample` 2 of six: the total is what was run, and a red gate still counts."""
+    _approve(project)
+    _record_runs(project, monkeypatch, "rating.feature")  # nothing reads: both survive
+    result = acceptance.run(_ctx(project), CONFIG)
+    assert result.passed is False
+    assert result.counts == {RATING_KEY: {"killed": 0, "total": 2}}
+
+
+def test_a_spec_that_was_not_measured_has_no_count(
+    orphan_project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _record_runs(
+        orphan_project, monkeypatch, "rating.feature", "orphan.feature", reads=READS_RATING
+    )
+    result = acceptance.run(_ctx(orphan_project), CONFIG)
+    assert result.actual == "2 spec(s), 1 spec(s) not measured"
+    assert result.counts == {RATING_KEY: {"killed": 2, "total": 2}}
+
+
+@pytest.mark.parametrize(
+    ("why", "actual"),
+    [
+        ("unapproved", "1 unapproved or modified spec(s); mutation not run"),
+        ("baseline", "1 spec(s), scenarios failing; mutation not run"),
+        ("disabled", "1 spec(s) passing"),
+    ],
+)
+def test_a_gate_that_ran_no_mutation_carries_no_counts(
+    project: Path, monkeypatch: pytest.MonkeyPatch, why: str, actual: str
+) -> None:
+    _approve(project)
+    _record_runs(project, monkeypatch, "rating.feature", reads=READS_RATING)
+    result = acceptance.run(_ctx(project), _stage_not_run(project, monkeypatch, why))
+    assert result.actual == actual
+    assert result.counts is None
+
+
+def test_no_feature_files_carries_no_counts(tmp_path: Path) -> None:
+    result = acceptance.run(_ctx(tmp_path), CONFIG)
+    assert result.vacuous is True
+    assert result.counts is None
+
+
+def test_survivors_for_is_the_survivors_of_measure(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The `gauntlet mutant` commands keep the function they share with the gate."""
+    _approve(project)
+    ctx, feature, steps = (
+        _ctx(project),
+        project / "features" / "rating.feature",
+        project / "tests" / "steps",
+    )
+    _record_runs(project, monkeypatch, "rating.feature")  # nothing reads: all six survive
+    total, alive = acceptance.measure(ctx, ALL_MUTANTS, feature, steps)
+    assert (total, alive) == (6, mutation.mutants(gherkin.parse(FEATURE, RATING_KEY)))
+    assert acceptance.survivors_for(ctx, ALL_MUTANTS, feature, steps) == alive
+    _record_runs(project, monkeypatch, "rating.feature", reads=READS_RATING)
+    assert acceptance.measure(ctx, ALL_MUTANTS, feature, steps) == (6, [])
+    assert acceptance.survivors_for(ctx, ALL_MUTANTS, feature, steps) == []

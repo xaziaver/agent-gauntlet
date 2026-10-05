@@ -29,6 +29,8 @@ class MutationOutcome:
     relocated: dict[str, list[Mutant]] = field(default_factory=dict)
     # Every measured feature's survivors, unclassified, for the record the gate writes.
     measured: dict[str, survivors.Measured] = field(default_factory=dict)
+    # Every measured feature's {"killed", "total"}; a spec not measured has no count.
+    counts: dict[str, dict[str, int]] = field(default_factory=dict)
 
 
 def merged(outcomes: list[MutationOutcome]) -> MutationOutcome:
@@ -42,6 +44,7 @@ def merged(outcomes: list[MutationOutcome]) -> MutationOutcome:
             total.not_measured + outcome.not_measured,
             {**total.relocated, **outcome.relocated},
             {**total.measured, **outcome.measured},
+            {**total.counts, **outcome.counts},
         )
     return total
 

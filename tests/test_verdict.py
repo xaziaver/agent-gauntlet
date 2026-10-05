@@ -256,6 +256,16 @@ def test_the_verdict_digest_moves_when_one_actual_changes() -> None:
     assert verdict.digest(changed) != verdict.digest(lines)
 
 
+def test_counts_on_a_gate_line_reach_neither_the_record_nor_its_digest() -> None:
+    """The field exists because `actual` is digested and it is not: a seventh key on a
+    `gate.finished` line is dropped by `from_lines` and never read by `digest`."""
+    lines = _lines_of([_result("acceptance", "1 spec(s)")])
+    counted = [{**lines[0], "counts": {"features/a.feature": {"killed": 2, "total": 4}}}]
+    assert verdict.digest(counted) == verdict.digest(lines)
+    logged = [{**counted[0], "kind": events.GATE_FINISHED, "run": "r1"}]
+    assert verdict.from_lines(logged, "r1").verdict == lines
+
+
 def test_the_archived_baseline_run_digests_to_the_predicted_value() -> None:
     lines = events.read(ARCHIVE)
     assert len(lines) == 11

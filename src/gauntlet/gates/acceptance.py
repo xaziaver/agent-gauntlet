@@ -44,6 +44,13 @@ def survivors_for(
     a spec that is not UTF-8 or that no step module binds: every mutant of such a
     spec survives, and the count would carry no information.
     """
+    return measure(ctx, config, path, steps)[1]
+
+
+def measure(
+    ctx: GateContext, config: dict[str, Any], path: Path, steps: Path
+) -> tuple[int, list[Mutant]]:
+    """How many mutants of one feature ran — the sample, when one is set — and the survivors."""
     root = ctx.project_root
     text = _decoded(root, path)
     candidates = mutation.mutants(gherkin.parse(text, str(path)))
@@ -54,7 +61,7 @@ def survivors_for(
     targets = targets_for(config, steps, path)
     texts = [mutation.apply(text, mutant) for mutant in chosen]
     alive = _surviving(root, targets, path, text, texts, ctx.python, timeout)
-    return [chosen[index] for index in alive]
+    return len(chosen), [chosen[index] for index in alive]
 
 
 def _decoded(root: Path, path: Path) -> str:
@@ -96,7 +103,7 @@ def _classify_feature(
 ) -> report.MutationOutcome:
     key = specs.key_for(ctx.project_root, path)
     try:
-        survivors = survivors_for(ctx, config, path, steps)
+        total, survivors = measure(ctx, config, path, steps)
     except NotMeasuredError as exc:
         # Its own failing state, with no survivor count: the honest answer is that nothing checked.
         return report.MutationOutcome([report.not_measured_diagnostic(key, str(exc))], 0, [], 1)
@@ -107,6 +114,8 @@ def _classify_feature(
         verdict.stale,
         relocated=verdict.relocated,
         measured={key: survivors_mod.measured(path, survivors)},
+        # Approved equivalents and re-aimed survivors survived: killed is total less all of them.
+        counts={key: {"killed": total - len(survivors), "total": total}},
     )
 
 
@@ -170,7 +179,11 @@ def _surviving(
 
 
 def _result(
-    passed: bool, actual: str, diagnostics: list[Diagnostic] | None = None, vacuous: bool = False
+    passed: bool,
+    actual: str,
+    diagnostics: list[Diagnostic] | None = None,
+    vacuous: bool = False,
+    counts: dict[str, dict[str, int]] | None = None,
 ) -> GateResult:
     return GateResult(
         gate=name,
@@ -179,6 +192,7 @@ def _result(
         actual=actual,
         diagnostics=diagnostics or [],
         vacuous=vacuous,
+        counts=counts,
     )
 
 
@@ -228,7 +242,8 @@ def _mutation_result(features: list[Path], outcome: report.MutationOutcome) -> G
     # Stale approvals are housekeeping, not a defect: report by cause, do not fail.
     stale = report.stale_diagnostics(outcome.stale, outcome.relocated)
     diagnostics = [*outcome.diagnostics, *stale]
-    return _result(not outcome.diagnostics, report.summary(features, outcome), diagnostics)
+    summary = report.summary(features, outcome)
+    return _result(not outcome.diagnostics, summary, diagnostics, counts=outcome.counts)
 
 
 def _stages(

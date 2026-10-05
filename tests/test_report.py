@@ -147,3 +147,31 @@ def test_the_verdict_counts_gates_with_nothing_to_check() -> None:
 def test_a_fully_checked_pass_says_nothing_extra() -> None:
     results = [GateResult(gate="size", passed=True, threshold=25, actual=10)]
     assert report.to_human(results).rstrip().endswith("GAUNTLET PASSED")
+
+
+def _counted(passed: bool, counts: dict[str, dict[str, int]] | None) -> GateResult:
+    return GateResult(
+        gate="acceptance", passed=passed, threshold="t", actual="2 spec(s)", counts=counts
+    )
+
+
+def test_the_human_report_lists_counts_on_a_green_gate_only() -> None:
+    counts = {
+        "features/b.feature": {"killed": 3, "total": 4},
+        "features/a.feature": {"killed": 2, "total": 2},
+    }
+    green = report.to_human([_counted(True, counts)]).splitlines()
+    assert green[1:] == [
+        "    features/a.feature 2/2 killed",
+        "    features/b.feature 3/4 killed",
+        "",
+        "GAUNTLET PASSED",
+    ]
+    assert report.to_human([_counted(False, counts)]).splitlines()[1:] == ["", "GAUNTLET FAILED"]
+    assert report.to_human([_counted(True, None)]).splitlines()[1:] == ["", "GAUNTLET PASSED"]
+
+
+def test_a_subject_with_no_mutants_prints_no_mutants() -> None:
+    counts = {"tiering": {"killed": 6, "total": 6}, "rating": {"killed": 0, "total": 0}}
+    lines = report.to_human([_counted(True, counts)]).splitlines()
+    assert lines[1:3] == ["    rating no mutants", "    tiering 6/6 killed"]
